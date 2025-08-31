@@ -11,8 +11,8 @@ struct RootPagerView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            ExpenseEntryView { amount, note in
-                let newItem = Item(timestamp: Date(), amount: amount, note: note)
+            ExpenseEntryView { amount, note, category in
+                let newItem = Item(timestamp: Date(), amount: amount, note: note, categoryEmoji: category)
                 modelContext.insert(newItem)
             }
             .tag(0)

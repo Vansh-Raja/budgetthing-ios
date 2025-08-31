@@ -29,7 +29,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
                 }
-                ToolbarItem {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingEntrySheet = true }) {
                         Label("Add Expense", systemImage: "plus")
                     }
@@ -39,8 +39,8 @@ struct ContentView: View {
             Text("Select an item")
         }
         .sheet(isPresented: $showingEntrySheet) {
-            ExpenseEntryView { amount, note in
-                // For now, simply create an Item to show flow wiring; integrate model later.
+            ExpenseEntryView { amount, note, category in
+                // Legacy demo path; not used in app flow anymore
                 addItem()
             }
             .presentationDetents([.medium, .large])

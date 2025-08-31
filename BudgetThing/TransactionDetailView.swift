@@ -12,6 +12,10 @@ struct TransactionDetailView: View {
         ZStack {
             Color(.black).ignoresSafeArea()
             VStack(spacing: 24) {
+                if let emoji = item.categoryEmoji, !emoji.isEmpty {
+                    Text(emoji)
+                        .font(.system(size: 48))
+                }
                 Text(formattedAmount(item.amount))
                     .font(Font.custom("AvenirNextCondensed-Heavy", size: 64))
                     .foregroundStyle(.white)

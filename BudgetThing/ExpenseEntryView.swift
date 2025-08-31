@@ -14,9 +14,9 @@ struct ExpenseEntryView: View {
         case clear
         case backspace
         case plusMinus
-        case op(String) // visual operator (non-interactive)
-        case percent    // visual percent (non-interactive)
-        case save       // acts as "="
+        case op(String) // +, −, ×, =
+        case percent
+        case save
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -25,10 +25,22 @@ struct ExpenseEntryView: View {
     @State private var amountString: String = "0"
     // Note field removed per updated minimalist design
 
-    var onSave: ((Decimal, String) -> Void)? = nil
+    var onSave: ((Decimal, String, String?) -> Void)? = nil
 
     private let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
     @State private var showSavedToast: Bool = false
+
+    // Calculator engine state
+    private enum Operation { case add, subtract, multiply, divide }
+    @State private var currentValue: Decimal? = nil
+    @State private var pendingOperation: Operation? = nil
+    @State private var lastOperand: Decimal? = nil
+    @State private var lastInputWasOperation: Bool = false
+    @State private var lastEquation: String? = nil
+
+    // Quick categories
+    @State private var quickEmojis: [String] = ["🍔","🛒","🚕","🏠","🎉"]
+    @State private var selectedEmoji: String? = nil
 
     var body: some View {
         ZStack {
@@ -40,7 +52,14 @@ struct ExpenseEntryView: View {
 
                 VStack(spacing: 0) {
                     // Top half – centered amount
-                    VStack(spacing: 12) {
+                    VStack(spacing: 8) {
+                        if let eq = topEquationText() {
+                            Text(eq)
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                        }
                         ZStack {
                             Text(formattedAmount())
                                 .foregroundStyle(.white.opacity(0.16))
@@ -59,11 +78,28 @@ struct ExpenseEntryView: View {
 
                     // Bottom half – keypad
                     VStack(spacing: 12) {
+                        // Emoji quick row
+                        HStack(spacing: 14) {
+                            ForEach(quickEmojis, id: \.self) { emoji in
+                                Button(action: { selectedEmoji = emoji }) {
+                                    Text(emoji)
+                                        .font(.system(size: 24))
+                                        .frame(width: 44, height: 36)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .fill(selectedEmoji == emoji ? Color.white.opacity(0.15) : Color.white.opacity(0.06))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.bottom, 4)
+
                         LazyVGrid(columns: columns, spacing: 16) {
                             key(.clear, label: "C")
                             key(.percent, label: "%")
                             keyIcon(.backspace, systemImage: "delete.left")
-                            key(.save, label: "=")
+                            key(.op("÷"), label: "÷")
 
                             key(.digit(7), label: "7")
                             key(.digit(8), label: "8")
@@ -103,6 +139,18 @@ struct ExpenseEntryView: View {
                     .padding(.top, 16)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button(action: { handleKey(.save) }) {
+                Image(systemName: "checkmark")
+                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.white.opacity(0.1), in: Capsule())
+            }
+            .padding(.top, 12)
+            .padding(.trailing, 16)
         }
     }
 
@@ -162,18 +210,25 @@ struct ExpenseEntryView: View {
     private func handleKey(_ key: Key) {
         switch key {
         case .digit(let n):
+            lastEquation = nil
+            if lastInputWasOperation { amountString = "0"; lastInputWasOperation = false }
             appendDigit(n)
         case .dot:
+            lastEquation = nil
+            if lastInputWasOperation { amountString = "0"; lastInputWasOperation = false }
             appendDot()
         case .clear:
-            amountString = "0"
+            clearAll()
+            lastEquation = nil
         case .backspace:
+            lastEquation = nil
             backspace()
         case .plusMinus:
+            lastEquation = nil
             toggleSign()
         case .save:
             let decimal = Decimal(string: amountString) ?? 0
-            onSave?(decimal, "")
+            onSave?(decimal, "", selectedEmoji)
             amountString = "0"
             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                 showSavedToast = true
@@ -183,8 +238,11 @@ struct ExpenseEntryView: View {
                     showSavedToast = false
                 }
             }
-        case .op, .percent:
-            break // visual only for now
+        case .percent:
+            lastEquation = nil
+            applyPercent()
+        case .op(let symbol):
+            handleOperationSymbol(symbol)
         }
     }
 
@@ -225,6 +283,110 @@ struct ExpenseEntryView: View {
         } else if amountString != "0" {
             amountString = "-" + amountString
         }
+    }
+
+    // MARK: - Calculator operations
+
+    private func clearAll() {
+        amountString = "0"
+        currentValue = nil
+        pendingOperation = nil
+        lastOperand = nil
+        lastInputWasOperation = false
+    }
+
+    private func applyPercent() {
+        let value = Decimal(string: amountString) ?? 0
+        let result = value / 100
+        amountString = string(from: result)
+    }
+
+    private func handleOperationSymbol(_ symbol: String) {
+        if symbol == "=" {
+            evaluateEquals()
+            return
+        }
+        guard let op = operation(for: symbol) else { return }
+        let operand = Decimal(string: amountString) ?? 0
+        lastOperand = operand
+        let newValue = applyPendingOperation(with: operand, operation: pendingOperation)
+        currentValue = newValue
+        pendingOperation = op
+        amountString = string(from: newValue)
+        lastInputWasOperation = true
+    }
+
+    private func evaluateEquals() {
+        let operand: Decimal
+        if lastInputWasOperation, let last = lastOperand {
+            operand = last
+        } else {
+            operand = Decimal(string: amountString) ?? 0
+            lastOperand = operand
+        }
+        let opBefore = pendingOperation
+        let lhsForEq = currentValue
+        let result = applyPendingOperation(with: operand, operation: opBefore)
+        currentValue = result
+        pendingOperation = nil
+        amountString = string(from: result)
+        lastInputWasOperation = true
+        if let opBefore, let lhs = lhsForEq {
+            lastEquation = "\(string(from: lhs)) \(symbol(for: opBefore)) \(string(from: operand))"
+        }
+    }
+
+    private func operation(for symbol: String) -> Operation? {
+        switch symbol {
+        case "+": return .add
+        case "−": return .subtract
+        case "×": return .multiply
+        case "÷": return .divide
+        default: return nil
+        }
+    }
+
+    private func applyPendingOperation(with operand: Decimal, operation: Operation?) -> Decimal {
+        let lhs = currentValue ?? operand
+        guard let operation else { return operand }
+        switch operation {
+        case .add:
+            return lhs + operand
+        case .subtract:
+            return lhs - operand
+        case .multiply:
+            return lhs * operand
+        case .divide:
+            if operand == 0 { return 0 }
+            return lhs / operand
+        }
+    }
+
+    private func string(from decimal: Decimal) -> String {
+        let number = NSDecimalNumber(decimal: decimal)
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        formatter.usesGroupingSeparator = false
+        formatter.decimalSeparator = "."
+        return formatter.string(from: number) ?? "0"
+    }
+
+    private func symbol(for op: Operation) -> String {
+        switch op {
+        case .add: return "+"
+        case .subtract: return "−"
+        case .multiply: return "×"
+        case .divide: return "÷"
+        }
+    }
+
+    private func topEquationText() -> String? {
+        if let op = pendingOperation, let lhs = currentValue {
+            return "\(string(from: lhs)) \(symbol(for: op)) \(amountString)"
+        }
+        return lastEquation
     }
 }
 
