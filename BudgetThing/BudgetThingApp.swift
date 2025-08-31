@@ -25,7 +25,7 @@ struct BudgetThingApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootPagerView()
         }
         .modelContainer(sharedModelContainer)
     }

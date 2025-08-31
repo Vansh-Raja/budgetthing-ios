@@ -11,8 +11,12 @@ import SwiftData
 @Model
 final class Item {
     var timestamp: Date
+    var amount: Decimal?
+    var note: String?
     
-    init(timestamp: Date) {
+    init(timestamp: Date, amount: Decimal? = nil, note: String? = nil) {
         self.timestamp = timestamp
+        self.amount = amount
+        self.note = note
     }
 }

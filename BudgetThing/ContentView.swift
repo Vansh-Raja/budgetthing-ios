@@ -11,6 +11,7 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var items: [Item]
+    @State private var showingEntrySheet: Bool = false
 
     var body: some View {
         NavigationSplitView {
@@ -29,13 +30,20 @@ struct ContentView: View {
                     EditButton()
                 }
                 ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                    Button(action: { showingEntrySheet = true }) {
+                        Label("Add Expense", systemImage: "plus")
                     }
                 }
             }
         } detail: {
             Text("Select an item")
+        }
+        .sheet(isPresented: $showingEntrySheet) {
+            ExpenseEntryView { amount, note in
+                // For now, simply create an Item to show flow wiring; integrate model later.
+                addItem()
+            }
+            .presentationDetents([.medium, .large])
         }
     }
 
