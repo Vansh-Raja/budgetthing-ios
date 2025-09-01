@@ -37,6 +37,8 @@ struct ExpenseEntryView: View {
     @State private var lastOperand: Decimal? = nil
     @State private var lastInputWasOperation: Bool = false
     @State private var lastEquation: String? = nil
+    private enum EquationToken { case number(String), op(Operation), equals }
+    @State private var equationTokens: [EquationToken] = []
 
     // Quick categories
     @State private var quickEmojis: [String] = ["🍔","🛒","🚕","🏠","🎉"]
@@ -53,13 +55,7 @@ struct ExpenseEntryView: View {
                 VStack(spacing: 0) {
                     // Top half – centered amount
                     VStack(spacing: 8) {
-                        if let eq = topEquationText() {
-                            Text(eq)
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
-                                .foregroundStyle(.white.opacity(0.7))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.5)
-                        }
+                        equationTextView()
                         ZStack {
                             Text(formattedAmount())
                                 .foregroundStyle(.white.opacity(0.16))
@@ -213,23 +209,31 @@ struct ExpenseEntryView: View {
             lastEquation = nil
             if lastInputWasOperation { amountString = "0"; lastInputWasOperation = false }
             appendDigit(n)
+            syncCurrentNumberTokenWithAmountString()
         case .dot:
             lastEquation = nil
             if lastInputWasOperation { amountString = "0"; lastInputWasOperation = false }
             appendDot()
+            syncCurrentNumberTokenWithAmountString()
         case .clear:
             clearAll()
             lastEquation = nil
+            equationTokens.removeAll()
         case .backspace:
             lastEquation = nil
             backspace()
+            // As requested, clear history when editing by backspace
+            equationTokens.removeAll()
+            syncCurrentNumberTokenWithAmountString()
         case .plusMinus:
             lastEquation = nil
             toggleSign()
+            syncCurrentNumberTokenWithAmountString()
         case .save:
             let decimal = Decimal(string: amountString) ?? 0
             onSave?(decimal, "", selectedEmoji)
             amountString = "0"
+            equationTokens.removeAll()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                 showSavedToast = true
             }
@@ -241,6 +245,7 @@ struct ExpenseEntryView: View {
         case .percent:
             lastEquation = nil
             applyPercent()
+            syncCurrentNumberTokenWithAmountString()
         case .op(let symbol):
             handleOperationSymbol(symbol)
         }
@@ -293,6 +298,7 @@ struct ExpenseEntryView: View {
         pendingOperation = nil
         lastOperand = nil
         lastInputWasOperation = false
+        equationTokens.removeAll()
     }
 
     private func applyPercent() {
@@ -314,6 +320,13 @@ struct ExpenseEntryView: View {
         pendingOperation = op
         amountString = string(from: newValue)
         lastInputWasOperation = true
+        if equationTokens.isEmpty {
+            equationTokens.append(.number(string(from: operand)))
+        }
+        if let last = equationTokens.last, case .op(_) = last {
+            equationTokens.removeLast()
+        }
+        equationTokens.append(.op(op))
     }
 
     private func evaluateEquals() {
@@ -333,6 +346,8 @@ struct ExpenseEntryView: View {
         lastInputWasOperation = true
         if let opBefore, let lhs = lhsForEq {
             lastEquation = "\(string(from: lhs)) \(symbol(for: opBefore)) \(string(from: operand))"
+            equationTokens.append(.equals)
+            equationTokens.append(.number(string(from: result)))
         }
     }
 
@@ -384,9 +399,59 @@ struct ExpenseEntryView: View {
 
     private func topEquationText() -> String? {
         if let op = pendingOperation, let lhs = currentValue {
-            return "\(string(from: lhs)) \(symbol(for: op)) \(amountString)"
+            if lastInputWasOperation {
+                return "\(string(from: lhs)) \(symbol(for: op))"
+            } else {
+                return "\(string(from: lhs)) \(symbol(for: op)) \(amountString)"
+            }
         }
         return lastEquation
+    }
+
+    // Build styled equation line
+    @ViewBuilder private func equationTextView() -> some View {
+        if !equationTokens.isEmpty {
+            let text: Text = equationTokens.reduce(Text("") as Text) { partial, token in
+                partial + tokenText(token)
+            }
+            text
+                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        } else if let eq = topEquationText() {
+            Text(eq)
+                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                .foregroundStyle(.white.opacity(0.7))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        }
+    }
+
+    private func tokenText(_ token: EquationToken) -> Text {
+        switch token {
+        case .number(let s):
+            return Text(s).foregroundStyle(.white.opacity(0.7)) + Text(" ")
+        case .op(let op):
+            return Text(symbol(for: op)).foregroundStyle(.orange) + Text(" ")
+        case .equals:
+            return Text("=").foregroundStyle(.orange) + Text(" ")
+        }
+    }
+
+    private func syncCurrentNumberTokenWithAmountString() {
+        if equationTokens.isEmpty {
+            equationTokens.append(.number(amountString))
+        } else {
+            if case .number(_) = equationTokens.last {
+                equationTokens.removeLast()
+                equationTokens.append(.number(amountString))
+            } else if case .equals = equationTokens.last {
+                equationTokens.removeAll()
+                equationTokens.append(.number(amountString))
+            } else {
+                equationTokens.append(.number(amountString))
+            }
+        }
     }
 }
 
