@@ -7,6 +7,7 @@ import SwiftUI
 import SwiftData
 
 struct CategoriesManageView: View {
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Category.name) private var categories: [Category]
 
     var body: some View {
@@ -20,21 +21,21 @@ struct CategoriesManageView: View {
                 // List of categories styled like transactions, tappable
                 List {
                     ForEach(categories) { c in
-                        NavigationLink {
-                            CategoryDetailView(category: c)
-                        } label: {
+                        Button(action: {}) {
                             HStack(spacing: 12) {
                                 Text(c.emoji)
                                     .font(.system(size: 22))
                                     .frame(width: 36, height: 36)
-                                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                                 Text(c.name)
                                     .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
                                     .foregroundStyle(.white)
                                 Spacer()
                             }
-                            .listRowBackground(Color.clear)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
                     }
                     // Trailing "Add +" row as a right-aligned footer-like cell
                     HStack {
@@ -58,6 +59,14 @@ struct CategoriesManageView: View {
             .padding(24)
         }
         .preferredColorScheme(.dark)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: { dismiss() }) { Image(systemName: "chevron.left") }
+            }
+        }
     }
 }
 

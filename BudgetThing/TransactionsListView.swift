@@ -11,43 +11,76 @@ struct TransactionsListView: View {
     @Query(sort: \Transaction.date, order: .reverse) private var txs: [Transaction]
     @State private var path = NavigationPath()
     @Environment(\._currencyCode) private var currencyCode
+    @State private var showingDetail: Bool = false
+    @State private var selectedTx: Transaction? = nil
 
     var body: some View {
         ZStack {
             Color(.black).ignoresSafeArea()
 
             NavigationStack(path: $path) {
-                List {
-                    ForEach(txs) { tx in
-                        NavigationLink(value: tx) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(formattedAmount(tx.amount))
-                                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 24))
-                                        .foregroundStyle(.white)
-                                    Text(tx.date, style: .date)
-                                        .font(.caption)
-                                        .foregroundStyle(.white.opacity(0.6))
+                if txs.isEmpty {
+                    VStack(spacing: 12) {
+                        Text("No transactions yet")
+                            .font(Font.custom("AvenirNextCondensed-Heavy", size: 28))
+                            .foregroundStyle(.white)
+                        Text("Add an amount on the calculator and tap the checkmark to save.")
+                            .font(.callout)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                } else {
+                    List {
+                        ForEach(txs) { tx in
+                            Button(action: {
+                                selectedTx = tx
+                                showingDetail = true
+                                Haptics.selection()
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(formattedAmount(tx.amount))
+                                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 24))
+                                            .foregroundStyle(.white)
+                                        Text(tx.date, style: .date)
+                                            .font(.caption)
+                                            .foregroundStyle(.white.opacity(0.6))
+                                    }
+                                    Spacer()
                                 }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.white.opacity(0.25))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                             .listRowBackground(Color.clear)
                         }
                     }
+                    .listStyle(.plain)
+                    .listRowSeparator(.hidden)
+                    .scrollContentBackground(.hidden)
                 }
-                .listStyle(.plain)
-                .listRowSeparator(.hidden)
-                .navigationDestination(for: Transaction.self) { tx in
-                    TransactionDetailView(item: tx)
+            }
+            .fullScreenCover(isPresented: $showingDetail) {
+                if let tx = selectedTx {
+                    NavigationStack { TransactionDetailView(item: tx) }
+                        .background(
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .gesture(
+                                    DragGesture(minimumDistance: 20)
+                                        .onEnded { value in
+                                            if value.translation.height > 80 { showingDetail = false }
+                                        }
+                                )
+                        )
                 }
-                .scrollContentBackground(.hidden)
             }
         }
         .preferredColorScheme(.dark)
         .overlay(alignment: .bottom) {
-            if path.isEmpty {
+            if path.isEmpty && !showingDetail {
                 FloatingPageSwitcher(selection: $tabSelection)
                     .padding(.bottom, 18)
             }

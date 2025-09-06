@@ -87,14 +87,17 @@ struct ExpenseEntryView: View {
                         // Emoji quick row
                         HStack(spacing: 14) {
                             ForEach(displayedEmojis, id: \.self) { emoji in
-                                Button(action: { selectedEmoji = emoji }) {
-                                    Text(emoji)
-                                        .font(.system(size: 24))
-                                        .frame(width: 44, height: 36)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill(selectedEmoji == emoji ? Color.white.opacity(0.15) : Color.white.opacity(0.06))
-                                        )
+                                Button(action: { selectedEmoji = emoji; Haptics.selection() }) {
+                                    VStack(spacing: 4) {
+                                        Text(emoji)
+                                            .font(.system(size: 24))
+                                        if selectedEmoji == emoji {
+                                            Capsule()
+                                                .fill(Color.orange)
+                                                .frame(width: 16, height: 2)
+                                        }
+                                    }
+                                    .frame(width: 36, height: 36)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -221,25 +224,30 @@ struct ExpenseEntryView: View {
             if lastInputWasOperation { amountString = "0"; lastInputWasOperation = false }
             appendDigit(n)
             syncCurrentNumberTokenWithAmountString()
+            Haptics.light()
         case .dot:
             lastEquation = nil
             if lastInputWasOperation { amountString = "0"; lastInputWasOperation = false }
             appendDot()
             syncCurrentNumberTokenWithAmountString()
+            Haptics.light()
         case .clear:
             clearAll()
             lastEquation = nil
             equationTokens.removeAll()
+            Haptics.selection()
         case .backspace:
             lastEquation = nil
             backspace()
             // As requested, clear history when editing by backspace
             equationTokens.removeAll()
             syncCurrentNumberTokenWithAmountString()
+            Haptics.light()
         case .plusMinus:
             lastEquation = nil
             toggleSign()
             syncCurrentNumberTokenWithAmountString()
+            Haptics.selection()
         case .save:
             let decimal = Decimal(string: amountString) ?? 0
             onSave?(decimal, "", selectedEmoji)
@@ -248,6 +256,7 @@ struct ExpenseEntryView: View {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                 showSavedToast = true
             }
+            Haptics.success()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 withAnimation(.easeOut(duration: 0.25)) {
                     showSavedToast = false
@@ -257,8 +266,10 @@ struct ExpenseEntryView: View {
             lastEquation = nil
             applyPercent()
             syncCurrentNumberTokenWithAmountString()
+            Haptics.light()
         case .op(let symbol):
             handleOperationSymbol(symbol)
+            Haptics.selection()
         }
     }
 

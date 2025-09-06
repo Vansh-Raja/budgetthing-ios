@@ -87,6 +87,15 @@ struct AddCategoryView: View {
                 .padding(24)
             )
             .preferredColorScheme(.dark)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.black, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { dismiss() }) { Image(systemName: "chevron.left") }
+                }
+            }
     }
 
     private func saveCategory() {

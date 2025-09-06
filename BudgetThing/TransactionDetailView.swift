@@ -126,6 +126,7 @@ struct TransactionDetailView: View {
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity)
                 }
+                .simultaneousGesture(TapGesture().onEnded { Haptics.warning() })
                 Spacer()
             }
             .padding(24)
@@ -134,10 +135,12 @@ struct TransactionDetailView: View {
         .toolbarBackground(.black, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: { dismiss() }) { Image(systemName: "chevron.left") }
+            }
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: toggleEditSave) {
-                    Text(isEditing ? "Save" : "Edit")
-                }
+                Button(action: toggleEditSave) { Text(isEditing ? "Save" : "Edit") }
+                    .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
             }
         }
         .overlay(alignment: .top) {

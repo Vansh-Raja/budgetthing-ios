@@ -7,12 +7,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @Binding var tabSelection: Int
-    @State private var isHapticsOn: Bool = true
+    @AppStorage("hapticsOn") private var isHapticsOn: Bool = true
     @State private var currency: String = "USD"
     @Environment(\._currencyCode) private var envCurrency
     @AppStorage("currencyCode") private var storedCurrency: String = "USD"
     @State private var showCurrencyPicker: Bool = false
     @State private var path = NavigationPath()
+    @State private var showingCategories: Bool = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -32,6 +33,7 @@ struct SettingsView: View {
                             Toggle("", isOn: $isHapticsOn)
                                 .labelsHidden()
                         }
+                        .padding(.vertical, 8)
 
                         Divider().background(Color.white.opacity(0.1))
 
@@ -40,7 +42,7 @@ struct SettingsView: View {
                                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
                                 .foregroundStyle(.white)
                             Spacer()
-                            Button(action: { showCurrencyPicker = true }) {
+                            Button(action: { Haptics.selection(); showCurrencyPicker = true }) {
                                 Text(currency)
                                     .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
                                     .foregroundStyle(.white)
@@ -50,14 +52,13 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        .padding(.vertical, 8)
                     }
 
                     Divider().background(Color.white.opacity(0.1))
 
-                    // Manage categories link - custom, borderless
-                    NavigationLink {
-                        CategoriesManageView()
-                    } label: {
+                    // Manage categories link - custom, borderless (full screen)
+                    Button(action: { Haptics.selection(); showingCategories = true }) {
                         HStack {
                             Text("Manage Categories")
                                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
@@ -66,12 +67,11 @@ struct SettingsView: View {
                             Image(systemName: "chevron.right")
                                 .foregroundStyle(.white.opacity(0.25))
                         }
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 8)
                         .background(Color.clear)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .buttonStyle(.plain) // avoid iOS device default tile background
                     .background(Color.clear)
 
                     Divider().background(Color.white.opacity(0.1))
@@ -91,7 +91,7 @@ struct SettingsView: View {
             .preferredColorScheme(.dark)
         }
         .overlay(alignment: .bottom) {
-            if path.isEmpty {
+            if path.isEmpty && !showingCategories {
                 FloatingPageSwitcher(selection: $tabSelection)
                     .padding(.bottom, 18)
             }
@@ -102,6 +102,10 @@ struct SettingsView: View {
             CurrencyPickerView(selectedCode: $currency)
         }
         .onAppear { currency = storedCurrency }
+        .fullScreenCover(isPresented: $showingCategories) {
+            NavigationStack { CategoriesManageView() }
+                .interactiveDismissDisabled(false)
+        }
     }
 }
 
