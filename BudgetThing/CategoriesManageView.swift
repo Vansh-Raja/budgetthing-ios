@@ -21,7 +21,9 @@ struct CategoriesManageView: View {
                 // List of categories styled like transactions, tappable
                 List {
                     ForEach(categories) { c in
-                        Button(action: {}) {
+                        NavigationLink {
+                            EditCategoryView(category: c)
+                        } label: {
                             HStack(spacing: 12) {
                                 Text(c.emoji)
                                     .font(.system(size: 22))
@@ -31,10 +33,8 @@ struct CategoriesManageView: View {
                                     .foregroundStyle(.white)
                                 Spacer()
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
                         .listRowBackground(Color.clear)
                     }
                     // Trailing "Add +" row as a right-aligned footer-like cell

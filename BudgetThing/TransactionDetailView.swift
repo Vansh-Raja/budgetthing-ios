@@ -34,7 +34,7 @@ struct TransactionDetailView: View {
                         .font(.system(size: 48))
                 }
                 if isEditing {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    HStack(alignment: .center, spacing: 6) {
                         Text(currencySymbol)
                             .font(Font.custom("AvenirNextCondensed-Heavy", size: 64))
                             .foregroundStyle(.white)
@@ -112,6 +112,10 @@ struct TransactionDetailView: View {
                         .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                         .foregroundStyle(.white)
                         .disabled(!isEditing)
+                        .onChange(of: editableNote) { _, newVal in
+                            // Prevent accidental non-finite numbers reaching rendering by ensuring string stays finite-length
+                            if newVal.count > 5000 { editableNote = String(newVal.prefix(5000)) }
+                        }
                 }
 
                 Spacer()

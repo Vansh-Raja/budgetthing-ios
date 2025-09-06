@@ -19,48 +19,63 @@ struct TransactionsListView: View {
             Color(.black).ignoresSafeArea()
 
             NavigationStack(path: $path) {
-                if txs.isEmpty {
-                    VStack(spacing: 12) {
-                        Text("No transactions yet")
-                            .font(Font.custom("AvenirNextCondensed-Heavy", size: 28))
-                            .foregroundStyle(.white)
-                        Text("Add an amount on the calculator and tap the checkmark to save.")
-                            .font(.callout)
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                } else {
-                    List {
-                        ForEach(txs) { tx in
-                            Button(action: {
-                                selectedTx = tx
-                                showingDetail = true
-                                Haptics.selection()
-                            }) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(formattedAmount(tx.amount))
-                                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 24))
-                                            .foregroundStyle(.white)
-                                        Text(tx.date, style: .date)
-                                            .font(.caption)
-                                            .foregroundStyle(.white.opacity(0.6))
-                                    }
-                                    Spacer()
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .listRowBackground(Color.clear)
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Transactions")
+                        .font(Font.custom("AvenirNextCondensed-Heavy", size: 36))
+                        .foregroundStyle(.white)
+
+                    if txs.isEmpty {
+                        VStack(spacing: 12) {
+                            Text("No transactions yet")
+                                .font(Font.custom("AvenirNextCondensed-Heavy", size: 28))
+                                .foregroundStyle(.white)
+                            Text("Add an amount on the calculator and tap the checkmark to save.")
+                                .font(.callout)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(.white.opacity(0.7))
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    } else {
+                        List {
+                            ForEach(txs) { tx in
+                                Button(action: {
+                                    selectedTx = tx
+                                    showingDetail = true
+                                    Haptics.selection()
+                                }) {
+                                    HStack(spacing: 12) {
+                                        if let emoji = tx.category?.emoji, !emoji.isEmpty {
+                                            Text(emoji)
+                                                .font(.system(size: 20))
+                                                .frame(width: 28, alignment: .center)
+                                        }
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(formattedAmount(tx.amount))
+                                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 24))
+                                                .foregroundStyle(.white)
+                                            Text(tx.date, style: .date)
+                                                .font(.caption)
+                                                .foregroundStyle(.white.opacity(0.6))
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .foregroundStyle(.white.opacity(0.25))
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .listRowBackground(Color.clear)
+                            }
+                        }
+                        .listStyle(.plain)
+                        .listRowSeparator(.hidden)
+                        .scrollContentBackground(.hidden)
                     }
-                    .listStyle(.plain)
-                    .listRowSeparator(.hidden)
-                    .scrollContentBackground(.hidden)
+
+                    Spacer(minLength: 0)
                 }
+                .padding(24)
             }
             .fullScreenCover(isPresented: $showingDetail) {
                 if let tx = selectedTx {

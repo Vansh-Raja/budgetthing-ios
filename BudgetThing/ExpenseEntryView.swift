@@ -45,6 +45,7 @@ struct ExpenseEntryView: View {
     @Query(sort: \Category.name) private var categories: [Category]
     @State private var selectedEmoji: String? = nil
     @Environment(\._currencyCode) private var currencyCode
+    @State private var errorToast: String? = nil
 
     private var displayedEmojis: [String] {
         let fromDB = categories.prefix(5).map { $0.emoji }
@@ -138,16 +139,27 @@ struct ExpenseEntryView: View {
         }
         .preferredColorScheme(.dark)
         .overlay(alignment: .top) {
-            if showSavedToast {
-                Text("Saved")
-                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.white.opacity(0.08), in: Capsule())
-                    .padding(.top, 16)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            VStack(spacing: 6) {
+                if showSavedToast {
+                    Text("Saved")
+                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.white.opacity(0.08), in: Capsule())
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                if let msg = errorToast {
+                    Text(msg)
+                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.white.opacity(0.12), in: Capsule())
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
+            .padding(.top, 16)
         }
         .overlay(alignment: .topTrailing) {
             Button(action: { handleKey(.save) }) {
@@ -184,10 +196,6 @@ struct ExpenseEntryView: View {
                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
                 .frame(maxWidth: .infinity, minHeight: height)
                 .foregroundStyle(foregroundColor(for: key, isEnabled: isEnabled))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(.white.opacity(0.18), lineWidth: 1)
-                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -250,6 +258,16 @@ struct ExpenseEntryView: View {
             Haptics.selection()
         case .save:
             let decimal = Decimal(string: amountString) ?? 0
+            if decimal == 0 {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                    errorToast = "Enter an amount greater than 0 to save."
+                }
+                Haptics.error()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    withAnimation(.easeOut(duration: 0.25)) { errorToast = nil }
+                }
+                return
+            }
             onSave?(decimal, "", selectedEmoji)
             amountString = "0"
             equationTokens.removeAll()
