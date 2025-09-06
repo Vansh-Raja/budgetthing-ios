@@ -4,13 +4,10 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct CategoriesManageView: View {
-    @State private var categories: [(emoji: String, name: String)] = [
-        ("🍔", "Food"), ("🛒", "Groceries"), ("🚕", "Transport"), ("🏠", "Rent"), ("🎉", "Fun")
-    ]
-    @State private var newEmoji: String = "🍎"
-    @State private var newName: String = "Category"
+    @Query(sort: \Category.name) private var categories: [Category]
 
     var body: some View {
         ZStack {
@@ -22,10 +19,9 @@ struct CategoriesManageView: View {
 
                 // List of categories styled like transactions, tappable
                 List {
-                    ForEach(categories.indices, id: \.self) { idx in
-                        let c = categories[idx]
+                    ForEach(categories) { c in
                         NavigationLink {
-                            CategoryDetailView(category: CategoryDetailView.Model(emoji: c.emoji, name: c.name, budget: nil))
+                            CategoryDetailView(category: c)
                         } label: {
                             HStack(spacing: 12) {
                                 Text(c.emoji)
@@ -40,6 +36,18 @@ struct CategoriesManageView: View {
                             .listRowBackground(Color.clear)
                         }
                     }
+                    // Trailing "Add +" row as a right-aligned footer-like cell
+                    HStack {
+                        Spacer()
+                        NavigationLink {
+                            AddCategoryView()
+                        } label: {
+                            Text("Add  +")
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .listRowBackground(Color.clear)
                 }
                 .listStyle(.plain)
                 .listRowSeparator(.hidden)

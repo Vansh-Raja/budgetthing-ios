@@ -4,14 +4,13 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct CategoryDetailView: View {
-    struct Model {
-        var emoji: String
-        var name: String
-        var budget: Decimal?
-    }
-    let category: Model
+    let category: Category
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @State private var showDeletedToast: Bool = false
 
     var body: some View {
         ZStack {
@@ -35,7 +34,7 @@ struct CategoryDetailView: View {
                         Text("Monthly Budget")
                             .foregroundStyle(.white)
                         Spacer()
-                        Text(category.budget != nil ? "$\(category.budget!)" : "None")
+                        Text(category.monthlyBudget != nil ? "$\(category.monthlyBudget!)" : "None")
                             .foregroundStyle(.white.opacity(0.7))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -59,11 +58,39 @@ struct CategoryDetailView: View {
         .preferredColorScheme(.dark)
         .navigationTitle("Category")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(role: .destructive) {
+                    modelContext.delete(category)
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                        showDeletedToast = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                        dismiss()
+                    }
+                } label: {
+                    Text("Delete")
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .overlay(alignment: .top) {
+            if showDeletedToast {
+                Text("Deleted")
+                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.white.opacity(0.08), in: Capsule())
+                    .padding(.top, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
     }
 }
 
 #Preview {
-    CategoryDetailView(category: .init(emoji: "🍔", name: "Food", budget: nil))
+    CategoryDetailView(category: Category(name: "Food", emoji: "🍔"))
 }
 
 

@@ -10,9 +10,12 @@ import SwiftData
 
 @main
 struct BudgetThingApp: App {
+    @AppStorage("currencyCode") private var currencyCode: String = "USD"
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
+            Category.self,
+            Transaction.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -26,6 +29,7 @@ struct BudgetThingApp: App {
     var body: some Scene {
         WindowGroup {
             RootPagerView()
+                .environment(\._currencyCode, currencyCode)
         }
         .modelContainer(sharedModelContainer)
     }

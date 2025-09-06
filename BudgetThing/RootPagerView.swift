@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct RootPagerView: View {
     @Environment(\.modelContext) private var modelContext
@@ -11,38 +12,42 @@ struct RootPagerView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            ExpenseEntryView { amount, note, category in
-                let newItem = Item(timestamp: Date(), amount: amount, note: note, categoryEmoji: category)
-                modelContext.insert(newItem)
+            ExpenseEntryView { amount, note, categoryEmoji in
+                var foundCategory: Category? = nil
+                if let emoji = categoryEmoji {
+                    var fd = FetchDescriptor<Category>()
+                    fd.fetchLimit = 1
+                    fd.predicate = #Predicate { $0.emoji == emoji }
+                    if let match = try? modelContext.fetch(fd).first { foundCategory = match }
+                }
+                let tx = Transaction(amount: amount, date: .now, note: note.isEmpty ? nil : note, category: foundCategory)
+                modelContext.insert(tx)
             }
             .tag(0)
 
-            TransactionsListView()
+            TransactionsListView(tabSelection: $selection)
                 .tag(1)
 
-            SettingsView()
+            SettingsView(tabSelection: $selection)
                 .tag(2)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .background(Color.black)
         .ignoresSafeArea()
-        .overlay(alignment: .bottom) {
-            if selection != 0 {
-                FloatingPageSwitcher(selection: $selection)
-                    .padding(.bottom, 18)
-            }
+        .onAppear {
+            seedDefaultCategoriesIfNeeded(modelContext)
         }
     }
 }
 
 #Preview {
     RootPagerView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: [Category.self, Transaction.self], inMemory: true)
 }
 
 // MARK: - Floating Page Switcher
 
-private struct FloatingPageSwitcher: View {
+struct FloatingPageSwitcher: View {
     @Binding var selection: Int
 
     var body: some View {

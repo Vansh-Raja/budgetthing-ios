@@ -7,22 +7,25 @@ import SwiftUI
 import SwiftData
 
 struct TransactionsListView: View {
-    @Query(sort: \Item.timestamp, order: .reverse) private var items: [Item]
+    @Binding var tabSelection: Int
+    @Query(sort: \Transaction.date, order: .reverse) private var txs: [Transaction]
+    @State private var path = NavigationPath()
+    @Environment(\._currencyCode) private var currencyCode
 
     var body: some View {
         ZStack {
             Color(.black).ignoresSafeArea()
 
-            NavigationStack {
+            NavigationStack(path: $path) {
                 List {
-                    ForEach(items) { item in
-                        NavigationLink(value: item) {
+                    ForEach(txs) { tx in
+                        NavigationLink(value: tx) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(formattedAmount(item.amount))
+                                    Text(formattedAmount(tx.amount))
                                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 24))
                                         .foregroundStyle(.white)
-                                    Text(item.timestamp, style: .date)
+                                    Text(tx.date, style: .date)
                                         .font(.caption)
                                         .foregroundStyle(.white.opacity(0.6))
                                 }
@@ -36,26 +39,37 @@ struct TransactionsListView: View {
                 }
                 .listStyle(.plain)
                 .listRowSeparator(.hidden)
-                .navigationDestination(for: Item.self) { item in
-                    TransactionDetailView(item: item)
+                .navigationDestination(for: Transaction.self) { tx in
+                    TransactionDetailView(item: tx)
                 }
                 .scrollContentBackground(.hidden)
             }
         }
         .preferredColorScheme(.dark)
+        .overlay(alignment: .bottom) {
+            if path.isEmpty {
+                FloatingPageSwitcher(selection: $tabSelection)
+                    .padding(.bottom, 18)
+            }
+        }
     }
 
-    private func formattedAmount(_ amount: Decimal?) -> String {
-        let number = NSDecimalNumber(decimal: amount ?? 0)
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        return formatter.string(from: number) ?? "$0"
+    private func formattedAmount(_ amount: Decimal) -> String {
+        let symbol = CurrencyUtils.symbol(for: currencyCode)
+        let number = NSDecimalNumber(decimal: amount)
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 2
+        f.usesGroupingSeparator = true
+        let digits = f.string(from: number) ?? "0"
+        return symbol + digits
     }
 }
 
 #Preview {
-    TransactionsListView()
-        .modelContainer(for: Item.self, inMemory: true)
+    TransactionsListView(tabSelection: .constant(1))
+        .modelContainer(for: [Category.self, Transaction.self], inMemory: true)
 }
 
 

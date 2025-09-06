@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ExpenseEntryView: View {
     enum Key: Hashable {
@@ -40,9 +41,16 @@ struct ExpenseEntryView: View {
     private enum EquationToken { case number(String), op(Operation), equals }
     @State private var equationTokens: [EquationToken] = []
 
-    // Quick categories
-    @State private var quickEmojis: [String] = ["🍔","🛒","🚕","🏠","🎉"]
+    // Quick categories (fetched)
+    @Query(sort: \Category.name) private var categories: [Category]
     @State private var selectedEmoji: String? = nil
+    @Environment(\._currencyCode) private var currencyCode
+
+    private var displayedEmojis: [String] {
+        let fromDB = categories.prefix(5).map { $0.emoji }
+        if !fromDB.isEmpty { return Array(fromDB) }
+        return ["🍔","🛒","🚕","🏠","🎉"]
+    }
 
     var body: some View {
         ZStack {
@@ -51,6 +59,8 @@ struct ExpenseEntryView: View {
 
             GeometryReader { proxy in
                 let topHeight = proxy.size.height * 0.45
+                let amountFontSize = min(proxy.size.width * 0.22, 120)
+                let keyHeight = max(56, proxy.size.height * 0.064)
 
                 VStack(spacing: 0) {
                     // Top half – centered amount
@@ -63,7 +73,7 @@ struct ExpenseEntryView: View {
                             Text(formattedAmount())
                                 .foregroundStyle(.white)
                         }
-                        .font(Font.custom("AvenirNextCondensed-Heavy", size: 120))
+                        .font(Font.custom("AvenirNextCondensed-Heavy", size: amountFontSize))
                         .monospacedDigit()
                         .minimumScaleFactor(0.4)
                         .lineLimit(1)
@@ -76,7 +86,7 @@ struct ExpenseEntryView: View {
                     VStack(spacing: 12) {
                         // Emoji quick row
                         HStack(spacing: 14) {
-                            ForEach(quickEmojis, id: \.self) { emoji in
+                            ForEach(displayedEmojis, id: \.self) { emoji in
                                 Button(action: { selectedEmoji = emoji }) {
                                     Text(emoji)
                                         .font(.system(size: 24))
@@ -92,30 +102,30 @@ struct ExpenseEntryView: View {
                         .padding(.bottom, 4)
 
                         LazyVGrid(columns: columns, spacing: 16) {
-                            key(.clear, label: "C")
-                            key(.percent, label: "%")
-                            keyIcon(.backspace, systemImage: "delete.left")
-                            key(.op("÷"), label: "÷")
+                            key(.clear, label: "C", height: keyHeight)
+                            key(.percent, label: "%", height: keyHeight)
+                            keyIcon(.backspace, systemImage: "delete.left", height: keyHeight)
+                            key(.op("÷"), label: "÷", height: keyHeight)
 
-                            key(.digit(7), label: "7")
-                            key(.digit(8), label: "8")
-                            key(.digit(9), label: "9")
-                            key(.op("×"), label: "×")
+                            key(.digit(7), label: "7", height: keyHeight)
+                            key(.digit(8), label: "8", height: keyHeight)
+                            key(.digit(9), label: "9", height: keyHeight)
+                            key(.op("×"), label: "×", height: keyHeight)
 
-                            key(.digit(4), label: "4")
-                            key(.digit(5), label: "5")
-                            key(.digit(6), label: "6")
-                            key(.op("−"), label: "−")
+                            key(.digit(4), label: "4", height: keyHeight)
+                            key(.digit(5), label: "5", height: keyHeight)
+                            key(.digit(6), label: "6", height: keyHeight)
+                            key(.op("−"), label: "−", height: keyHeight)
 
-                            key(.digit(1), label: "1")
-                            key(.digit(2), label: "2")
-                            key(.digit(3), label: "3")
-                            key(.op("+"), label: "+")
+                            key(.digit(1), label: "1", height: keyHeight)
+                            key(.digit(2), label: "2", height: keyHeight)
+                            key(.digit(3), label: "3", height: keyHeight)
+                            key(.op("+"), label: "+", height: keyHeight)
 
-                            key(.digit(0), label: "0")
-                            key(.dot, label: ".")
-                            key(.plusMinus, label: "+/−")
-                            key(.op("="), label: "=")
+                            key(.digit(0), label: "0", height: keyHeight)
+                            key(.dot, label: ".", height: keyHeight)
+                            key(.plusMinus, label: "+/−", height: keyHeight)
+                            key(.op("="), label: "=", height: keyHeight)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -152,11 +162,11 @@ struct ExpenseEntryView: View {
 
     // MARK: - Key Builder
 
-    private func key(_ key: Key, label: String, isEnabled: Bool = true) -> some View {
+    private func key(_ key: Key, label: String, isEnabled: Bool = true, height: CGFloat = 72) -> some View {
         Button(action: { if isEnabled { handleKey(key) } }) {
             Text(label)
                 .font(Font.custom(isOperator(key) ? "AvenirNextCondensed-DemiBold" : "AvenirNextCondensed-Medium", size: 24))
-                .frame(maxWidth: .infinity, minHeight: 72)
+                .frame(maxWidth: .infinity, minHeight: height)
                 .foregroundStyle(foregroundColor(for: key, isEnabled: isEnabled))
                 .contentShape(Rectangle())
         }
@@ -165,11 +175,11 @@ struct ExpenseEntryView: View {
         .accessibilityLabel(label)
     }
 
-    private func keyIcon(_ key: Key, systemImage: String, isEnabled: Bool = true) -> some View {
+    private func keyIcon(_ key: Key, systemImage: String, isEnabled: Bool = true, height: CGFloat = 72) -> some View {
         Button(action: { if isEnabled { handleKey(key) } }) {
             Image(systemName: systemImage)
                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
-                .frame(maxWidth: .infinity, minHeight: 72)
+                .frame(maxWidth: .infinity, minHeight: height)
                 .foregroundStyle(foregroundColor(for: key, isEnabled: isEnabled))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -200,7 +210,8 @@ struct ExpenseEntryView: View {
         let prefix = amountString.hasPrefix("-") ? "-" : ""
         let bare = amountString.replacingOccurrences(of: "-", with: "")
         let display = bare.isEmpty ? "0" : bare
-        return "$" + prefix + display
+        let symbol = CurrencyUtils.symbol(for: currencyCode)
+        return symbol + prefix + display
     }
 
     private func handleKey(_ key: Key) {
