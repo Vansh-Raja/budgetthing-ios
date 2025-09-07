@@ -9,6 +9,8 @@ import SwiftData
 struct CategoriesManageView: View {
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Category.name) private var categories: [Category]
+    @State private var selectedCategory: Category? = nil
+    @State private var showingAdd: Bool = false
 
     var body: some View {
         ZStack {
@@ -21,9 +23,10 @@ struct CategoriesManageView: View {
                 // List of categories styled like transactions, tappable
                 List {
                     ForEach(categories) { c in
-                        NavigationLink {
-                            EditCategoryView(category: c)
-                        } label: {
+                        Button(action: {
+                            selectedCategory = c
+                            Haptics.selection()
+                        }) {
                             HStack(spacing: 12) {
                                 Text(c.emoji)
                                     .font(.system(size: 22))
@@ -32,22 +35,28 @@ struct CategoriesManageView: View {
                                     .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
                                     .foregroundStyle(.white)
                                 Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.white.opacity(0.25))
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
-                        .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                         .listRowBackground(Color.clear)
                     }
-                    // Trailing "Add +" row as a right-aligned footer-like cell
-                    HStack {
-                        Spacer()
-                        NavigationLink {
-                            AddCategoryView()
-                        } label: {
+                    // Trailing "Add +" row as a right-aligned full-width button
+                    Button(action: { showingAdd = true; Haptics.selection() }) {
+                        HStack {
+                            Spacer()
                             Text("Add  +")
                                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
                                 .foregroundStyle(.white)
                         }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .listRowBackground(Color.clear)
                 }
                 .listStyle(.plain)
@@ -66,6 +75,12 @@ struct CategoriesManageView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button(action: { dismiss() }) { Image(systemName: "chevron.left") }
             }
+        }
+        .fullScreenCover(item: $selectedCategory) { c in
+            NavigationStack { EditCategoryView(category: c) }
+        }
+        .fullScreenCover(isPresented: $showingAdd) {
+            NavigationStack { AddCategoryView() }
         }
     }
 }

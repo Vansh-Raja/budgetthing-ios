@@ -19,7 +19,7 @@ struct SettingsView: View {
         NavigationStack(path: $path) {
             ZStack {
                 Color(.black).ignoresSafeArea()
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 20) {
                     Text("Settings")
                         .font(Font.custom("AvenirNextCondensed-Heavy", size: 36))
                         .foregroundStyle(.white)
@@ -27,24 +27,24 @@ struct SettingsView: View {
                     Group {
                         HStack {
                             Text("Haptics")
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
                                 .foregroundStyle(.white)
                             Spacer()
                             Toggle("", isOn: $isHapticsOn)
                                 .labelsHidden()
                         }
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
 
                         Divider().background(Color.white.opacity(0.1))
 
                         HStack(spacing: 12) {
                             Text("Currency")
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
                                 .foregroundStyle(.white)
                             Spacer()
                             Button(action: { Haptics.selection(); showCurrencyPicker = true }) {
                                 Text(currency)
-                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
@@ -52,22 +52,23 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
                     }
 
                     Divider().background(Color.white.opacity(0.1))
 
                     // Manage categories link - custom, borderless (full screen)
                     Button(action: { Haptics.selection(); showingCategories = true }) {
-                        HStack {
+                        HStack(spacing: 8) {
                             Text("Manage Categories")
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
                                 .foregroundStyle(.white)
                             Spacer()
                             Image(systemName: "chevron.right")
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.25))
                         }
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
                         .background(Color.clear)
                         .contentShape(Rectangle())
                     }
@@ -76,7 +77,7 @@ struct SettingsView: View {
 
                     Divider().background(Color.white.opacity(0.1))
 
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("About")
                             .foregroundStyle(.white.opacity(0.7))
                             .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
