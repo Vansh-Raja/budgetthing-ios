@@ -57,6 +57,49 @@ struct SettingsView: View {
 
                     Divider().background(Color.white.opacity(0.1))
 
+                    // Legal & Support links
+                    Group {
+                        Button(action: {
+                            Haptics.selection()
+                            if let url = URL(string: "https://budgetthing.vanshraja.me/support") { UIApplication.shared.open(url) }
+                        }) {
+                            HStack(spacing: 8) {
+                                Text("Support")
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.25))
+                            }
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Divider().background(Color.white.opacity(0.1))
+
+                        Button(action: {
+                            Haptics.selection()
+                            if let url = URL(string: "https://budgetthing.vanshraja.me/privacy") { UIApplication.shared.open(url) }
+                        }) {
+                            HStack(spacing: 8) {
+                                Text("Privacy Policy")
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.25))
+                            }
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Divider().background(Color.white.opacity(0.1))
+
                     // Manage categories link - custom, borderless (full screen)
                     Button(action: { Haptics.selection(); showingCategories = true }) {
                         HStack(spacing: 8) {
