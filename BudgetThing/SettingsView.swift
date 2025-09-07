@@ -8,12 +8,14 @@ import SwiftUI
 struct SettingsView: View {
     @Binding var tabSelection: Int
     @AppStorage("hapticsOn") private var isHapticsOn: Bool = true
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = true
     @State private var currency: String = "USD"
     @Environment(\._currencyCode) private var envCurrency
     @AppStorage("currencyCode") private var storedCurrency: String = "USD"
     @State private var showCurrencyPicker: Bool = false
     @State private var path = NavigationPath()
     @State private var showingCategories: Bool = false
+    @State private var showOnboarding: Bool = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -54,6 +56,26 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 6)
                     }
+
+                    Divider().background(Color.white.opacity(0.1))
+
+                    // Manage categories link - custom, borderless (full screen)
+                    Button(action: { Haptics.selection(); showingCategories = true }) {
+                        HStack(spacing: 8) {
+                            Text("Manage Categories")
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.25))
+                        }
+                        .padding(.vertical, 6)
+                        .background(Color.clear)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(Color.clear)
 
                     Divider().background(Color.white.opacity(0.1))
 
@@ -100,10 +122,10 @@ struct SettingsView: View {
 
                     Divider().background(Color.white.opacity(0.1))
 
-                    // Manage categories link - custom, borderless (full screen)
-                    Button(action: { Haptics.selection(); showingCategories = true }) {
+                    // View Tutorial (Onboarding)
+                    Button(action: { Haptics.selection(); showOnboarding = true }) {
                         HStack(spacing: 8) {
-                            Text("Manage Categories")
+                            Text("View Tutorial")
                                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
                                 .foregroundStyle(.white)
                             Spacer()
@@ -112,11 +134,9 @@ struct SettingsView: View {
                                 .foregroundStyle(.white.opacity(0.25))
                         }
                         .padding(.vertical, 6)
-                        .background(Color.clear)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .background(Color.clear)
 
                     Divider().background(Color.white.opacity(0.1))
 
@@ -149,6 +169,12 @@ struct SettingsView: View {
         .fullScreenCover(isPresented: $showingCategories) {
             NavigationStack { CategoriesManageView() }
                 .interactiveDismissDisabled(false)
+        }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView {
+                hasSeenOnboarding = true
+                showOnboarding = false
+            }
         }
     }
 }

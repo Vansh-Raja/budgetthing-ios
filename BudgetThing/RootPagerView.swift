@@ -9,6 +9,8 @@ import SwiftData
 struct RootPagerView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selection: Int = 0
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
+    @State private var showOnboarding: Bool = false
 
     var body: some View {
         TabView(selection: $selection) {
@@ -36,6 +38,13 @@ struct RootPagerView: View {
         .ignoresSafeArea()
         .onAppear {
             seedDefaultCategoriesIfNeeded(modelContext)
+            if !hasSeenOnboarding { showOnboarding = true }
+        }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView {
+                hasSeenOnboarding = true
+                showOnboarding = false
+            }
         }
     }
 }
