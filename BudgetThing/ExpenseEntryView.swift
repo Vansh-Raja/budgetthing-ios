@@ -43,9 +43,15 @@ struct ExpenseEntryView: View {
 
     // Quick categories (fetched)
     @Query(sort: \Category.name) private var categories: [Category]
+    @Query(sort: \Account.name) private var accounts: [Account]
     @State private var selectedEmoji: String? = nil
     @Environment(\._currencyCode) private var currencyCode
     @State private var errorToast: String? = nil
+    @State private var selectedAccountID: UUID? = {
+        if let id = UserDefaults.standard.string(forKey: "defaultAccountID"), let uuid = UUID(uuidString: id) { return uuid }
+        return nil
+    }()
+    @State private var showAccountDropdown: Bool = false
 
     private var displayedEmojis: [String] {
         let fromDB = categories.prefix(5).map { $0.emoji }
@@ -138,8 +144,36 @@ struct ExpenseEntryView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onChange(of: selectedAccountID) { _, newVal in
+            if let uuid = newVal { UserDefaults.standard.set(uuid.uuidString, forKey: "defaultAccountID") }
+        }
+        .onAppear {
+            if selectedAccountID == nil {
+                if let id = UserDefaults.standard.string(forKey: "defaultAccountID"), let uuid = UUID(uuidString: id) {
+                    selectedAccountID = uuid
+                } else if let first = accounts.first {
+                    selectedAccountID = first.id
+                }
+            }
+        }
         .overlay(alignment: .top) {
-            VStack(spacing: 6) {
+            VStack(alignment: .center, spacing: 6) {
+                ZStack(alignment: .trailing) {
+                    // Centered pill across full width
+                    accountPill()
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    // Trailing save button
+                    Button(action: { handleKey(.save) }) {
+                        Image(systemName: "checkmark")
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.white.opacity(0.1), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                if showAccountDropdown { accountDropdown().padding(.top, 2) }
                 if showSavedToast {
                     Text("Saved")
                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
@@ -160,18 +194,11 @@ struct ExpenseEntryView: View {
                 }
             }
             .padding(.top, 16)
+            .padding(.horizontal, 16)
         }
-        .overlay(alignment: .topTrailing) {
-            Button(action: { handleKey(.save) }) {
-                Image(systemName: "checkmark")
-                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.white.opacity(0.1), in: Capsule())
-            }
-            .padding(.top, 12)
-            .padding(.trailing, 16)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if showAccountDropdown { withAnimation(.easeOut(duration: 0.2)) { showAccountDropdown = false } }
         }
     }
 
@@ -492,6 +519,68 @@ struct ExpenseEntryView: View {
                 equationTokens.append(.number(amountString))
             }
         }
+    }
+
+    // MARK: - Accounts UI
+    private func accountPill() -> some View {
+        let current: Account? = accounts.first(where: { $0.id == selectedAccountID }) ?? accounts.first
+        let title = current.map { ($0.emoji.isEmpty ? "🧾" : $0.emoji) + " " + $0.name } ?? "Select Account"
+        let isInteractive = accounts.count > 1
+        return Button(action: {
+            guard isInteractive else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { showAccountDropdown.toggle() }
+            Haptics.selection()
+        }) {
+            Text(title)
+                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                .foregroundStyle(.white.opacity(isInteractive ? 1.0 : 0.8))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(.white.opacity(0.12), in: Capsule())
+                .overlay(
+                    Capsule().stroke(.white.opacity(0.15), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isInteractive)
+        .padding(.bottom, 2)
+    }
+
+    private func accountDropdown() -> some View {
+        VStack(spacing: 0) {
+            ForEach(accounts) { acc in
+                Button(action: {
+                    selectedAccountID = acc.id
+                    withAnimation(.easeOut(duration: 0.2)) { showAccountDropdown = false }
+                    Haptics.selection()
+                }) {
+                    HStack {
+                        Text(acc.emoji.isEmpty ? "🧾" : acc.emoji)
+                            .font(.system(size: 18))
+                        Text(acc.name)
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                        Spacer()
+                        if acc.id == selectedAccountID {
+                            Capsule()
+                                .fill(Color.orange)
+                                .frame(width: 16, height: 2)
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                if acc.id != accounts.last?.id {
+                    Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
+                }
+            }
+        }
+        .frame(maxWidth: 260)
+        .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.12), lineWidth: 1)
+        )
     }
 }
 

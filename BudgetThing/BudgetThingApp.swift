@@ -16,6 +16,7 @@ struct BudgetThingApp: App {
             Item.self,
             Category.self,
             Transaction.self,
+            Account.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

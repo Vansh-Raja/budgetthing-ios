@@ -14,6 +14,8 @@ struct TransactionsListView: View {
     @State private var showingDetail: Bool = false
     @State private var selectedTx: Transaction? = nil
     @State private var selectedMonthKey: String? = nil // "YYYY-MM" or nil for All
+    @Query(sort: \Account.name) private var accounts: [Account]
+    @State private var selectedAccountID: UUID? = nil // nil = All
 
     var body: some View {
         ZStack {
@@ -25,10 +27,19 @@ struct TransactionsListView: View {
                         .font(Font.custom("AvenirNextCondensed-Heavy", size: 36))
                         .foregroundStyle(.white)
 
-                    // Month filter chips
+                    // Account filter pill + Month filter chips
                     if !txs.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
+                                Button(action: { Haptics.selection(); selectedAccountID = nil }) {
+                                    Text(selectedAccountID == nil ? "All Accounts" : (accounts.first(where: { $0.id == selectedAccountID })?.name ?? "Account"))
+                                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Color.white.opacity(0.08), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
                                 monthChip(title: "All", isSelected: selectedMonthKey == nil) {
                                     selectedMonthKey = nil; Haptics.selection()
                                 }
@@ -70,7 +81,10 @@ struct TransactionsListView: View {
                                         .padding(.vertical, 4)
                                         .textCase(nil)
                                 ) {
-                                    ForEach(section.items) { tx in
+                                    ForEach(section.items.filter { tx in
+                                        guard let sel = selectedAccountID else { return true }
+                                        return tx.account?.id == sel
+                                    }) { tx in
                                         Button(action: {
                                             selectedTx = tx
                                             showingDetail = true

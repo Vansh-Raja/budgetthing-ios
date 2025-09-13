@@ -17,4 +17,19 @@ func seedDefaultCategoriesIfNeeded(_ context: ModelContext) {
     }
 }
 
+func seedDefaultAccountIfNeeded(_ context: ModelContext) {
+    do {
+        let fetch = FetchDescriptor<Account>()
+        let existing = try context.fetch(fetch)
+        if existing.isEmpty {
+            let cash = Account(name: "Cash", emoji: "💵", kind: .cash)
+            context.insert(cash)
+            // Store as defaultAccountID
+            UserDefaults.standard.set(cash.id.uuidString, forKey: "defaultAccountID")
+        }
+    } catch {
+        print("Seed default account failed: \(error)")
+    }
+}
+
 

@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var showCurrencyPicker: Bool = false
     @State private var path = NavigationPath()
     @State private var showingCategories: Bool = false
+    @State private var showingAccounts: Bool = false
     @State private var showOnboarding: Bool = false
 
     var body: some View {
@@ -56,6 +57,26 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 6)
                     }
+
+                    Divider().background(Color.white.opacity(0.1))
+
+                    // Manage accounts
+                    Button(action: { Haptics.selection(); showingAccounts = true }) {
+                        HStack(spacing: 8) {
+                            Text("Manage Accounts")
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.25))
+                        }
+                        .padding(.vertical, 6)
+                        .background(Color.clear)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(Color.clear)
 
                     Divider().background(Color.white.opacity(0.1))
 
@@ -155,7 +176,7 @@ struct SettingsView: View {
             .preferredColorScheme(.dark)
         }
         .overlay(alignment: .bottom) {
-            if path.isEmpty && !showingCategories {
+            if path.isEmpty && !showingCategories && !showingAccounts {
                 FloatingPageSwitcher(selection: $tabSelection)
                     .padding(.bottom, 18)
             }
@@ -168,6 +189,10 @@ struct SettingsView: View {
         .onAppear { currency = storedCurrency }
         .fullScreenCover(isPresented: $showingCategories) {
             NavigationStack { CategoriesManageView() }
+                .interactiveDismissDisabled(false)
+        }
+        .fullScreenCover(isPresented: $showingAccounts) {
+            NavigationStack { AccountsManageView() }
                 .interactiveDismissDisabled(false)
         }
         .fullScreenCover(isPresented: $showOnboarding) {

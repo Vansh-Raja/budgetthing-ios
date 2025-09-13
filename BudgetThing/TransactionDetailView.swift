@@ -17,6 +17,8 @@ struct TransactionDetailView: View {
     @State private var editableDate: Date = .now
     @State private var selectedCategory: Category? = nil
     @State private var editableAmount: String = ""
+    @Query(sort: \Account.name) private var accounts: [Account]
+    @State private var selectedAccount: Account? = nil
     @FocusState private var amountFieldFocused: Bool
     @Query(sort: \Category.name) private var categories: [Category]
 
@@ -69,6 +71,31 @@ struct TransactionDetailView: View {
                         .tint(.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .foregroundStyle(.white)
+                    // Account pill row
+                    if !accounts.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Account")
+                                .foregroundStyle(.white.opacity(0.7))
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    ForEach(accounts) { acc in
+                                        let isSel = selectedAccount?.id == acc.id
+                                        Button(action: { selectedAccount = acc }) {
+                                            HStack(spacing: 6) {
+                                                Text(acc.emoji.isEmpty ? "🧾" : acc.emoji).font(.system(size: 18))
+                                                Text(acc.name).font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                                            }
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(isSel ? Color.white.opacity(0.18) : Color.white.opacity(0.08), in: Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // Category chips
                     if !categories.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -96,8 +123,15 @@ struct TransactionDetailView: View {
                         }
                     }
                 } else {
-                    Text(item.date.formatted(date: .abbreviated, time: .shortened))
-                        .foregroundStyle(.white.opacity(0.7))
+                    let dateStr = item.date.formatted(date: .abbreviated, time: .shortened)
+                    if let acc = item.account {
+                        let emoji = acc.emoji.isEmpty ? "🧾" : acc.emoji
+                        Text("\(dateStr) · \(emoji) \(acc.name)")
+                            .foregroundStyle(.white.opacity(0.7))
+                    } else {
+                        Text(dateStr)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
                 }
 
                 // Editable notes box
@@ -164,6 +198,7 @@ struct TransactionDetailView: View {
             editableNote = item.note ?? ""
             editableDate = item.date
             selectedCategory = item.category
+            selectedAccount = item.account
             editableAmount = decimalString(item.amount)
         }
     }
@@ -173,6 +208,7 @@ struct TransactionDetailView: View {
             item.note = editableNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : editableNote
             item.date = editableDate
             item.category = selectedCategory
+            item.account = selectedAccount
             if let dec = Decimal(string: editableAmount) { item.amount = dec }
         }
         withAnimation { isEditing.toggle() }

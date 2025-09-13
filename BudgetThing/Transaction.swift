@@ -13,6 +13,7 @@ final class Transaction {
     var date: Date
     var note: String?
     var category: Category?
+    var account: Account?
 
     // Sync-friendly metadata
     var createdAt: Date
@@ -27,6 +28,7 @@ final class Transaction {
         date: Date = .now,
         note: String? = nil,
         category: Category? = nil,
+        account: Account? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now,
         isDeleted: Bool? = nil,
@@ -38,6 +40,7 @@ final class Transaction {
         self.date = date
         self.note = note
         self.category = category
+        self.account = account
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isDeleted = isDeleted

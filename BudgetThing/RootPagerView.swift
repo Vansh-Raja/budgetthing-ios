@@ -16,14 +16,31 @@ struct RootPagerView: View {
         TabView(selection: $selection) {
             ExpenseEntryView { amount, note, categoryEmoji in
                 var foundCategory: Category? = nil
+                var foundAccount: Account? = nil
+                // Resolve category by emoji
                 if let emoji = categoryEmoji {
                     var fd = FetchDescriptor<Category>()
                     fd.fetchLimit = 1
                     fd.predicate = #Predicate { $0.emoji == emoji }
                     if let match = try? modelContext.fetch(fd).first { foundCategory = match }
                 }
-                let tx = Transaction(amount: amount, date: .now, note: note.isEmpty ? nil : note, category: foundCategory)
+                // Resolve default account if stored
+                if let defaultId = UserDefaults.standard.string(forKey: "defaultAccountID"), let uuid = UUID(uuidString: defaultId) {
+                    var af = FetchDescriptor<Account>()
+                    af.fetchLimit = 1
+                    af.predicate = #Predicate { $0.id == uuid }
+                    if let acc = try? modelContext.fetch(af).first { foundAccount = acc }
+                } else {
+                    // Fallback to first account
+                    var af = FetchDescriptor<Account>()
+                    af.fetchLimit = 1
+                    if let acc = try? modelContext.fetch(af).first { foundAccount = acc }
+                }
+                let tx = Transaction(amount: amount, date: .now, note: note.isEmpty ? nil : note, category: foundCategory, account: foundAccount)
                 modelContext.insert(tx)
+                if let acc = foundAccount {
+                    UserDefaults.standard.set(acc.id.uuidString, forKey: "defaultAccountID")
+                }
             }
             .tag(0)
 
@@ -38,6 +55,7 @@ struct RootPagerView: View {
         .ignoresSafeArea()
         .onAppear {
             seedDefaultCategoriesIfNeeded(modelContext)
+            seedDefaultAccountIfNeeded(modelContext)
             if !hasSeenOnboarding { showOnboarding = true }
         }
         .fullScreenCover(isPresented: $showOnboarding) {
