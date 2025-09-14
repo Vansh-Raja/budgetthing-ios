@@ -14,8 +14,7 @@ struct TransactionsListView: View {
     @State private var showingDetail: Bool = false
     @State private var selectedTx: Transaction? = nil
     @State private var selectedMonthKey: String? = nil // "YYYY-MM" or nil for All
-    @Query(sort: \Account.name) private var accounts: [Account]
-    @State private var selectedAccountID: UUID? = nil // nil = All
+    // Account filtering removed per new Accounts detail flow
 
     var body: some View {
         ZStack {
@@ -27,19 +26,10 @@ struct TransactionsListView: View {
                         .font(Font.custom("AvenirNextCondensed-Heavy", size: 36))
                         .foregroundStyle(.white)
 
-                    // Account filter pill + Month filter chips
+                    // Month filter chips
                     if !txs.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
-                                Button(action: { Haptics.selection(); selectedAccountID = nil }) {
-                                    Text(selectedAccountID == nil ? "All Accounts" : (accounts.first(where: { $0.id == selectedAccountID })?.name ?? "Account"))
-                                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(Color.white.opacity(0.08), in: Capsule())
-                                }
-                                .buttonStyle(.plain)
                                 monthChip(title: "All", isSelected: selectedMonthKey == nil) {
                                     selectedMonthKey = nil; Haptics.selection()
                                 }
@@ -81,17 +71,19 @@ struct TransactionsListView: View {
                                         .padding(.vertical, 4)
                                         .textCase(nil)
                                 ) {
-                                    ForEach(section.items.filter { tx in
-                                        guard let sel = selectedAccountID else { return true }
-                                        return tx.account?.id == sel
-                                    }) { tx in
+                                    ForEach(section.items) { tx in
                                         Button(action: {
                                             selectedTx = tx
                                             showingDetail = true
                                             Haptics.selection()
                                         }) {
                                             HStack(spacing: 8) {
-                                                if let emoji = tx.category?.emoji, !emoji.isEmpty {
+                                                if (tx.typeRaw ?? "expense") == "income" {
+                                                    Text("+")
+                                                        .font(.system(size: 14, weight: .bold))
+                                                        .foregroundStyle(.green)
+                                                        .frame(width: 24, alignment: .center)
+                                                } else if let emoji = tx.category?.emoji, !emoji.isEmpty {
                                                     Text(emoji)
                                                         .font(.system(size: 16))
                                                         .frame(width: 24, alignment: .center)
@@ -104,7 +96,7 @@ struct TransactionsListView: View {
                                                 VStack(alignment: .leading, spacing: 2) {
                                                     Text(formattedAmount(tx.amount))
                                                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
-                                                        .foregroundStyle(.white)
+                                                        .foregroundStyle(((tx.typeRaw ?? "expense") == "income") ? .green : .white)
                                                     Text(tx.date, style: .date)
                                                         .font(.system(size: 12))
                                                         .foregroundStyle(.white.opacity(0.6))

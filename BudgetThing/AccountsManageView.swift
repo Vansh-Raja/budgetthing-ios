@@ -37,6 +37,18 @@ struct AccountsManageView: View {
                                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
                                         .foregroundStyle(available < 0 ? .red : .white.opacity(0.8))
                                 }
+                                Button(action: {
+                                    UserDefaults.standard.set(acc.id.uuidString, forKey: "defaultAccountID")
+                                    Haptics.success()
+                                }) {
+                                    Text("Default")
+                                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 14))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(.white.opacity(0.10), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
                                 Image(systemName: "chevron.right")
                                     .foregroundStyle(.white.opacity(0.25))
                             }
@@ -81,10 +93,17 @@ struct AccountsManageView: View {
     }
 
     private func availableFor(_ acc: Account) -> Decimal? {
-        let spent = txs.filter { $0.account?.id == acc.id }.reduce(0 as Decimal) { $0 + $1.amount }
-        if let limit = acc.limitAmount { return limit - spent }
-        if let opening = acc.openingBalance { return opening - spent }
-        return nil
+        let expensesAll = txs.filter { $0.account?.id == acc.id && (($0.typeRaw ?? "expense") != "income") }
+            .reduce(0 as Decimal) { $0 + $1.amount }
+        let incomesAll = txs.filter { $0.account?.id == acc.id && (($0.typeRaw ?? "expense") == "income") }
+            .reduce(0 as Decimal) { $0 + $1.amount }
+        switch acc.kindEnum {
+        case .cash, .bank:
+            return (acc.openingBalance ?? 0) + incomesAll - expensesAll
+        case .credit:
+            guard let limit = acc.limitAmount else { return nil }
+            return limit - expensesAll + incomesAll
+        }
     }
 
     private func formattedAvailable(_ value: Decimal) -> String {

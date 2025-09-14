@@ -14,6 +14,7 @@ final class Transaction {
     var note: String?
     var category: Category?
     var account: Account?
+    var typeRaw: String? // "expense" or "income"; nil treated as expense for backward-compat
 
     // Sync-friendly metadata
     var createdAt: Date
@@ -29,6 +30,7 @@ final class Transaction {
         note: String? = nil,
         category: Category? = nil,
         account: Account? = nil,
+        type: String? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now,
         isDeleted: Bool? = nil,
@@ -41,6 +43,7 @@ final class Transaction {
         self.note = note
         self.category = category
         self.account = account
+        self.typeRaw = type
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isDeleted = isDeleted

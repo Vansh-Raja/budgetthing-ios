@@ -14,11 +14,11 @@ struct RootPagerView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            ExpenseEntryView { amount, note, categoryEmoji in
+            ExpenseEntryView { amount, type, categoryEmoji in
                 var foundCategory: Category? = nil
                 var foundAccount: Account? = nil
                 // Resolve category by emoji
-                if let emoji = categoryEmoji {
+                if let emoji = categoryEmoji, type != "income" {
                     var fd = FetchDescriptor<Category>()
                     fd.fetchLimit = 1
                     fd.predicate = #Predicate { $0.emoji == emoji }
@@ -36,7 +36,7 @@ struct RootPagerView: View {
                     af.fetchLimit = 1
                     if let acc = try? modelContext.fetch(af).first { foundAccount = acc }
                 }
-                let tx = Transaction(amount: amount, date: .now, note: note.isEmpty ? nil : note, category: foundCategory, account: foundAccount)
+                let tx = Transaction(amount: amount, date: .now, note: nil, category: foundCategory, account: foundAccount, type: type)
                 modelContext.insert(tx)
                 if let acc = foundAccount {
                     UserDefaults.standard.set(acc.id.uuidString, forKey: "defaultAccountID")
@@ -47,8 +47,11 @@ struct RootPagerView: View {
             TransactionsListView(tabSelection: $selection)
                 .tag(1)
 
-            SettingsView(tabSelection: $selection)
+            AccountsView(tabSelection: $selection)
                 .tag(2)
+
+            SettingsView(tabSelection: $selection)
+                .tag(3)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .background(Color.black)
@@ -83,7 +86,9 @@ struct FloatingPageSwitcher: View {
             dividerDot()
             switchButton(icon: "list.bullet", tag: 1)
             dividerDot()
-            switchButton(icon: "gearshape", tag: 2)
+            switchButton(icon: "creditcard", tag: 2)
+            dividerDot()
+            switchButton(icon: "gearshape", tag: 3)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

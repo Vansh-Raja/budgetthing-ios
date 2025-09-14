@@ -52,6 +52,8 @@ struct ExpenseEntryView: View {
         return nil
     }()
     @State private var showAccountDropdown: Bool = false
+    private enum EntryMode { case expense, income }
+    @State private var mode: EntryMode = .expense
 
     private var displayedEmojis: [String] {
         let fromDB = categories.prefix(5).map { $0.emoji }
@@ -107,9 +109,11 @@ struct ExpenseEntryView: View {
                                     .frame(width: 36, height: 36)
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(mode == .income)
                             }
                         }
                         .padding(.bottom, 4)
+                        .opacity(mode == .income ? 0.4 : 1.0)
 
                         LazyVGrid(columns: columns, spacing: 16) {
                             key(.clear, label: "C", height: keyHeight)
@@ -159,6 +163,11 @@ struct ExpenseEntryView: View {
         .overlay(alignment: .top) {
             VStack(alignment: .center, spacing: 6) {
                 ZStack(alignment: .trailing) {
+                    HStack(spacing: 10) {
+                        modeToggle()
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     // Centered pill across full width
                     accountPill()
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -175,7 +184,7 @@ struct ExpenseEntryView: View {
                 }
                 if showAccountDropdown { accountDropdown().padding(.top, 2) }
                 if showSavedToast {
-                    Text("Saved")
+                    Text(mode == .income ? "Added" : "Saved")
                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
@@ -295,7 +304,9 @@ struct ExpenseEntryView: View {
                 }
                 return
             }
-            onSave?(decimal, "", selectedEmoji)
+            let txType = (mode == .income) ? "income" : "expense"
+            let cat = (mode == .income) ? nil : selectedEmoji
+            onSave?(decimal, txType, cat)
             amountString = "0"
             equationTokens.removeAll()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
@@ -569,6 +580,7 @@ struct ExpenseEntryView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 if acc.id != accounts.last?.id {
@@ -581,6 +593,32 @@ struct ExpenseEntryView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.12), lineWidth: 1)
         )
+    }
+
+    // MARK: - Mode Toggle
+    private func modeToggle() -> some View {
+        HStack(spacing: 0) {
+            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { mode = .expense }; Haptics.selection() }) {
+                Text("−")
+                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                    .foregroundStyle(mode == .expense ? .orange : .white.opacity(0.8))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { mode = .income }; Haptics.selection() }) {
+                Text("+")
+                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                    .foregroundStyle(mode == .income ? .green : .white.opacity(0.8))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(.white.opacity(0.12), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
     }
 }
 
