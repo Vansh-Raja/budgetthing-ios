@@ -181,6 +181,7 @@ struct SettingsView: View {
                     .padding(.bottom, 18)
             }
         }
+        // Skip home indicator hiding for compatibility
         .sheet(isPresented: $showCurrencyPicker, onDismiss: {
             storedCurrency = currency
         }) {

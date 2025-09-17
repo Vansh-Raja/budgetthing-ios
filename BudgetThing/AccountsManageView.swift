@@ -5,6 +5,7 @@ struct AccountsManageView: View {
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Account.name) private var accounts: [Account]
     @Query(sort: \Transaction.date) private var txs: [Transaction]
+    @AppStorage("defaultAccountID") private var defaultAccountID: String?
     @State private var selectedAccount: Account? = nil
     @State private var showingAdd: Bool = false
 
@@ -37,10 +38,7 @@ struct AccountsManageView: View {
                                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
                                         .foregroundStyle(available < 0 ? .red : .white.opacity(0.8))
                                 }
-                                Button(action: {
-                                    UserDefaults.standard.set(acc.id.uuidString, forKey: "defaultAccountID")
-                                    Haptics.success()
-                                }) {
+                                if defaultAccountID == acc.id.uuidString {
                                     Text("Default")
                                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 14))
                                         .foregroundStyle(.white)
@@ -48,7 +46,6 @@ struct AccountsManageView: View {
                                         .padding(.vertical, 4)
                                         .background(.white.opacity(0.10), in: Capsule())
                                 }
-                                .buttonStyle(.plain)
                                 Image(systemName: "chevron.right")
                                     .foregroundStyle(.white.opacity(0.25))
                             }
@@ -83,6 +80,7 @@ struct AccountsManageView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button(action: { dismiss() }) { Image(systemName: "chevron.left") }
             }
+            // Removed menu per latest UX
         }
         .fullScreenCover(item: $selectedAccount) { acc in
             NavigationStack { EditAccountView(account: acc) }

@@ -21,6 +21,7 @@ struct TransactionDetailView: View {
     @State private var selectedAccount: Account? = nil
     @FocusState private var amountFieldFocused: Bool
     @Query(sort: \Category.name) private var categories: [Category]
+    @State private var showDeleteDialog: Bool = false
 
     var body: some View {
         ZStack {
@@ -154,17 +155,20 @@ struct TransactionDetailView: View {
 
                 Spacer()
 
-                // Delete at bottom
+                // Delete at bottom (styled and confirmed)
                 Button(role: .destructive) {
-                    modelContext.delete(item)
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { showDeletedToast = true }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { dismiss() }
+                    Haptics.selection()
+                    showDeleteDialog = true
                 } label: {
-                    Text("Delete")
-                        .foregroundStyle(.red)
+                    Text("Delete Transaction")
+                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.15), lineWidth: 1))
                 }
-                .simultaneousGesture(TapGesture().onEnded { Haptics.warning() })
+                .buttonStyle(.plain)
                 Spacer()
             }
             .padding(24)
@@ -194,6 +198,14 @@ struct TransactionDetailView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .confirmationDialog("Delete Transaction?", isPresented: $showDeleteDialog, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                modelContext.delete(item)
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { showDeletedToast = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { dismiss() }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
         .onAppear {
             editableNote = item.note ?? ""
             editableDate = item.date

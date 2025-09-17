@@ -47,6 +47,7 @@ struct ExpenseEntryView: View {
     @State private var selectedEmoji: String? = nil
     @Environment(\._currencyCode) private var currencyCode
     @State private var errorToast: String? = nil
+    @AppStorage("defaultAccountID") private var defaultAccountIDStr: String?
     @State private var selectedAccountID: UUID? = {
         if let id = UserDefaults.standard.string(forKey: "defaultAccountID"), let uuid = UUID(uuidString: id) { return uuid }
         return nil
@@ -54,10 +55,13 @@ struct ExpenseEntryView: View {
     @State private var showAccountDropdown: Bool = false
     private enum EntryMode { case expense, income }
     @State private var mode: EntryMode = .expense
+    // Unified pill sizing for the top controls
+    private let pillHeight: CGFloat = 36
+    private let pillHorizontalPadding: CGFloat = 12
 
     private var displayedEmojis: [String] {
-        let fromDB = categories.prefix(5).map { $0.emoji }
-        if !fromDB.isEmpty { return Array(fromDB) }
+        let fromDB = categories.map { $0.emoji }.filter { !$0.isEmpty }
+        if !fromDB.isEmpty { return Array(fromDB.prefix(10)) }
         return ["🍔","🛒","🚕","🏠","🎉"]
     }
 
@@ -93,25 +97,8 @@ struct ExpenseEntryView: View {
 
                     // Bottom half – keypad
                     VStack(spacing: 12) {
-                        // Emoji quick row
-                        HStack(spacing: 14) {
-                            ForEach(displayedEmojis, id: \.self) { emoji in
-                                Button(action: { selectedEmoji = emoji; Haptics.selection() }) {
-                                    VStack(spacing: 4) {
-                                        Text(emoji)
-                                            .font(.system(size: 24))
-                                        if selectedEmoji == emoji {
-                                            Capsule()
-                                                .fill(Color.orange)
-                                                .frame(width: 16, height: 2)
-                                        }
-                                    }
-                                    .frame(width: 36, height: 36)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(mode == .income)
-                            }
-                        }
+                        // Emoji quick row (auto-fit up to 10, centered)
+                        emojiRow(availableWidth: proxy.size.width - 40)
                         .padding(.bottom, 4)
                         .opacity(mode == .income ? 0.4 : 1.0)
 
@@ -148,16 +135,11 @@ struct ExpenseEntryView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onChange(of: selectedAccountID) { _, newVal in
-            if let uuid = newVal { UserDefaults.standard.set(uuid.uuidString, forKey: "defaultAccountID") }
-        }
         .onAppear {
-            if selectedAccountID == nil {
-                if let id = UserDefaults.standard.string(forKey: "defaultAccountID"), let uuid = UUID(uuidString: id) {
-                    selectedAccountID = uuid
-                } else if let first = accounts.first {
-                    selectedAccountID = first.id
-                }
+            if let s = defaultAccountIDStr, let uuid = UUID(uuidString: s) {
+                selectedAccountID = uuid
+            } else if selectedAccountID == nil {
+                selectedAccountID = accounts.first?.id
             }
         }
         .overlay(alignment: .top) {
@@ -176,12 +158,13 @@ struct ExpenseEntryView: View {
                         Image(systemName: "checkmark")
                             .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, pillHorizontalPadding)
+                            .frame(height: pillHeight)
                             .background(.white.opacity(0.1), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
+                .frame(height: pillHeight)
                 if showAccountDropdown { accountDropdown().padding(.top, 2) }
                 if showSavedToast {
                     Text(mode == .income ? "Added" : "Saved")
@@ -545,8 +528,8 @@ struct ExpenseEntryView: View {
             Text(title)
                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
                 .foregroundStyle(.white.opacity(isInteractive ? 1.0 : 0.8))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                .padding(.horizontal, pillHorizontalPadding)
+                .frame(height: pillHeight)
                 .background(.white.opacity(0.12), in: Capsule())
                 .overlay(
                     Capsule().stroke(.white.opacity(0.15), lineWidth: 1)
@@ -554,7 +537,6 @@ struct ExpenseEntryView: View {
         }
         .buttonStyle(.plain)
         .disabled(!isInteractive)
-        .padding(.bottom, 2)
     }
 
     private func accountDropdown() -> some View {
@@ -589,10 +571,42 @@ struct ExpenseEntryView: View {
             }
         }
         .frame(maxWidth: 260)
-        .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+        // Less transparency to avoid conflicting with the amount display behind
+        .background(Color.black.opacity(0.9), in: RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.12), lineWidth: 1)
         )
+    }
+
+    // MARK: - Emoji Row
+    @ViewBuilder private func emojiRow(availableWidth: CGFloat) -> some View {
+        let emojis = Array(displayedEmojis.prefix(10))
+        let count = emojis.count
+        let baseItem: CGFloat = 36
+        let baseFont: CGFloat = 24
+        let baseSpacing: CGFloat = 14
+        let needed = CGFloat(max(0, count)) * baseItem + CGFloat(max(0, count - 1)) * baseSpacing
+        let scale: CGFloat = count > 0 ? min(1.0, availableWidth / needed) : 1.0
+
+        HStack(spacing: baseSpacing * scale) {
+            ForEach(emojis, id: \.self) { emoji in
+                Button(action: { selectedEmoji = emoji; Haptics.selection() }) {
+                    VStack(spacing: 4 * scale) {
+                        Text(emoji)
+                            .font(.system(size: baseFont * scale))
+                        if selectedEmoji == emoji {
+                            Capsule()
+                                .fill(Color.orange)
+                                .frame(width: 16 * scale, height: 2 * scale)
+                        }
+                    }
+                    .frame(width: baseItem * scale, height: baseItem * scale)
+                }
+                .buttonStyle(.plain)
+                .disabled(mode == .income)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     // MARK: - Mode Toggle
@@ -615,8 +629,8 @@ struct ExpenseEntryView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .frame(height: pillHeight)
         .background(.white.opacity(0.12), in: Capsule())
         .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
     }

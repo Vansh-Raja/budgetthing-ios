@@ -74,6 +74,7 @@ struct AccountsView: View {
                     .padding(.bottom, 18)
             }
         }
+        // iOS 18+ has .homeIndicatorAutoHidden; for broader support skip hiding here
         .fullScreenCover(isPresented: $showingManage) {
             NavigationStack { AccountsManageView() }
         }

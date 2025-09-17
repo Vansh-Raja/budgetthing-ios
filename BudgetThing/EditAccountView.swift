@@ -13,6 +13,9 @@ struct EditAccountView: View {
     @State private var openingBalance: String = "" // legacy; no longer edited here
     @State private var currentBalanceText: String = ""
     @State private var limitAmount: String = ""
+    @State private var showDeleteDialog: Bool = false
+    @State private var pendingDeleteCount: Int = 0
+    @State private var actionToast: String? = nil
 
     var body: some View {
         ZStack {
@@ -38,17 +41,21 @@ struct EditAccountView: View {
                 .pickerStyle(.segmented)
 
                 Group {
-                    // Emoji choices (curated)
+                    // Emoji choices filtered by account type
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Emoji")
                             .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
                             .foregroundStyle(.white.opacity(0.7))
                         let cash = ["💵","💰","🪙","🧧","💶","💴"]
-                        let bank = ["🏦","🏛️","🏧","🪪","🏦"]
-                        let credit = ["💳","💸","🧾","🔁","💠"]
-                        // Deterministic order and unique values
-                        let raw = (cash + bank + credit)
-                        let all = raw.reduce(into: [String]()) { acc, e in if !acc.contains(e) { acc.append(e) } }
+                        let bank = ["🏦","🏧","🏛️","💱","🏢"]
+                        let credit = ["💳","🪪","💲","💸","🧾","🔁","💠"]
+                        let all: [String] = {
+                            switch kind {
+                            case .cash: return cash
+                            case .bank: return bank
+                            case .credit: return credit
+                            }
+                        }()
                         LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 10), count: 8), spacing: 10) {
                             ForEach(Array(all.enumerated()), id: \.offset) { _, e in
                                 Button(action: { emoji = e; Haptics.selection() }) {
@@ -92,17 +99,84 @@ struct EditAccountView: View {
                 Spacer()
 
                 HStack {
-                    Button(role: .destructive) { deleteAccount() } label: {
-                        Text("Delete")
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        // Set as default account
+                        UserDefaults.standard.set(account.id.uuidString, forKey: "defaultAccountID")
+                        Haptics.success()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { actionToast = "Default set" }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            withAnimation(.easeOut(duration: 0.25)) { actionToast = nil }
+                        }
+                    } label: {
+                        Text("Set as Default Account")
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.15), lineWidth: 1))
                     }
-                    Spacer()
+                    .buttonStyle(.plain)
+                }
+                
+                HStack {
+                    Button(role: .destructive) {
+                        Haptics.selection()
+                        let n = DeletionCoordinator.countTransactions(for: account, in: modelContext)
+                        pendingDeleteCount = n
+                        showDeleteDialog = true
+                    } label: {
+                        Text("Delete Account")
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.15), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(24)
         }
         .preferredColorScheme(.dark)
+        .overlay(alignment: .top) {
+            if let msg = actionToast {
+                Text(msg)
+                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.white.opacity(0.08), in: Capsule())
+                    .padding(.top, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .confirmationDialog("Delete Account?", isPresented: $showDeleteDialog, titleVisibility: .visible) {
+            Button("Delete account and all related transactions (\(pendingDeleteCount))", role: .destructive) {
+                do {
+                    _ = try DeletionCoordinator.deleteAccount(account, mode: .deleteAll, in: modelContext)
+                    Haptics.success()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { actionToast = "Deleted" }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { dismiss() }
+                } catch {
+                    Haptics.error()
+                }
+            }
+            Button("Keep transactions; remove account (\(pendingDeleteCount))") {
+                do {
+                    _ = try DeletionCoordinator.deleteAccount(account, mode: .detach, in: modelContext)
+                    Haptics.success()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { actionToast = "Deleted" }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { dismiss() }
+                } catch {
+                    Haptics.error()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This cannot be undone.")
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { Button(action: { dismiss() }) { Image(systemName: "chevron.left") } }
             ToolbarItem(placement: .topBarTrailing) {

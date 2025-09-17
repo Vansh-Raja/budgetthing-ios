@@ -92,7 +92,12 @@ struct FloatingPageSwitcher: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.white.opacity(0.12), in: Capsule())
+        .background(
+            ZStack {
+                Capsule().fill(.ultraThinMaterial)
+                Capsule().fill(Color.black.opacity(0.55))
+            }
+        )
         .overlay(
             Capsule().stroke(.white.opacity(0.15), lineWidth: 1)
         )

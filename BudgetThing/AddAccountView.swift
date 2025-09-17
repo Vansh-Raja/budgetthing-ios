@@ -36,17 +36,21 @@ struct AddAccountView: View {
                 .pickerStyle(.segmented)
 
                 Group {
-                    // Emoji choices (curated)
+                    // Emoji choices filtered by account type
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Emoji")
                             .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
                             .foregroundStyle(.white.opacity(0.7))
                         let cash = ["💵","💰","🪙","🧧","💶","💴"]
-                        let bank = ["🏦","🏛️","🏧","🪪","🏦"]
-                        let credit = ["💳","💸","🧾","🔁","💠"]
-                        // Deterministic order and unique values
-                        let raw = (cash + bank + credit)
-                        let all = raw.reduce(into: [String]()) { acc, e in if !acc.contains(e) { acc.append(e) } }
+                        let bank = ["🏦","🏧","🏛️","💱","🏢"]
+                        let credit = ["💳","🪪","💲","💸","🧾","🔁","💠"]
+                        let all: [String] = {
+                            switch kind {
+                            case .cash: return cash
+                            case .bank: return bank
+                            case .credit: return credit
+                            }
+                        }()
                         LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 10), count: 8), spacing: 10) {
                             ForEach(Array(all.enumerated()), id: \.offset) { _, e in
                                 Button(action: { emoji = e; Haptics.selection() }) {
@@ -107,6 +111,15 @@ struct AddAccountView: View {
         }
         .onChange(of: kind) { old, new in
             if new == .credit { openingBalance = "" } else { limitAmount = "" }
+            // Reset default emoji to first available for the type if current isn't valid
+            let valid: [String] = {
+                switch new {
+                case .cash: return ["💵","💰","🪙","🧧","💶","💴"]
+                case .bank: return ["🏦","🏧","🏛️","💱","🏢"]
+                case .credit: return ["💳","🪪","💲","💸","🧾","🔁","💠"]
+                }
+            }()
+            if !valid.contains(emoji), let first = valid.first { emoji = first }
         }
     }
 

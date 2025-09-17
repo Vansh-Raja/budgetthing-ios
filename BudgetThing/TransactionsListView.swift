@@ -148,6 +148,7 @@ struct TransactionsListView: View {
                     .padding(.bottom, 18)
             }
         }
+        // Keep default home indicator; cannot style its appearance
     }
 
     private func formattedAmount(_ amount: Decimal) -> String {
@@ -221,5 +222,6 @@ struct TransactionsListView: View {
     TransactionsListView(tabSelection: .constant(1))
         .modelContainer(for: [Category.self, Transaction.self], inMemory: true)
 }
+
 
 
