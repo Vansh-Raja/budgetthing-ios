@@ -17,110 +17,110 @@ struct SettingsView: View {
     @State private var showingCategories: Bool = false
     @State private var showingAccounts: Bool = false
     @State private var showOnboarding: Bool = false
+    private let pillHeight: CGFloat = 36
+    private let pillHPad: CGFloat = 12
 
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
                 Color(.black).ignoresSafeArea()
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Settings")
-                        .font(Font.custom("AvenirNextCondensed-Heavy", size: 36))
-                        .foregroundStyle(.white)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        // Title
+                        Text("Settings")
+                            .font(Font.custom("AvenirNextCondensed-Heavy", size: 36))
+                            .foregroundStyle(.white)
+                            .padding(.bottom, 2)
 
-                    Group {
+                        // Basics
+                        Text("Basics")
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 14))
+                            .foregroundStyle(.white.opacity(0.6))
                         HStack {
                             Text("Haptics")
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
                                 .foregroundStyle(.white)
                             Spacer()
                             Toggle("", isOn: $isHapticsOn)
                                 .labelsHidden()
                         }
-                        .padding(.vertical, 6)
-
-                        Divider().background(Color.white.opacity(0.1))
+                        .frame(minHeight: 44)
 
                         HStack(spacing: 12) {
                             Text("Currency")
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
                                 .foregroundStyle(.white)
                             Spacer()
                             Button(action: { Haptics.selection(); showCurrencyPicker = true }) {
                                 Text(currency)
-                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
                                     .foregroundStyle(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(.white.opacity(0.08), in: Capsule())
+                                    .padding(.horizontal, pillHPad)
+                                    .frame(height: pillHeight)
+                                    .background(.white.opacity(0.12), in: Capsule())
+                                    .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
                             }
                             .buttonStyle(.plain)
                         }
-                        .padding(.vertical, 6)
-                    }
+                        .frame(minHeight: 44)
 
-                    Divider().background(Color.white.opacity(0.1))
-
-                    // Manage accounts
-                    Button(action: { Haptics.selection(); showingAccounts = true }) {
-                        HStack(spacing: 8) {
-                            Text("Manage Accounts")
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
-                                .foregroundStyle(.white)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.25))
+                        // Manage
+                        Text("Manage")
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 14))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .padding(.top, 8)
+                        Button(action: { Haptics.selection(); showingAccounts = true }) {
+                            HStack(spacing: 8) {
+                                Text("Manage Accounts")
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.25))
+                            }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.vertical, 6)
-                        .background(Color.clear)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .background(Color.clear)
+                        .buttonStyle(.plain)
 
-                    Divider().background(Color.white.opacity(0.1))
-
-                    // Manage categories link - custom, borderless (full screen)
-                    Button(action: { Haptics.selection(); showingCategories = true }) {
-                        HStack(spacing: 8) {
-                            Text("Manage Categories")
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
-                                .foregroundStyle(.white)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.25))
+                        Button(action: { Haptics.selection(); showingCategories = true }) {
+                            HStack(spacing: 8) {
+                                Text("Manage Categories")
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.25))
+                            }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.vertical, 6)
-                        .background(Color.clear)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .background(Color.clear)
+                        .buttonStyle(.plain)
 
-                    Divider().background(Color.white.opacity(0.1))
-
-                    // Legal & Support links
-                    Group {
+                        // Help
+                        Text("Help")
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 14))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .padding(.top, 8)
                         Button(action: {
                             Haptics.selection()
                             if let url = URL(string: "https://budgetthing.vanshraja.me/support") { UIApplication.shared.open(url) }
                         }) {
                             HStack(spacing: 8) {
                                 Text("Support")
-                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
                                     .foregroundStyle(.white)
                                 Spacer()
                                 Image(systemName: "arrow.up.right.square")
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(.white.opacity(0.25))
                             }
-                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-
-                        Divider().background(Color.white.opacity(0.1))
 
                         Button(action: {
                             Haptics.selection()
@@ -128,50 +128,51 @@ struct SettingsView: View {
                         }) {
                             HStack(spacing: 8) {
                                 Text("Privacy Policy")
-                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
                                     .foregroundStyle(.white)
                                 Spacer()
                                 Image(systemName: "arrow.up.right.square")
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(.white.opacity(0.25))
                             }
-                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                    }
 
-                    Divider().background(Color.white.opacity(0.1))
-
-                    // View Tutorial (Onboarding)
-                    Button(action: { Haptics.selection(); showOnboarding = true }) {
-                        HStack(spacing: 8) {
-                            Text("View Tutorial")
-                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
-                                .foregroundStyle(.white)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.25))
+                        Button(action: { Haptics.selection(); showOnboarding = true }) {
+                            HStack(spacing: 8) {
+                                Text("View Tutorial")
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.25))
+                            }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+
+                        // Footer / About
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("About")
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 14))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .padding(.top, 10)
+                            Text("BudgetThing helps you log expenses quickly with a simple, clean UI.")
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                                .foregroundStyle(.white.opacity(0.6))
+                            Text(versionString())
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.45))
+                        }
+
+                        Spacer(minLength: 24)
                     }
-                    .buttonStyle(.plain)
-
-                    Divider().background(Color.white.opacity(0.1))
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("About")
-                            .foregroundStyle(.white.opacity(0.7))
-                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
-                        Text("BudgetThing helps you log expenses quickly with a simple, clean UI.")
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-
-                    Spacer()
+                    .padding(24)
                 }
-                .padding(24)
             }
             .preferredColorScheme(.dark)
         }
@@ -209,4 +210,8 @@ struct SettingsView: View {
     SettingsView(tabSelection: .constant(2))
 }
 
-
+private func versionString() -> String {
+    let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
+    return [v, b.isEmpty ? nil : "(", b, b.isEmpty ? nil : ")"].compactMap { $0 }.joined()
+}
