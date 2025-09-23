@@ -12,6 +12,7 @@ import SwiftData
 struct BudgetThingApp: App {
     @AppStorage("currencyCode") private var currencyCode: String = "USD"
     @StateObject private var deepLinkRouter = DeepLinkRouter()
+    @Environment(\.scenePhase) private var scenePhase
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -40,6 +41,12 @@ struct BudgetThingApp: App {
                         deepLinkRouter.openCalculator(categoryId: categoryId)
                     case .transaction(let id):
                         deepLinkRouter.openTransaction(id: id)
+                    }
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .background || newPhase == .inactive {
+                        // Clear session-selected account when app soft-closes or backgrounds
+                        UserDefaults.standard.removeObject(forKey: "sessionSelectedAccountID")
                     }
                 }
         }

@@ -14,10 +14,11 @@ struct RootPagerView: View {
     @EnvironmentObject private var deepLinkRouter: DeepLinkRouter
     @State private var expensePrefillCategoryId: UUID? = nil
     @State private var openTransactionId: UUID? = nil
+    @State private var widgetRefreshDebounce: DispatchWorkItem? = nil
 
     var body: some View {
         TabView(selection: $selection) {
-            ExpenseEntryView { amount, type, categoryEmoji in
+            ExpenseEntryView { amount, type, categoryEmoji, selectedAccountId in
                 var foundCategory: Category? = nil
                 var foundAccount: Account? = nil
                 // Resolve category by emoji
@@ -27,8 +28,13 @@ struct RootPagerView: View {
                     fd.predicate = #Predicate { $0.emoji == emoji }
                     if let match = try? modelContext.fetch(fd).first { foundCategory = match }
                 }
-                // Resolve default account if stored
-                if let defaultId = UserDefaults.standard.string(forKey: "defaultAccountID"), let uuid = UUID(uuidString: defaultId) {
+                // Resolve chosen account if provided; otherwise fall back to default → first
+                if let aid = selectedAccountId {
+                    var af = FetchDescriptor<Account>()
+                    af.fetchLimit = 1
+                    af.predicate = #Predicate { $0.id == aid }
+                    if let acc = try? modelContext.fetch(af).first { foundAccount = acc }
+                } else if let defaultId = UserDefaults.standard.string(forKey: "defaultAccountID"), let uuid = UUID(uuidString: defaultId) {
                     var af = FetchDescriptor<Account>()
                     af.fetchLimit = 1
                     af.predicate = #Predicate { $0.id == uuid }
@@ -41,9 +47,7 @@ struct RootPagerView: View {
                 }
                 let tx = Transaction(amount: amount, date: .now, note: nil, category: foundCategory, account: foundAccount, type: type)
                 modelContext.insert(tx)
-                if let acc = foundAccount {
-                    UserDefaults.standard.set(acc.id.uuidString, forKey: "defaultAccountID")
-                }
+                // Do NOT overwrite user's default account here; default is set from Manage Accounts.
                 // Update widgets snapshot after save
                 WidgetBridge.publishSnapshots(context: modelContext)
             }
@@ -72,7 +76,10 @@ struct RootPagerView: View {
             if !hasSeenOnboarding { showOnboarding = true }
             // Publish initial snapshots for widgets
             WidgetBridge.publishSnapshots(context: modelContext)
+            // Move periodic refresh to coordinator to avoid state mutation during updates
+            WidgetRefreshCoordinator.shared.start(context: modelContext)
         }
+        .onDisappear { WidgetRefreshCoordinator.shared.stop() }
         .onChange(of: deepLinkRouter.transactionTrigger) { _, _ in
             openTransactionId = deepLinkRouter.openTransactionId
             // Switch to transactions tab and present detail
@@ -86,6 +93,7 @@ struct RootPagerView: View {
         }
     }
 }
+private extension RootPagerView { }
 
 #Preview {
     RootPagerView()

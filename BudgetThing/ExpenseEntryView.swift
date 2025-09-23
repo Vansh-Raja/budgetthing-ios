@@ -26,7 +26,7 @@ struct ExpenseEntryView: View {
     @State private var amountString: String = "0"
     // Note field removed per updated minimalist design
 
-    var onSave: ((Decimal, String, String?) -> Void)? = nil
+    var onSave: ((Decimal, String, String?, UUID?) -> Void)? = nil
 
     private let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
     @State private var showSavedToast: Bool = false
@@ -49,10 +49,8 @@ struct ExpenseEntryView: View {
     @Environment(\.prefillCategoryId) private var prefillCategoryId
     @State private var errorToast: String? = nil
     @AppStorage("defaultAccountID") private var defaultAccountIDStr: String?
-    @State private var selectedAccountID: UUID? = {
-        if let id = UserDefaults.standard.string(forKey: "defaultAccountID"), let uuid = UUID(uuidString: id) { return uuid }
-        return nil
-    }()
+    @AppStorage("sessionSelectedAccountID") private var sessionSelectedAccountIDStr: String?
+    @State private var selectedAccountID: UUID? = nil
     @State private var showAccountDropdown: Bool = false
     private enum EntryMode { case expense, income }
     @State private var mode: EntryMode = .expense
@@ -137,7 +135,9 @@ struct ExpenseEntryView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            if let s = defaultAccountIDStr, let uuid = UUID(uuidString: s) {
+            if let sid = sessionSelectedAccountIDStr, let uuid = UUID(uuidString: sid) {
+                selectedAccountID = uuid
+            } else if let s = defaultAccountIDStr, let uuid = UUID(uuidString: s) {
                 selectedAccountID = uuid
             } else if selectedAccountID == nil {
                 selectedAccountID = accounts.first?.id
@@ -294,7 +294,7 @@ struct ExpenseEntryView: View {
             }
             let txType = (mode == .income) ? "income" : "expense"
             let cat = (mode == .income) ? nil : selectedEmoji
-            onSave?(decimal, txType, cat)
+            onSave?(decimal, txType, cat, selectedAccountID)
             amountString = "0"
             equationTokens.removeAll()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
@@ -549,6 +549,7 @@ struct ExpenseEntryView: View {
             ForEach(accounts) { acc in
                 Button(action: {
                     selectedAccountID = acc.id
+                    sessionSelectedAccountIDStr = acc.id.uuidString
                     withAnimation(.easeOut(duration: 0.2)) { showAccountDropdown = false }
                     Haptics.selection()
                 }) {

@@ -105,6 +105,45 @@ enum WidgetBridge {
     static func syncCurrencyCode(_ code: String) {
         guard let defaults = WidgetShared.groupDefaults() else { return }
         defaults.set(code, forKey: WidgetShared.Keys.currencyCode)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+}
+
+// MARK: - WidgetRefreshCoordinator
+
+final class WidgetRefreshCoordinator {
+    static let shared = WidgetRefreshCoordinator()
+
+    private var timer: Timer?
+    private var pendingWork: DispatchWorkItem?
+    private weak var contextRef: ModelContext?
+
+    private init() {}
+
+    func start(context: ModelContext) {
+        contextRef = context
+        stop()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.debouncedRefresh()
+        }
+        RunLoop.main.add(timer!, forMode: .common)
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        pendingWork?.cancel()
+        pendingWork = nil
+    }
+
+    private func debouncedRefresh() {
+        pendingWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let context = self?.contextRef else { return }
+            WidgetBridge.publishSnapshots(context: context)
+        }
+        pendingWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 }
 

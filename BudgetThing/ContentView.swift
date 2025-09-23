@@ -26,10 +26,8 @@ struct ContentView: View {
                 .onDelete(perform: deleteItems)
             }
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
                     EditButton()
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingEntrySheet = true }) {
                         Label("Add Expense", systemImage: "plus")
                     }
@@ -39,7 +37,7 @@ struct ContentView: View {
             Text("Select an item")
         }
         .sheet(isPresented: $showingEntrySheet) {
-            ExpenseEntryView { amount, note, category in
+            ExpenseEntryView { _, _, _, _ in
                 // Legacy demo path; not used in app flow anymore
                 addItem()
             }
