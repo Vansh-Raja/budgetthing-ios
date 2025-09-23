@@ -11,6 +11,7 @@ import SwiftData
 @main
 struct BudgetThingApp: App {
     @AppStorage("currencyCode") private var currencyCode: String = "USD"
+    @StateObject private var deepLinkRouter = DeepLinkRouter()
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -31,7 +32,20 @@ struct BudgetThingApp: App {
         WindowGroup {
             RootPagerView()
                 .environment(\._currencyCode, currencyCode)
+                .environmentObject(deepLinkRouter)
+                .onOpenURL { url in
+                    guard let route = DeepLinkParser.parse(url: url) else { return }
+                    switch route {
+                    case .calculator(let categoryId):
+                        deepLinkRouter.openCalculator(categoryId: categoryId)
+                    case .transaction(let id):
+                        deepLinkRouter.openTransaction(id: id)
+                    }
+                }
         }
         .modelContainer(sharedModelContainer)
+        .onChange(of: currencyCode) { _, newValue in
+            WidgetBridge.syncCurrencyCode(newValue)
+        }
     }
 }

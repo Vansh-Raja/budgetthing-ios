@@ -46,6 +46,7 @@ struct ExpenseEntryView: View {
     @Query(sort: \Account.name) private var accounts: [Account]
     @State private var selectedEmoji: String? = nil
     @Environment(\._currencyCode) private var currencyCode
+    @Environment(\.prefillCategoryId) private var prefillCategoryId
     @State private var errorToast: String? = nil
     @AppStorage("defaultAccountID") private var defaultAccountIDStr: String?
     @State private var selectedAccountID: UUID? = {
@@ -140,6 +141,10 @@ struct ExpenseEntryView: View {
                 selectedAccountID = uuid
             } else if selectedAccountID == nil {
                 selectedAccountID = accounts.first?.id
+            }
+            // Prefill category selection for deep link
+            if let targetId = prefillCategoryId, let match = categories.first(where: { $0.id == targetId }) {
+                selectedEmoji = match.emoji
             }
         }
         .overlay(alignment: .top) {

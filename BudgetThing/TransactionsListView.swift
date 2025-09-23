@@ -11,6 +11,7 @@ struct TransactionsListView: View {
     @Query(sort: \Transaction.date, order: .reverse) private var txs: [Transaction]
     @State private var path = NavigationPath()
     @Environment(\._currencyCode) private var currencyCode
+    @EnvironmentObject private var deepLinkRouter: DeepLinkRouter
     @State private var showingDetail: Bool = false
     @State private var selectedTx: Transaction? = nil
     @State private var selectedMonthKey: String? = nil // "YYYY-MM" or nil for All
@@ -146,6 +147,12 @@ struct TransactionsListView: View {
             if path.isEmpty && !showingDetail {
                 FloatingPageSwitcher(selection: $tabSelection)
                     .padding(.bottom, 18)
+            }
+        }
+        .onChange(of: deepLinkRouter.transactionTrigger) { _, _ in
+            if let id = deepLinkRouter.openTransactionId, let tx = txs.first(where: { $0.id == id }) {
+                selectedTx = tx
+                showingDetail = true
             }
         }
         // Keep default home indicator; cannot style its appearance

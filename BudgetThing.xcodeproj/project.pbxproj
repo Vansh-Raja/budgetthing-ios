@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		585A4FAD2E7BF7A100D8E0B5 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 585A4FAC2E7BF7A100D8E0B5 /* WidgetKit.framework */; };
+		585A4FAF2E7BF7A100D8E0B5 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 585A4FAE2E7BF7A100D8E0B5 /* SwiftUI.framework */; };
+		585A4FC02E7BF7A300D8E0B5 /* BudgetThingWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 585A4FAA2E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		584F53502E64DC6500C17B82 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,13 +27,47 @@
 			remoteGlobalIDString = 584F533F2E64DC6300C17B82;
 			remoteInfo = BudgetThing;
 		};
+		585A4FBE2E7BF7A300D8E0B5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 584F53382E64DC6300C17B82 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 585A4FA92E7BF7A100D8E0B5;
+			remoteInfo = BudgetThingWidgetsExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		585A4FC12E7BF7A300D8E0B5 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				585A4FC02E7BF7A300D8E0B5 /* BudgetThingWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		584F53402E64DC6300C17B82 /* BudgetThing.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BudgetThing.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		584F534F2E64DC6500C17B82 /* BudgetThingTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BudgetThingTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		584F53592E64DC6500C17B82 /* BudgetThingUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BudgetThingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		585A4FAA2E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BudgetThingWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		585A4FAC2E7BF7A100D8E0B5 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		585A4FAE2E7BF7A100D8E0B5 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		585A4FC42E7BF7A300D8E0B5 /* Exceptions for "BudgetThingWidgets" folder in "BudgetThingWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 585A4FA92E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		584F53422E64DC6300C17B82 /* BudgetThing */ = {
@@ -43,6 +83,14 @@
 		584F535C2E64DC6500C17B82 /* BudgetThingUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = BudgetThingUITests;
+			sourceTree = "<group>";
+		};
+		585A4FB02E7BF7A100D8E0B5 /* BudgetThingWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				585A4FC42E7BF7A300D8E0B5 /* Exceptions for "BudgetThingWidgets" folder in "BudgetThingWidgetsExtension" target */,
+			);
+			path = BudgetThingWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +117,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		585A4FA72E7BF7A100D8E0B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				585A4FAF2E7BF7A100D8E0B5 /* SwiftUI.framework in Frameworks */,
+				585A4FAD2E7BF7A100D8E0B5 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,6 +135,8 @@
 				584F53422E64DC6300C17B82 /* BudgetThing */,
 				584F53522E64DC6500C17B82 /* BudgetThingTests */,
 				584F535C2E64DC6500C17B82 /* BudgetThingUITests */,
+				585A4FB02E7BF7A100D8E0B5 /* BudgetThingWidgets */,
+				585A4FAB2E7BF7A100D8E0B5 /* Frameworks */,
 				584F53412E64DC6300C17B82 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,8 +147,18 @@
 				584F53402E64DC6300C17B82 /* BudgetThing.app */,
 				584F534F2E64DC6500C17B82 /* BudgetThingTests.xctest */,
 				584F53592E64DC6500C17B82 /* BudgetThingUITests.xctest */,
+				585A4FAA2E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		585A4FAB2E7BF7A100D8E0B5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				585A4FAC2E7BF7A100D8E0B5 /* WidgetKit.framework */,
+				585A4FAE2E7BF7A100D8E0B5 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,10 +171,12 @@
 				584F533C2E64DC6300C17B82 /* Sources */,
 				584F533D2E64DC6300C17B82 /* Frameworks */,
 				584F533E2E64DC6300C17B82 /* Resources */,
+				585A4FC12E7BF7A300D8E0B5 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				585A4FBF2E7BF7A300D8E0B5 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				584F53422E64DC6300C17B82 /* BudgetThing */,
@@ -163,6 +234,28 @@
 			productReference = 584F53592E64DC6500C17B82 /* BudgetThingUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		585A4FA92E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 585A4FC52E7BF7A300D8E0B5 /* Build configuration list for PBXNativeTarget "BudgetThingWidgetsExtension" */;
+			buildPhases = (
+				585A4FA62E7BF7A100D8E0B5 /* Sources */,
+				585A4FA72E7BF7A100D8E0B5 /* Frameworks */,
+				585A4FA82E7BF7A100D8E0B5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				585A4FB02E7BF7A100D8E0B5 /* BudgetThingWidgets */,
+			);
+			name = BudgetThingWidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = BudgetThingWidgetsExtension;
+			productReference = 585A4FAA2E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +277,9 @@
 						CreatedOnToolsVersion = 16.4;
 						TestTargetID = 584F533F2E64DC6300C17B82;
 					};
+					585A4FA92E7BF7A100D8E0B5 = {
+						CreatedOnToolsVersion = 16.4;
+					};
 				};
 			};
 			buildConfigurationList = 584F533B2E64DC6300C17B82 /* Build configuration list for PBXProject "BudgetThing" */;
@@ -203,6 +299,7 @@
 				584F533F2E64DC6300C17B82 /* BudgetThing */,
 				584F534E2E64DC6500C17B82 /* BudgetThingTests */,
 				584F53582E64DC6500C17B82 /* BudgetThingUITests */,
+				585A4FA92E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +320,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		584F53572E64DC6500C17B82 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		585A4FA82E7BF7A100D8E0B5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +357,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		585A4FA62E7BF7A100D8E0B5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +376,11 @@
 			isa = PBXTargetDependency;
 			target = 584F533F2E64DC6300C17B82 /* BudgetThing */;
 			targetProxy = 584F535A2E64DC6500C17B82 /* PBXContainerItemProxy */;
+		};
+		585A4FBF2E7BF7A300D8E0B5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 585A4FA92E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension */;
+			targetProxy = 585A4FBE2E7BF7A300D8E0B5 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -395,11 +511,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BudgetThing/BudgetThing.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 97VK67FV54;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleURLSchemes =     (\n        budgetthing\n    );\n}";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -423,11 +541,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BudgetThing/BudgetThing.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 97VK67FV54;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleURLSchemes =     (\n        budgetthing\n    );\n}";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -518,6 +638,62 @@
 			};
 			name = Release;
 		};
+		585A4FC22E7BF7A300D8E0B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = BudgetThingWidgets/BudgetThingWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 97VK67FV54;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BudgetThingWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BudgetThingWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Vansh.BudgetThing.BudgetThingWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		585A4FC32E7BF7A300D8E0B5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = BudgetThingWidgets/BudgetThingWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 97VK67FV54;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BudgetThingWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BudgetThingWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Vansh.BudgetThing.BudgetThingWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -553,6 +729,15 @@
 			buildConfigurations = (
 				584F536A2E64DC6500C17B82 /* Debug */,
 				584F536B2E64DC6500C17B82 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		585A4FC52E7BF7A300D8E0B5 /* Build configuration list for PBXNativeTarget "BudgetThingWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				585A4FC22E7BF7A300D8E0B5 /* Debug */,
+				585A4FC32E7BF7A300D8E0B5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

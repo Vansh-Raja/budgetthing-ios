@@ -7,7 +7,25 @@
 		<key>BudgetThing.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
+		<key>BudgetThingWidgetsExtension.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>584F533F2E64DC6300C17B82</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>585A4FA92E7BF7A100D8E0B5</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

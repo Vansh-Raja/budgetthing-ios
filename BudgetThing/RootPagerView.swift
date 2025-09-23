@@ -11,6 +11,9 @@ struct RootPagerView: View {
     @State private var selection: Int = 0
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     @State private var showOnboarding: Bool = false
+    @EnvironmentObject private var deepLinkRouter: DeepLinkRouter
+    @State private var expensePrefillCategoryId: UUID? = nil
+    @State private var openTransactionId: UUID? = nil
 
     var body: some View {
         TabView(selection: $selection) {
@@ -41,8 +44,15 @@ struct RootPagerView: View {
                 if let acc = foundAccount {
                     UserDefaults.standard.set(acc.id.uuidString, forKey: "defaultAccountID")
                 }
+                // Update widgets snapshot after save
+                WidgetBridge.publishSnapshots(context: modelContext)
             }
+            .environment(\.prefillCategoryId, expensePrefillCategoryId)
             .tag(0)
+            .onChange(of: deepLinkRouter.calculatorTrigger) { _, _ in
+                // Preselect category on ExpenseEntryView via environment value
+                expensePrefillCategoryId = deepLinkRouter.calculatorCategoryId
+            }
 
             TransactionsListView(tabSelection: $selection)
                 .tag(1)
@@ -60,6 +70,13 @@ struct RootPagerView: View {
             seedDefaultCategoriesIfNeeded(modelContext)
             seedDefaultAccountIfNeeded(modelContext)
             if !hasSeenOnboarding { showOnboarding = true }
+            // Publish initial snapshots for widgets
+            WidgetBridge.publishSnapshots(context: modelContext)
+        }
+        .onChange(of: deepLinkRouter.transactionTrigger) { _, _ in
+            openTransactionId = deepLinkRouter.openTransactionId
+            // Switch to transactions tab and present detail
+            selection = 1
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView {

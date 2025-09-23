@@ -16,4 +16,17 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - Deep link helpers
+
+private struct PrefillCategoryIdKey: EnvironmentKey {
+    static let defaultValue: UUID? = nil
+}
+
+extension EnvironmentValues {
+    var prefillCategoryId: UUID? {
+        get { self[PrefillCategoryIdKey.self] }
+        set { self[PrefillCategoryIdKey.self] = newValue }
+    }
+}
+
 
