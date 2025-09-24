@@ -17,6 +17,7 @@ struct EditAccountView: View {
     @State private var pendingDeleteCount: Int = 0
     @State private var actionToast: String? = nil
     @State private var showEmojiSheet: Bool = false
+    @State private var billingDay: Int? = nil
 
     var body: some View {
         ZStack {
@@ -56,6 +57,18 @@ struct EditAccountView: View {
                                 .keyboardType(.decimalPad)
                                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
                                 .foregroundStyle(.white)
+                            Divider().background(Color.white.opacity(0.1))
+                            HStack(spacing: 10) {
+                                Text("Billing Cycle Day (1–28):")
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                Spacer()
+                                Text(fieldBillingDay)
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                                    .foregroundStyle(.white)
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture { promptForBillingDay() }
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 6) {
@@ -175,12 +188,23 @@ struct EditAccountView: View {
 
     private func dec(_ s: String) -> Decimal? { s.trimmingCharacters(in: .whitespaces).isEmpty ? nil : Decimal(string: s) }
 
+    private var fieldBillingDay: String { billingDay.map(String.init) ?? "Set" }
+
+    private func promptForBillingDay() {
+        // Quick inline prompt using alert-like sheet replaced with simple input via UIPasteboard-less fallback
+        // For simplicity in code snippet: cycle values 1..28 on tap
+        let next = ((billingDay ?? 0) % 28) + 1
+        billingDay = next
+        Haptics.selection()
+    }
+
     private func bootstrap() {
         name = account.name
         emoji = account.emoji
         kind = account.kindEnum
         openingBalance = account.openingBalance.map { NSDecimalNumber(decimal: $0).stringValue } ?? ""
         limitAmount = account.limitAmount.map { NSDecimalNumber(decimal: $0).stringValue } ?? ""
+        billingDay = account.billingCycleDay
         if kind != .credit { currentBalanceText = deriveBalanceString() }
     }
 
@@ -191,6 +215,7 @@ struct EditAccountView: View {
         // For credit: keep limit editable; for cash/bank: openingBalance remains unchanged here
         account.openingBalance = (kind == .credit) ? nil : account.openingBalance
         account.limitAmount = (kind == .credit) ? dec(limitAmount) : nil
+        if kind == .credit { account.billingCycleDay = billingDay } else { account.billingCycleDay = nil }
         account.updatedAt = .now
 
         // Handle balance adjustment for cash/bank

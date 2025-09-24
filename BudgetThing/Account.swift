@@ -12,10 +12,11 @@ final class Account {
     var kind: String // stored as rawValue of Kind for schema stability
     var openingBalance: Decimal?
     var limitAmount: Decimal?
+    var billingCycleDay: Int? // 1-28 for credit card cycle start
     var createdAt: Date
     var updatedAt: Date
 
-    init(id: UUID = UUID(), name: String, emoji: String, kind: Kind, sortIndex: Int? = nil, openingBalance: Decimal? = nil, limitAmount: Decimal? = nil, createdAt: Date = .now, updatedAt: Date = .now) {
+    init(id: UUID = UUID(), name: String, emoji: String, kind: Kind, sortIndex: Int? = nil, openingBalance: Decimal? = nil, limitAmount: Decimal? = nil, billingCycleDay: Int? = nil, createdAt: Date = .now, updatedAt: Date = .now) {
         self.id = id
         self.name = name
         self.emoji = emoji
@@ -23,6 +24,7 @@ final class Account {
         self.sortIndex = sortIndex
         self.openingBalance = openingBalance
         self.limitAmount = limitAmount
+        self.billingCycleDay = billingCycleDay
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

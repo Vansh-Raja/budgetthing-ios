@@ -121,8 +121,19 @@ struct AccountsView: View {
             }
         }()
 
-        // This month spent (expenses only)
-        let spentThisMonth = txs.filter { ( ($0.account?.id == acc.id) || (($0.systemRaw ?? "").contains("transfer") && $0.transferFromAccountId == acc.id) ) && Calendar.current.isDate($0.date, equalTo: Date(), toGranularity: .month) && ( (($0.typeRaw ?? "expense") != "income") || ($0.systemRaw ?? "").contains("transfer") ) }
+        // Spent in current window: for credit, current billing cycle; else calendar month
+        let cal = Calendar.current
+        let now = Date()
+        let inWindow: (Transaction) -> Bool = { tx in
+            if acc.kindEnum == .credit, let day = acc.billingCycleDay, (1...28).contains(day) {
+                let start = AccountsView.billingCycleStart(from: now, day: day)
+                let end = AccountsView.billingCycleEnd(from: now, day: day)
+                return (tx.date >= start && tx.date < end)
+            } else {
+                return cal.isDate(tx.date, equalTo: now, toGranularity: .month)
+            }
+        }
+        let spentThisMonth = txs.filter { ( ($0.account?.id == acc.id) || (($0.systemRaw ?? "").contains("transfer") && $0.transferFromAccountId == acc.id) ) && inWindow($0) && ( (($0.typeRaw ?? "expense") != "income") || ($0.systemRaw ?? "").contains("transfer") ) }
             .reduce(0 as Decimal) { $0 + $1.amount }
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -140,7 +151,7 @@ struct AccountsView: View {
                         .foregroundStyle(displayValue < 0 ? .red : .white.opacity(0.85))
                 }
             }
-            Text("Spent \(formattedAmount(spentThisMonth)) this month")
+            Text(acc.kindEnum == .credit && acc.billingCycleDay != nil ? "Spent \(formattedAmount(spentThisMonth)) this billing cycle" : "Spent \(formattedAmount(spentThisMonth)) this month")
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.6))
         }
@@ -159,6 +170,28 @@ struct AccountsView: View {
         f.usesGroupingSeparator = true
         let digits = f.string(from: n) ?? "0"
         return symbol + digits
+    }
+
+    // MARK: - Billing cycle helpers
+    static func billingCycleStart(from reference: Date, day: Int) -> Date {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year, .month], from: reference)
+        // If today is before the billing day, cycle started last month
+        let todayDay = cal.component(.day, from: reference)
+        if todayDay < day {
+            if let prev = cal.date(byAdding: .month, value: -1, to: reference) {
+                comps = cal.dateComponents([.year, .month], from: prev)
+            }
+        }
+        comps.day = day
+        comps.hour = 0; comps.minute = 0; comps.second = 0
+        return cal.date(from: comps) ?? reference
+    }
+
+    static func billingCycleEnd(from reference: Date, day: Int) -> Date {
+        let cal = Calendar.current
+        let start = billingCycleStart(from: reference, day: day)
+        return cal.date(byAdding: .month, value: 1, to: start) ?? reference
     }
 }
 

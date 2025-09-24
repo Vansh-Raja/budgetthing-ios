@@ -10,6 +10,7 @@ struct AddAccountView: View {
     @State private var kind: Account.Kind = .cash
     @State private var openingBalance: String = ""
     @State private var limitAmount: String = ""
+    @State private var billingDayText: String = ""
     @State private var showEmojiSheet: Bool = false
 
     var body: some View {
@@ -52,6 +53,17 @@ struct AddAccountView: View {
                                 .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
                                 .foregroundStyle(.white)
                             Text("Leave empty for unlimited credit.")
+                                .font(.footnote)
+                                .foregroundStyle(.white.opacity(0.6))
+                            Divider().background(Color.white.opacity(0.1))
+                            Text("Billing Cycle Day (1–28):")
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                                .foregroundStyle(.white.opacity(0.7))
+                            TextField("e.g. 5", text: $billingDayText)
+                                .keyboardType(.numberPad)
+                                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                                .foregroundStyle(.white)
+                            Text("Used only for the card tile’s ‘spent this billing cycle’.")
                                 .font(.footnote)
                                 .foregroundStyle(.white.opacity(0.6))
                         }
@@ -106,7 +118,12 @@ struct AddAccountView: View {
     private func save() {
         let opening = (kind == .credit) ? nil : dec(from: openingBalance)
         let limit = (kind == .credit) ? dec(from: limitAmount) : nil
-        let acc = Account(name: name.trimmingCharacters(in: .whitespaces), emoji: emoji, kind: kind, openingBalance: opening, limitAmount: limit)
+        let day: Int? = {
+            guard kind == .credit else { return nil }
+            guard let n = Int(billingDayText.trimmingCharacters(in: .whitespaces)), (1...28).contains(n) else { return nil }
+            return n
+        }()
+        let acc = Account(name: name.trimmingCharacters(in: .whitespaces), emoji: emoji, kind: kind, openingBalance: opening, limitAmount: limit, billingCycleDay: day)
         modelContext.insert(acc)
         if UserDefaults.standard.string(forKey: "defaultAccountID") == nil {
             UserDefaults.standard.set(acc.id.uuidString, forKey: "defaultAccountID")

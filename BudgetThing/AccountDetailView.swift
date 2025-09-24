@@ -19,24 +19,49 @@ struct AccountDetailView: View {
     }
 
     private var spentThisMonth: Decimal {
-        allTxs.filter { tx in
-            let inMonth = Calendar.current.isDate(tx.date, equalTo: Date(), toGranularity: .month)
-            guard inMonth else { return false }
+        let now = Date()
+        let inWindow: (Transaction) -> Bool = { tx in
+            if account.kindEnum == .credit, let day = account.billingCycleDay, (1...28).contains(day) {
+                let start = AccountsView.billingCycleStart(from: now, day: day)
+                let end = AccountsView.billingCycleEnd(from: now, day: day)
+                return tx.date >= start && tx.date < end
+            }
+            return Calendar.current.isDate(tx.date, equalTo: now, toGranularity: .month)
+        }
+        return allTxs.filter { tx in
+            guard inWindow(tx) else { return false }
             if (tx.systemRaw ?? "").contains("transfer") { return tx.transferFromAccountId == account.id }
             return tx.account?.id == account.id && ((tx.typeRaw ?? "expense") != "income")
         }.reduce(0 as Decimal) { $0 + $1.amount }
     }
     private var addedThisMonth: Decimal {
-        allTxs.filter { tx in
-            let inMonth = Calendar.current.isDate(tx.date, equalTo: Date(), toGranularity: .month)
-            guard inMonth else { return false }
+        let now = Date()
+        let inWindow: (Transaction) -> Bool = { tx in
+            if account.kindEnum == .credit, let day = account.billingCycleDay, (1...28).contains(day) {
+                let start = AccountsView.billingCycleStart(from: now, day: day)
+                let end = AccountsView.billingCycleEnd(from: now, day: day)
+                return tx.date >= start && tx.date < end
+            }
+            return Calendar.current.isDate(tx.date, equalTo: now, toGranularity: .month)
+        }
+        return allTxs.filter { tx in
+            guard inWindow(tx) else { return false }
             if (tx.systemRaw ?? "").contains("transfer") { return tx.transferToAccountId == account.id }
             return tx.account?.id == account.id && ((tx.typeRaw ?? "expense") == "income")
         }.reduce(0 as Decimal) { $0 + $1.amount }
     }
     private var spentTotal: Decimal { accountTxs.filter { ($0.systemRaw ?? "").contains("transfer") ? ($0.transferFromAccountId == account.id) : (($0.typeRaw ?? "expense") != "income") }.reduce(0 as Decimal) { $0 + $1.amount } }
     private var incomeTotal: Decimal { accountTxs.filter { ($0.systemRaw ?? "").contains("transfer") ? ($0.transferToAccountId == account.id) : (($0.typeRaw ?? "expense") == "income") }.reduce(0 as Decimal) { $0 + $1.amount } }
-    private var available: Decimal? { (account.limitAmount ?? account.openingBalance).map { $0 + incomeTotal - spentTotal } }
+    private var headerValue: Decimal? {
+        switch account.kindEnum {
+        case .cash, .bank:
+            return (account.openingBalance ?? 0) + incomeTotal - spentTotal
+        case .credit:
+            if let limit = account.limitAmount { return limit - spentTotal + incomeTotal }
+            // No limit set: show outstanding (spent − added)
+            return spentTotal - incomeTotal
+        }
+    }
 
     var body: some View {
         ZStack { Color(.black).ignoresSafeArea()
@@ -55,14 +80,21 @@ struct AccountDetailView: View {
                         .foregroundStyle(.white)
                 }
 
-                if let value = available {
+                if let value = headerValue {
                     Text(formattedAmount(value))
                         .font(Font.custom("AvenirNextCondensed-Heavy", size: 44))
                         .foregroundStyle(value < 0 ? .red : .white)
                 }
-                Text("This month · Added \(formattedAmount(addedThisMonth)) · Spent \(formattedAmount(spentThisMonth))")
+                Text((account.kindEnum == .credit && account.billingCycleDay != nil) ? "This billing cycle · Added \(formattedAmount(addedThisMonth)) · Spent \(formattedAmount(spentThisMonth))" : "This month · Added \(formattedAmount(addedThisMonth)) · Spent \(formattedAmount(spentThisMonth))")
                     .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.7))
+                if account.kindEnum == .credit, let day = account.billingCycleDay {
+                    let start = AccountsView.billingCycleStart(from: Date(), day: day)
+                    let end = AccountsView.billingCycleEnd(from: Date(), day: day)
+                    Text("Cycle \(cycleRangeString(start: start, end: end))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
 
                 if accountTxs.isEmpty {
                     Spacer()
@@ -212,6 +244,12 @@ struct AccountDetailView: View {
     }
 
     @State private var selectedTx: Transaction? = nil
+
+    private func cycleRangeString(start: Date, end: Date) -> String {
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        return df.string(from: start) + " – " + df.string(from: Calendar.current.date(byAdding: .day, value: -1, to: end) ?? end)
+    }
 }
 
 
