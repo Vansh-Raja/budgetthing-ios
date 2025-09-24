@@ -17,15 +17,6 @@ struct AccountsView: View {
                         .font(Font.custom("AvenirNextCondensed-Heavy", size: 36))
                         .foregroundStyle(.white)
                     Spacer()
-                    Button(action: { Haptics.selection(); showingTransfer = true }) {
-                        Text("Transfer")
-                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(.white.opacity(0.08), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
                     Button(action: { Haptics.selection(); selectedAccount = nil; showingManage = true }) {
                         Text("Manage")
                             .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
@@ -69,6 +60,19 @@ struct AccountsView: View {
                                     }
                                 }
                             }
+                            // Transfer action placed at bottom for small screens
+                            Button(action: { Haptics.selection(); showingTransfer = true }) {
+                                Text("Transfer Money")
+                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 10)
+                                    .background(.white.opacity(0.12), in: Capsule())
+                                    .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
                         }
                     }
                 }
@@ -78,7 +82,7 @@ struct AccountsView: View {
         }
         .preferredColorScheme(.dark)
         .overlay(alignment: .bottom) {
-            if selectedAccount == nil && !showingManage {
+            if selectedAccount == nil && !showingManage && !showingTransfer {
                 FloatingPageSwitcher(selection: $tabSelection)
                     .padding(.bottom, 18)
             }
