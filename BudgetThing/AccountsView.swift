@@ -17,6 +17,15 @@ struct AccountsView: View {
                         .font(Font.custom("AvenirNextCondensed-Heavy", size: 36))
                         .foregroundStyle(.white)
                     Spacer()
+                    Button(action: { Haptics.selection(); showingTransfer = true }) {
+                        Text("Transfer")
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.08), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                     Button(action: { Haptics.selection(); selectedAccount = nil; showingManage = true }) {
                         Text("Manage")
                             .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
@@ -78,6 +87,9 @@ struct AccountsView: View {
         .fullScreenCover(isPresented: $showingManage) {
             NavigationStack { AccountsManageView() }
         }
+        .fullScreenCover(isPresented: $showingTransfer) {
+            NavigationStack { TransferMoneyView() }
+        }
         .fullScreenCover(item: $selectedAccount) { acc in
             NavigationStack { AccountDetailView(account: acc) }
         }
@@ -85,12 +97,15 @@ struct AccountsView: View {
 
     @State private var selectedAccount: Account? = nil
     @State private var showDetail: Bool = false
+    @State private var showingTransfer: Bool = false
 
     private func accountCard(_ acc: Account) -> some View {
-        // Expenses and incomes for this account
-        let expensesAll = txs.filter { $0.account?.id == acc.id && (($0.typeRaw ?? "expense") != "income") }
+        // Expenses and incomes for this account, include transfer single-row logic
+        let expensesAll = txs.filter { ($0.account?.id == acc.id) || (($0.systemRaw ?? "").contains("transfer") && $0.transferFromAccountId == acc.id) }
+            .filter { ($0.typeRaw ?? "expense") != "income" || ($0.systemRaw ?? "").contains("transfer") }
             .reduce(0 as Decimal) { $0 + $1.amount }
-        let incomesAll = txs.filter { $0.account?.id == acc.id && (($0.typeRaw ?? "expense") == "income") }
+        let incomesAll = txs.filter { ($0.account?.id == acc.id) || (($0.systemRaw ?? "").contains("transfer") && $0.transferToAccountId == acc.id) }
+            .filter { ($0.typeRaw ?? "expense") == "income" || ($0.systemRaw ?? "").contains("transfer") }
             .reduce(0 as Decimal) { $0 + $1.amount }
 
         // Display value depends on kind
@@ -107,7 +122,7 @@ struct AccountsView: View {
         }()
 
         // This month spent (expenses only)
-        let spentThisMonth = txs.filter { $0.account?.id == acc.id && Calendar.current.isDate($0.date, equalTo: Date(), toGranularity: .month) && (($0.typeRaw ?? "expense") != "income") }
+        let spentThisMonth = txs.filter { ( ($0.account?.id == acc.id) || (($0.systemRaw ?? "").contains("transfer") && $0.transferFromAccountId == acc.id) ) && Calendar.current.isDate($0.date, equalTo: Date(), toGranularity: .month) && ( (($0.typeRaw ?? "expense") != "income") || ($0.systemRaw ?? "").contains("transfer") ) }
             .reduce(0 as Decimal) { $0 + $1.amount }
 
         return VStack(alignment: .leading, spacing: 8) {

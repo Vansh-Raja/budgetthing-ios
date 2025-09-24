@@ -7,21 +7,35 @@ struct AccountDetailView: View {
     @Environment(\._currencyCode) private var currencyCode
     @Environment(\.navigationSource) private var navSource
     @Environment(\.dismiss) private var dismiss
+    @State private var showingEdit: Bool = false
 
     private var accountTxs: [Transaction] {
-        allTxs.filter { $0.account?.id == account.id }
+        allTxs.filter { tx in
+            if (tx.systemRaw ?? "").contains("transfer") {
+                return tx.transferFromAccountId == account.id || tx.transferToAccountId == account.id
+            }
+            return tx.account?.id == account.id
+        }
     }
 
     private var spentThisMonth: Decimal {
-        allTxs.filter { $0.account?.id == account.id && Calendar.current.isDate($0.date, equalTo: Date(), toGranularity: .month) && (($0.typeRaw ?? "expense") != "income") }
-            .reduce(0 as Decimal) { $0 + $1.amount }
+        allTxs.filter { tx in
+            let inMonth = Calendar.current.isDate(tx.date, equalTo: Date(), toGranularity: .month)
+            guard inMonth else { return false }
+            if (tx.systemRaw ?? "").contains("transfer") { return tx.transferFromAccountId == account.id }
+            return tx.account?.id == account.id && ((tx.typeRaw ?? "expense") != "income")
+        }.reduce(0 as Decimal) { $0 + $1.amount }
     }
     private var addedThisMonth: Decimal {
-        allTxs.filter { $0.account?.id == account.id && Calendar.current.isDate($0.date, equalTo: Date(), toGranularity: .month) && (($0.typeRaw ?? "expense") == "income") }
-            .reduce(0 as Decimal) { $0 + $1.amount }
+        allTxs.filter { tx in
+            let inMonth = Calendar.current.isDate(tx.date, equalTo: Date(), toGranularity: .month)
+            guard inMonth else { return false }
+            if (tx.systemRaw ?? "").contains("transfer") { return tx.transferToAccountId == account.id }
+            return tx.account?.id == account.id && ((tx.typeRaw ?? "expense") == "income")
+        }.reduce(0 as Decimal) { $0 + $1.amount }
     }
-    private var spentTotal: Decimal { accountTxs.filter { ($0.typeRaw ?? "expense") != "income" }.reduce(0 as Decimal) { $0 + $1.amount } }
-    private var incomeTotal: Decimal { accountTxs.filter { ($0.typeRaw ?? "expense") == "income" }.reduce(0 as Decimal) { $0 + $1.amount } }
+    private var spentTotal: Decimal { accountTxs.filter { ($0.systemRaw ?? "").contains("transfer") ? ($0.transferFromAccountId == account.id) : (($0.typeRaw ?? "expense") != "income") }.reduce(0 as Decimal) { $0 + $1.amount } }
+    private var incomeTotal: Decimal { accountTxs.filter { ($0.systemRaw ?? "").contains("transfer") ? ($0.transferToAccountId == account.id) : (($0.typeRaw ?? "expense") == "income") }.reduce(0 as Decimal) { $0 + $1.amount } }
     private var available: Decimal? { (account.limitAmount ?? account.openingBalance).map { $0 + incomeTotal - spentTotal } }
 
     var body: some View {
@@ -30,6 +44,7 @@ struct AccountDetailView: View {
                 HStack {
                     Button(action: { dismiss() }) { Image(systemName: "chevron.left") }
                     Spacer()
+                    Button(action: { Haptics.selection(); showingEdit = true }) { Image(systemName: "pencil") }
                 }
                 .foregroundStyle(.white)
 
@@ -75,7 +90,23 @@ struct AccountDetailView: View {
                                 ForEach(section.items) { tx in
                                     Button(action: { selectedTx = tx; Haptics.selection() }) {
                                         HStack(spacing: 8) {
-                                            if (tx.typeRaw ?? "expense") == "income" {
+                                            if (tx.systemRaw ?? "").contains("adjustment") {
+                                                ZStack {
+                                                    Circle()
+                                                        .stroke(((tx.typeRaw ?? "expense") == "income") ? Color.green : Color.orange, lineWidth: 1.6)
+                                                        .frame(width: 18, height: 18)
+                                                    Image(systemName: "gearshape.fill")
+                                                        .font(.system(size: 11, weight: .bold))
+                                                        .foregroundStyle(.yellow)
+                                                }
+                                                .frame(width: 24, height: 18)
+                                            } else if (tx.systemRaw ?? "").contains("transfer") {
+                                                ZStack {
+                                                    Circle().stroke(Color.blue, lineWidth: 1.6).frame(width: 18, height: 18)
+                                                    Text("⇅").font(.system(size: 11, weight: .bold)).foregroundStyle(.blue)
+                                                }
+                                                .frame(width: 24, height: 18)
+                                            } else if (tx.typeRaw ?? "expense") == "income" {
                                                 Text("+")
                                                     .font(.system(size: 14, weight: .bold))
                                                     .foregroundStyle(.green)
@@ -83,13 +114,23 @@ struct AccountDetailView: View {
                                             } else if let emoji = tx.category?.emoji, !emoji.isEmpty {
                                                 Text(emoji).frame(width: 24)
                                             } else {
-                                                Text("")
-                                                    .frame(width: 24)
+                                                Text("").frame(width: 24)
                                             }
                                             VStack(alignment: .leading, spacing: 2) {
-                                                Text(formattedAmount(tx.amount))
-                                                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
-                                                    .foregroundStyle(((tx.typeRaw ?? "expense") == "income") ? .green : .white)
+                                                HStack(spacing: 6) {
+                                                    Text(formattedAmount(tx.amount))
+                                                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
+                                                    .foregroundStyle((tx.systemRaw ?? "").contains("transfer") ? .blue : (tx.systemRaw ?? "").contains("adjustment") ? .yellow : ((tx.typeRaw ?? "expense") == "income") ? .green : .white)
+                                                    if (tx.systemRaw ?? "").contains("adjustment") {
+                                                        Text(((tx.typeRaw ?? "expense") == "income") ? "Adj +" : "Adj −")
+                                                            .font(.system(size: 11, weight: .semibold))
+                                                            .foregroundStyle(((tx.typeRaw ?? "expense") == "income") ? Color.green : Color.orange)
+                                                            .padding(.horizontal, 6)
+                                                            .padding(.vertical, 2)
+                                                            .background(Color.white.opacity(0.08), in: Capsule())
+                                                            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                                                    }
+                                                }
                                                 Text(tx.date, style: .date).font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
                                             }
                                             Spacer()
@@ -117,6 +158,9 @@ struct AccountDetailView: View {
         .environment(\.navigationSource, .account(account))
         .fullScreenCover(item: $selectedTx) { tx in
             NavigationStack { TransactionDetailView(item: tx) }
+        }
+        .fullScreenCover(isPresented: $showingEdit) {
+            NavigationStack { EditAccountView(account: account) }
         }
     }
 
@@ -160,10 +204,9 @@ struct AccountDetailView: View {
             let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: first.date)) ?? first.date
             let title = df.string(from: monthStart)
             let items = groups[key] ?? []
-            let total = items.reduce(0 as Decimal) { partial, tx in
-                let sign: Decimal = (tx.typeRaw == "income") ? 1 : -1
-                return partial + sign * tx.amount
-            }
+                // Spent total (exclude income)
+                let total = items.filter { ($0.typeRaw ?? "expense") != "income" }
+                    .reduce(0 as Decimal) { $0 + $1.amount }
             return MonthSectionModel(id: key, title: title, total: total, items: items)
         }
     }

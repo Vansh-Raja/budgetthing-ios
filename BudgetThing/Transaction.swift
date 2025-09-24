@@ -15,6 +15,12 @@ final class Transaction {
     var category: Category?
     var account: Account?
     var typeRaw: String? // "expense" or "income"; nil treated as expense for backward-compat
+    // System-originated kinds (e.g., balance adjustment). nil for normal user-entered txns.
+    var systemRaw: String?
+
+    // Transfer metadata (single transfer txn visible in both accounts)
+    var transferFromAccountId: UUID?
+    var transferToAccountId: UUID?
 
     // Sync-friendly metadata
     var createdAt: Date
@@ -31,6 +37,9 @@ final class Transaction {
         category: Category? = nil,
         account: Account? = nil,
         type: String? = nil,
+        system: String? = nil,
+        transferFromAccountId: UUID? = nil,
+        transferToAccountId: UUID? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now,
         isDeleted: Bool? = nil,
@@ -44,6 +53,9 @@ final class Transaction {
         self.category = category
         self.account = account
         self.typeRaw = type
+        self.systemRaw = system
+        self.transferFromAccountId = transferFromAccountId
+        self.transferToAccountId = transferToAccountId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isDeleted = isDeleted

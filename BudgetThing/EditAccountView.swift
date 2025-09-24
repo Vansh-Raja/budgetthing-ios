@@ -205,7 +205,8 @@ struct EditAccountView: View {
                         note: "Balance adjustment · \(account.name)",
                         category: nil,
                         account: account,
-                        type: delta > 0 ? "income" : "expense"
+                        type: delta > 0 ? "income" : "expense",
+                        system: "adjustment"
                     )
                     modelContext.insert(tx)
                 } else {
@@ -237,13 +238,19 @@ struct EditAccountView: View {
     // MARK: - Helpers
     private func deriveBalance() -> Decimal {
         let targetId = account.id
-        var fd = FetchDescriptor<Transaction>()
-        fd.predicate = #Predicate { $0.account?.id == targetId }
-        let items = (try? modelContext.fetch(fd)) ?? []
-        let expenses = items.filter { ($0.typeRaw ?? "expense") != "income" }
-            .reduce(0 as Decimal) { $0 + $1.amount }
-        let incomes = items.filter { ($0.typeRaw ?? "expense") == "income" }
-            .reduce(0 as Decimal) { $0 + $1.amount }
+        let all = (try? modelContext.fetch(FetchDescriptor<Transaction>())) ?? []
+        let expenses = all.filter { tx in
+            if (tx.systemRaw ?? "").contains("transfer") {
+                return tx.transferFromAccountId == targetId
+            }
+            return tx.account?.id == targetId && ((tx.typeRaw ?? "expense") != "income")
+        }.reduce(0 as Decimal) { $0 + $1.amount }
+        let incomes = all.filter { tx in
+            if (tx.systemRaw ?? "").contains("transfer") {
+                return tx.transferToAccountId == targetId
+            }
+            return tx.account?.id == targetId && ((tx.typeRaw ?? "expense") == "income")
+        }.reduce(0 as Decimal) { $0 + $1.amount }
         return (account.openingBalance ?? 0) + incomes - expenses
     }
 

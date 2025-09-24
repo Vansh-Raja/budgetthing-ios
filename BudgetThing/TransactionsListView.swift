@@ -79,7 +79,24 @@ struct TransactionsListView: View {
                                             Haptics.selection()
                                         }) {
                                             HStack(spacing: 8) {
-                                                if (tx.typeRaw ?? "expense") == "income" {
+                                                if (tx.systemRaw ?? "").contains("adjustment") {
+                                                    // System adjustment: yellow gear with colored ring (green income / orange expense)
+                                                    ZStack {
+                                                        Circle()
+                                                            .stroke(((tx.typeRaw ?? "expense") == "income") ? Color.green : Color.orange, lineWidth: 1.6)
+                                                            .frame(width: 18, height: 18)
+                                                        Image(systemName: "gearshape.fill")
+                                                            .font(.system(size: 11, weight: .bold))
+                                                            .foregroundStyle(.yellow)
+                                                    }
+                                                    .frame(width: 24, height: 18, alignment: .center)
+                                                } else if (tx.systemRaw ?? "").contains("transfer") {
+                                                    ZStack {
+                                                        Circle().stroke(Color.blue, lineWidth: 1.6).frame(width: 18, height: 18)
+                                                        Text("⇅").font(.system(size: 11, weight: .bold)).foregroundStyle(.blue)
+                                                    }
+                                                    .frame(width: 24, height: 18)
+                                                } else if (tx.typeRaw ?? "expense") == "income" {
                                                     Text("+")
                                                         .font(.system(size: 14, weight: .bold))
                                                         .foregroundStyle(.green)
@@ -97,7 +114,7 @@ struct TransactionsListView: View {
                                                 VStack(alignment: .leading, spacing: 2) {
                                                     Text(formattedAmount(tx.amount))
                                                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
-                                                        .foregroundStyle(((tx.typeRaw ?? "expense") == "income") ? .green : .white)
+                                                        .foregroundStyle((tx.systemRaw ?? "").contains("transfer") ? .blue : (tx.systemRaw ?? "").contains("adjustment") ? .yellow : ((tx.typeRaw ?? "expense") == "income") ? .green : .white)
                                                     Text(tx.date, style: .date)
                                                         .font(.system(size: 12))
                                                         .foregroundStyle(.white.opacity(0.6))
@@ -200,7 +217,9 @@ struct TransactionsListView: View {
             let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: first.date)) ?? first.date
             let title = df.string(from: monthStart)
             let items = groups[key] ?? []
-            let total = items.reduce(0 as Decimal) { $0 + $1.amount }
+            // Spent total excludes income and ignores transfer rows (they are neutral globally)
+            let total = items.filter { ($0.typeRaw ?? "expense") != "income" && !(($0.systemRaw ?? "").contains("transfer")) }
+                .reduce(0 as Decimal) { $0 + $1.amount }
             return MonthSectionModel(id: key, title: title, total: total, items: items)
         }
     }
