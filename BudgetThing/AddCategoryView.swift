@@ -13,6 +13,7 @@ struct AddCategoryView: View {
     @State private var emoji: String = "🍎"
     @State private var name: String = ""
     @State private var budget: String = "" // string input; parsed to Decimal
+    @State private var showEmojiSheet: Bool = false
     private let quickEmojis: [String] = ["🍔","🛒","🚕","🏠","🎉","☕️","💊","🎮","📚","💳"]
 
     var body: some View {
@@ -23,32 +24,16 @@ struct AddCategoryView: View {
                         .font(Font.custom("AvenirNextCondensed-Heavy", size: 30))
                         .foregroundStyle(.white)
 
-                    // Quick emoji grid
-                    let columns: [GridItem] = [GridItem(.adaptive(minimum: 40), spacing: 10)]
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVGrid(columns: columns, spacing: 10) {
-                            ForEach(quickEmojis, id: \.self) { e in
-                                Button(action: { emoji = e }) {
-                                    Text(e)
-                                        .font(.system(size: 20))
-                                        .frame(width: 40, height: 34)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 9)
-                                                .fill(emoji == e ? Color.white.opacity(0.18) : Color.white.opacity(0.08))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                    .frame(maxHeight: 120)
+                    // Keep page minimal; open full emoji sheet from emoji box
 
                     HStack(spacing: 12) {
-                        Text(emoji)
-                            .font(.system(size: 24))
-                            .frame(width: 64, height: 44)
-                            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        Button(action: { showEmojiSheet = true }) {
+                            Text(emoji)
+                                .font(.system(size: 24))
+                                .frame(width: 64, height: 44)
+                                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
                         TextField("Name", text: $name)
                             .textInputAutocapitalization(.words)
                             .autocorrectionDisabled(true)
@@ -95,6 +80,10 @@ struct AddCategoryView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: { dismiss() }) { Image(systemName: "chevron.left") }
                 }
+            }
+            .sheet(isPresented: $showEmojiSheet) {
+                EmojiPickerSheetView(selection: $emoji)
+                    .presentationDetents([.large])
             }
     }
 

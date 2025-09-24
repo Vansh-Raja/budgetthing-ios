@@ -16,6 +16,7 @@ struct EditAccountView: View {
     @State private var showDeleteDialog: Bool = false
     @State private var pendingDeleteCount: Int = 0
     @State private var actionToast: String? = nil
+    @State private var showEmojiSheet: Bool = false
 
     var body: some View {
         ZStack {
@@ -26,7 +27,10 @@ struct EditAccountView: View {
                     .foregroundStyle(.white)
 
                 HStack(spacing: 12) {
-                    Text(emoji.isEmpty ? "🧾" : emoji).font(.system(size: 28))
+                    Button(action: { showEmojiSheet = true }) {
+                        Text(emoji.isEmpty ? "🧾" : emoji).font(.system(size: 28))
+                    }
+                    .buttonStyle(.plain)
                     TextField("Name", text: $name)
                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
                         .foregroundStyle(.white)
@@ -41,34 +45,7 @@ struct EditAccountView: View {
                 .pickerStyle(.segmented)
 
                 Group {
-                    // Emoji choices filtered by account type
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Emoji")
-                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
-                            .foregroundStyle(.white.opacity(0.7))
-                        let cash = ["💵","💰","🪙","🧧","💶","💴"]
-                        let bank = ["🏦","🏧","🏛️","💱","🏢"]
-                        let credit = ["💳","🪪","💲","💸","🧾","🔁","💠"]
-                        let all: [String] = {
-                            switch kind {
-                            case .cash: return cash
-                            case .bank: return bank
-                            case .credit: return credit
-                            }
-                        }()
-                        LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 10), count: 8), spacing: 10) {
-                            ForEach(Array(all.enumerated()), id: \.offset) { _, e in
-                                Button(action: { emoji = e; Haptics.selection() }) {
-                                    Text(e)
-                                        .font(.system(size: 22))
-                                        .frame(width: 36, height: 36)
-                                        .background(emoji == e ? Color.white.opacity(0.15) : Color.clear)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                    // Emoji grid removed; use sheet for consistency
 
                     if kind == .credit {
                         VStack(alignment: .leading, spacing: 6) {
@@ -189,6 +166,10 @@ struct EditAccountView: View {
         .onAppear { bootstrap() }
         .onChange(of: kind) { old, new in
             if new == .credit { currentBalanceText = "" } else { limitAmount = ""; currentBalanceText = deriveBalanceString() }
+        }
+        .sheet(isPresented: $showEmojiSheet) {
+            AccountEmojiPickerSheetView(selection: $emoji, kind: kind)
+                .presentationDetents([.large])
         }
     }
 

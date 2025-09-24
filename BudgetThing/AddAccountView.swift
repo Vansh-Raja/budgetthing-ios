@@ -10,6 +10,7 @@ struct AddAccountView: View {
     @State private var kind: Account.Kind = .cash
     @State private var openingBalance: String = ""
     @State private var limitAmount: String = ""
+    @State private var showEmojiSheet: Bool = false
 
     var body: some View {
         ZStack {
@@ -20,7 +21,10 @@ struct AddAccountView: View {
                     .foregroundStyle(.white)
 
                 HStack(spacing: 12) {
-                    Text(emoji).font(.system(size: 28))
+                    Button(action: { showEmojiSheet = true }) {
+                        Text(emoji).font(.system(size: 28))
+                    }
+                    .buttonStyle(.plain)
                     TextField("Name", text: $name)
                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
                         .foregroundStyle(.white)
@@ -36,34 +40,7 @@ struct AddAccountView: View {
                 .pickerStyle(.segmented)
 
                 Group {
-                    // Emoji choices filtered by account type
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Emoji")
-                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
-                            .foregroundStyle(.white.opacity(0.7))
-                        let cash = ["💵","💰","🪙","🧧","💶","💴"]
-                        let bank = ["🏦","🏧","🏛️","💱","🏢"]
-                        let credit = ["💳","🪪","💲","💸","🧾","🔁","💠"]
-                        let all: [String] = {
-                            switch kind {
-                            case .cash: return cash
-                            case .bank: return bank
-                            case .credit: return credit
-                            }
-                        }()
-                        LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 10), count: 8), spacing: 10) {
-                            ForEach(Array(all.enumerated()), id: \.offset) { _, e in
-                                Button(action: { emoji = e; Haptics.selection() }) {
-                                    Text(e)
-                                        .font(.system(size: 22))
-                                        .frame(width: 36, height: 36)
-                                        .background(emoji == e ? Color.white.opacity(0.15) : Color.clear)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                    // Emoji grid removed; use sheet for consistency
 
                     if kind == .credit {
                         VStack(alignment: .leading, spacing: 6) {
@@ -109,16 +86,14 @@ struct AddAccountView: View {
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
+        .sheet(isPresented: $showEmojiSheet) {
+            AccountEmojiPickerSheetView(selection: $emoji, kind: kind)
+                .presentationDetents([.large])
+        }
         .onChange(of: kind) { old, new in
             if new == .credit { openingBalance = "" } else { limitAmount = "" }
             // Reset default emoji to first available for the type if current isn't valid
-            let valid: [String] = {
-                switch new {
-                case .cash: return ["💵","💰","🪙","🧧","💶","💴"]
-                case .bank: return ["🏦","🏧","🏛️","💱","🏢"]
-                case .credit: return ["💳","🪪","💲","💸","🧾","🔁","💠"]
-                }
-            }()
+            let valid: [String] = AccountEmojiCatalog.list(for: new)
             if !valid.contains(emoji), let first = valid.first { emoji = first }
         }
     }

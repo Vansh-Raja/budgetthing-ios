@@ -24,6 +24,7 @@ struct EditCategoryView: View {
         }
     }
 
+    @State private var showEmojiSheet: Bool = false
     private let quickEmojis: [String] = ["🍔","🛒","🚕","🏠","🎉","☕️","💊","🎮","📚","💳"]
 
     var body: some View {
@@ -34,31 +35,16 @@ struct EditCategoryView: View {
                         .font(Font.custom("AvenirNextCondensed-Heavy", size: 30))
                         .foregroundStyle(.white)
 
-                    let columns: [GridItem] = [GridItem(.adaptive(minimum: 40), spacing: 10)]
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVGrid(columns: columns, spacing: 10) {
-                            ForEach(quickEmojis, id: \.self) { e in
-                                Button(action: { emoji = e; Haptics.selection() }) {
-                                    Text(e)
-                                        .font(.system(size: 20))
-                                        .frame(width: 40, height: 34)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 9)
-                                                .fill(emoji == e ? Color.white.opacity(0.18) : Color.white.opacity(0.08))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                    .frame(maxHeight: 120)
+                    // Replaced inline picker with sheet opened from emoji box below
 
                     HStack(spacing: 12) {
-                        Text(emoji)
-                            .font(.system(size: 24))
-                            .frame(width: 64, height: 44)
-                            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        Button(action: { showEmojiSheet = true }) {
+                            Text(emoji)
+                                .font(.system(size: 24))
+                                .frame(width: 64, height: 44)
+                                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
                         TextField("Name", text: $name)
                             .textInputAutocapitalization(.words)
                             .autocorrectionDisabled(true)
@@ -99,6 +85,10 @@ struct EditCategoryView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: { dismiss() }) { Image(systemName: "chevron.left") }
                 }
+            }
+            .sheet(isPresented: $showEmojiSheet) {
+                EmojiPickerSheetView(selection: $emoji)
+                    .presentationDetents([.large])
             }
             .overlay(alignment: .top) {
                 if showSavedToast {

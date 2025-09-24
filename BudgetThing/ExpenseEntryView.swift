@@ -60,6 +60,7 @@ struct ExpenseEntryView: View {
     // Unified pill sizing for the top controls
     private let pillHeight: CGFloat = 36
     private let pillHorizontalPadding: CGFloat = 12
+    @State private var showManageCategories: Bool = false
 
     private var displayedEmojis: [String] {
         let fromDB = categories.map { $0.emoji }.filter { !$0.isEmpty }
@@ -200,6 +201,9 @@ struct ExpenseEntryView: View {
         }
         .preferredColorScheme(.dark)
         .ignoresSafeArea(.keyboard)
+        .fullScreenCover(isPresented: $showManageCategories) {
+            NavigationStack { CategoriesManageView() }
+        }
         .onAppear {
             if let sid = sessionSelectedAccountIDStr, let uuid = UUID(uuidString: sid) {
                 selectedAccountID = uuid
@@ -684,6 +688,15 @@ struct ExpenseEntryView: View {
                 .buttonStyle(.plain)
                 .disabled(mode == .income)
             }
+            // Trailing add tile to open Manage Categories
+            Button(action: { showManageCategories = true; Haptics.selection() }) {
+                VStack(spacing: 4 * scale) {
+                    Text("⊕")
+                        .font(.system(size: baseFont * scale, weight: .semibold))
+                }
+                .frame(width: baseItem * scale, height: baseItem * scale)
+            }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
