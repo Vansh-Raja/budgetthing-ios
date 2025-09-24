@@ -18,7 +18,7 @@ struct RootPagerView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            ExpenseEntryView { amount, type, categoryEmoji, selectedAccountId in
+            ExpenseEntryView { amount, type, categoryEmoji, selectedAccountId, note in
                 var foundCategory: Category? = nil
                 var foundAccount: Account? = nil
                 // Resolve category by emoji
@@ -45,7 +45,7 @@ struct RootPagerView: View {
                     af.fetchLimit = 1
                     if let acc = try? modelContext.fetch(af).first { foundAccount = acc }
                 }
-                let tx = Transaction(amount: amount, date: .now, note: nil, category: foundCategory, account: foundAccount, type: type)
+                let tx = Transaction(amount: amount, date: .now, note: note, category: foundCategory, account: foundAccount, type: type)
                 modelContext.insert(tx)
                 // Do NOT overwrite user's default account here; default is set from Manage Accounts.
                 // Update widgets snapshot after save

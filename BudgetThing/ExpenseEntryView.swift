@@ -26,10 +26,13 @@ struct ExpenseEntryView: View {
     @State private var amountString: String = "0"
     // Note field removed per updated minimalist design
 
-    var onSave: ((Decimal, String, String?, UUID?) -> Void)? = nil
+    var onSave: ((Decimal, String, String?, UUID?, String?) -> Void)? = nil
 
     private let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
     @State private var showSavedToast: Bool = false
+    @State private var showNoteField: Bool = false
+    @State private var noteText: String = ""
+    @FocusState private var noteFieldFocused: Bool
 
     // Calculator engine state
     private enum Operation { case add, subtract, multiply, divide }
@@ -70,7 +73,7 @@ struct ExpenseEntryView: View {
                 .ignoresSafeArea()
 
             GeometryReader { proxy in
-                let topHeight = proxy.size.height * 0.45
+                let topHeight = proxy.size.height * 0.42
                 let amountFontSize = min(proxy.size.width * 0.22, 120)
                 let keyHeight = max(56, proxy.size.height * 0.064)
 
@@ -91,13 +94,65 @@ struct ExpenseEntryView: View {
                         .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity)
+                    .padding(.top,75)
                     .frame(height: topHeight)
                     .padding(.horizontal, 20)
 
                     // Bottom half – keypad
                     VStack(spacing: 12) {
+                        // Note affordance button (overlay popup)
+                        HStack { Spacer(minLength: 0)
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) { showNoteField.toggle() }
+                                Haptics.selection()
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "note.text")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 10, weight: .semibold))
+                                }
+                                .padding(.horizontal, 10)
+                                .frame(height: 24)
+                                .foregroundStyle(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .white.opacity(0.55) : .orange)
+                                .background(Color.white.opacity(0.10), in: Capsule())
+                                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            Spacer(minLength: 0) }
+                        .overlay(alignment: .center) {
+                            if showNoteField {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "note.text")
+                                        .foregroundStyle(.white.opacity(0.8))
+                                    TextField("Add note", text: $noteText)
+                                        .textInputAutocapitalization(.sentences)
+                                        .disableAutocorrection(false)
+                                        .focused($noteFieldFocused)
+                                        .foregroundStyle(.white)
+                                        .onAppear { noteFieldFocused = true }
+                                        .onSubmit { withAnimation(.easeOut(duration: 0.15)) { showNoteField = false } }
+                                    if !noteText.isEmpty {
+                                        Button(action: { noteText = ""; Haptics.selection() }) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundStyle(.white.opacity(0.7))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.horizontal, 12)
+                                .frame(height: 40)
+                                .background(Color.black.opacity(0.9), in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.12), lineWidth: 1))
+                                .shadow(color: .black.opacity(0.6), radius: 12, x: 0, y: 8)
+                                .transition(.scale.combined(with: .opacity))
+                                .zIndex(2)
+                            }
+                        }
+                        .zIndex(1)
                         // Emoji quick row (auto-fit up to 10, centered)
                         emojiRow(availableWidth: proxy.size.width - 40)
+                        .padding(.top, 5)
                         .padding(.bottom, 4)
                         .opacity(mode == .income ? 0.4 : 1.0)
 
@@ -132,8 +187,19 @@ struct ExpenseEntryView: View {
                     .padding(.bottom, 28)
                 }
             }
+            // Tap outside to dismiss note overlay
+            if showNoteField {
+                Color.black.opacity(0.0001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.15)) { showNoteField = false }
+                        noteFieldFocused = false
+                    }
+            }
         }
         .preferredColorScheme(.dark)
+        .ignoresSafeArea(.keyboard)
         .onAppear {
             if let sid = sessionSelectedAccountIDStr, let uuid = UUID(uuidString: sid) {
                 selectedAccountID = uuid
@@ -267,6 +333,10 @@ struct ExpenseEntryView: View {
             clearAll()
             lastEquation = nil
             equationTokens.removeAll()
+            // Also clear note and dismiss the note field
+            noteText = ""
+            showNoteField = false
+            noteFieldFocused = false
             Haptics.selection()
         case .backspace:
             lastEquation = nil
@@ -294,9 +364,12 @@ struct ExpenseEntryView: View {
             }
             let txType = (mode == .income) ? "income" : "expense"
             let cat = (mode == .income) ? nil : selectedEmoji
-            onSave?(decimal, txType, cat, selectedAccountID)
+            let note = noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+            onSave?(decimal, txType, cat, selectedAccountID, note)
             amountString = "0"
             equationTokens.removeAll()
+            noteText = ""
+            showNoteField = false
             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                 showSavedToast = true
             }
