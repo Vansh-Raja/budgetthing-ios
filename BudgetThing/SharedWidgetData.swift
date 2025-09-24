@@ -50,7 +50,7 @@ enum WidgetBridge {
 
         // Categories
         do {
-            var cf = FetchDescriptor<Category>()
+            var cf = FetchDescriptor<Category>(sortBy: [SortDescriptor(\Category.sortIndex)])
             cf.fetchLimit = 20
             let cats = (try? context.fetch(cf)) ?? []
             let catSnaps = cats.map { CategorySnapshot(id: $0.id, name: $0.name, emoji: $0.emoji) }
@@ -78,7 +78,7 @@ enum WidgetBridge {
 
         // Account balances (amount left) — opening balance + incomes − expenses
         do {
-            let af = FetchDescriptor<Account>()
+            let af = FetchDescriptor<Account>(sortBy: [SortDescriptor(\Account.sortIndex)])
             let accounts = (try? context.fetch(af)) ?? []
 
             var snaps: [AccountSpendSnapshot] = []
@@ -94,6 +94,7 @@ enum WidgetBridge {
                 let balance = (acc.openingBalance ?? 0) + incomes - expenses
                 snaps.append(AccountSpendSnapshot(id: acc.id, name: acc.name, emoji: acc.emoji, monthSpent: balance))
             }
+            // Preserve user-defined order here; trim to top 3 in widget provider
             let data = try JSONEncoder().encode(snaps)
             defaults.set(data, forKey: WidgetShared.Keys.accountSpends)
         } catch {}

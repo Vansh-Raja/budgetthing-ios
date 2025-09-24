@@ -8,7 +8,8 @@ import SwiftData
 
 struct CategoriesManageView: View {
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Category.name) private var categories: [Category]
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Category.sortIndex) private var categories: [Category]
     @State private var selectedCategory: Category? = nil
     @State private var showingAdd: Bool = false
 
@@ -28,6 +29,9 @@ struct CategoriesManageView: View {
                             Haptics.selection()
                         }) {
                             HStack(spacing: 12) {
+                                Image(systemName: "line.3.horizontal")
+                                    .foregroundStyle(.white.opacity(0.35))
+                                    .padding(.trailing, 2)
                                 Text(c.emoji)
                                     .font(.system(size: 22))
                                     .frame(width: 36, height: 36)
@@ -45,6 +49,7 @@ struct CategoriesManageView: View {
                         .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                         .listRowBackground(Color.clear)
                     }
+                    .onMove(perform: moveCategories)
                     // Trailing "Add +" row as a right-aligned full-width button
                     Button(action: { showingAdd = true; Haptics.selection() }) {
                         HStack {
@@ -82,6 +87,18 @@ struct CategoriesManageView: View {
         .fullScreenCover(isPresented: $showingAdd) {
             NavigationStack { AddCategoryView() }
         }
+    }
+}
+
+private extension CategoriesManageView {
+    func moveCategories(from source: IndexSet, to destination: Int) {
+        var current = categories
+        current.move(fromOffsets: source, toOffset: destination)
+        for (index, cat) in current.enumerated() {
+            cat.sortIndex = index
+            cat.updatedAt = .now
+        }
+        do { try modelContext.save() } catch {}
     }
 }
 

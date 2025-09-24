@@ -3,7 +3,8 @@ import SwiftData
 
 struct AccountsManageView: View {
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Account.name) private var accounts: [Account]
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Account.sortIndex) private var accounts: [Account]
     @Query(sort: \Transaction.date) private var txs: [Transaction]
     @AppStorage("defaultAccountID") private var defaultAccountID: String?
     @State private var selectedAccount: Account? = nil
@@ -21,6 +22,9 @@ struct AccountsManageView: View {
                     ForEach(accounts) { acc in
                         Button(action: { selectedAccount = acc; Haptics.selection() }) {
                             HStack(spacing: 12) {
+                                Image(systemName: "line.3.horizontal")
+                                    .foregroundStyle(.white.opacity(0.35))
+                                    .padding(.trailing, 2)
                                 Text(acc.emoji.isEmpty ? "🧾" : acc.emoji)
                                     .font(.system(size: 22))
                                     .frame(width: 36, height: 36)
@@ -56,6 +60,7 @@ struct AccountsManageView: View {
                         .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                         .listRowBackground(Color.clear)
                     }
+                    .onMove(perform: moveAccounts)
                     Button(action: { showingAdd = true; Haptics.selection() }) {
                         HStack { Spacer(); Text("Add  +").font(Font.custom("AvenirNextCondensed-DemiBold", size: 20)).foregroundStyle(.white) }
                             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -112,6 +117,18 @@ struct AccountsManageView: View {
         f.maximumFractionDigits = 2
         f.usesGroupingSeparator = true
         return f.string(from: n) ?? "0"
+    }
+}
+
+private extension AccountsManageView {
+    func moveAccounts(from source: IndexSet, to destination: Int) {
+        var current = accounts
+        current.move(fromOffsets: source, toOffset: destination)
+        for (index, acc) in current.enumerated() {
+            acc.sortIndex = index
+            acc.updatedAt = .now
+        }
+        do { try modelContext.save() } catch {}
     }
 }
 

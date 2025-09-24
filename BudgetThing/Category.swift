@@ -11,6 +11,7 @@ final class Category {
     var id: UUID
     var name: String
     var emoji: String
+    var sortIndex: Int?
     var colorHex: String?
     var monthlyBudget: Decimal?
 
@@ -25,6 +26,7 @@ final class Category {
         id: UUID = UUID(),
         name: String,
         emoji: String,
+        sortIndex: Int? = nil,
         colorHex: String? = nil,
         monthlyBudget: Decimal? = nil,
         createdAt: Date = .now,
@@ -36,6 +38,7 @@ final class Category {
         self.id = id
         self.name = name
         self.emoji = emoji
+        self.sortIndex = sortIndex
         self.colorHex = colorHex
         self.monthlyBudget = monthlyBudget
         self.createdAt = createdAt

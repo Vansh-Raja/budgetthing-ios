@@ -42,8 +42,8 @@ struct ExpenseEntryView: View {
     @State private var equationTokens: [EquationToken] = []
 
     // Quick categories (fetched)
-    @Query(sort: \Category.name) private var categories: [Category]
-    @Query(sort: \Account.name) private var accounts: [Account]
+    @Query(sort: \Category.sortIndex) private var categories: [Category]
+    @Query(sort: \Account.sortIndex) private var accounts: [Account]
     @State private var selectedEmoji: String? = nil
     @Environment(\._currencyCode) private var currencyCode
     @Environment(\.prefillCategoryId) private var prefillCategoryId

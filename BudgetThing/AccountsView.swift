@@ -3,7 +3,7 @@ import SwiftData
 
 struct AccountsView: View {
     @Binding var tabSelection: Int
-    @Query(sort: \Account.name) private var accounts: [Account]
+    @Query(sort: [SortDescriptor(\Account.sortIndex), SortDescriptor(\Account.name)]) private var accounts: [Account]
     @Query(sort: \Transaction.date, order: .reverse) private var txs: [Transaction]
     @Environment(\._currencyCode) private var currencyCode
     @State private var showingManage: Bool = false

@@ -12,7 +12,8 @@ struct AccountsChartProvider: TimelineProvider {
         let currency = defaults?.string(forKey: WidgetShared.Keys.currencyCode) ?? "USD"
         let data = defaults?.data(forKey: WidgetShared.Keys.accountSpends)
         let items = (data.flatMap { try? JSONDecoder().decode([AccountSpendSnapshot].self, from: $0) }) ?? []
-        let top3 = Array(items.sorted { $0.monthSpent > $1.monthSpent }.prefix(3))
+        // Preserve the user-defined order coming from sortIndex; trim to first 3
+        let top3 = Array(items.prefix(3))
         return AccountsChartEntry(date: .now, items: top3, currency: currency)
     }
 }
