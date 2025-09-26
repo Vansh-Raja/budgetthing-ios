@@ -16,6 +16,12 @@ func seedDefaultCategoriesIfNeeded(_ context: ModelContext) {
         let (emoji, name) = pair
         context.insert(Category(name: name, emoji: emoji, sortIndex: index))
     }
+    // Insert hidden system categories for internal transactions
+    let systemCats: [(String,String,String)] = [("gear","System · Adjustment","🛠"), ("transfer","System · Transfer","⇅")]
+    for (key, name, emoji) in systemCats {
+        _ = key // reserved for potential lookup
+        context.insert(Category(name: name, emoji: emoji, sortIndex: 9999, isSystem: true))
+    }
 }
 
 func seedDefaultAccountIfNeeded(_ context: ModelContext) {

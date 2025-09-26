@@ -76,7 +76,7 @@ struct TransferMoneyView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(.white.opacity(0.12), in: Capsule())
+                        .background(Color.black.opacity(0.8), in: Capsule())
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .padding(.top, 16)
                         .padding(.horizontal, 16)

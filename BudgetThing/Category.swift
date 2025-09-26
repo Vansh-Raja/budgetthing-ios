@@ -14,6 +14,8 @@ final class Category {
     var sortIndex: Int?
     var colorHex: String?
     var monthlyBudget: Decimal?
+    // System categories are used for internal transactions and hidden from UI lists
+    var isSystem: Bool?
 
     // Sync-friendly metadata (optional to avoid migrations while iterating)
     var createdAt: Date
@@ -29,6 +31,7 @@ final class Category {
         sortIndex: Int? = nil,
         colorHex: String? = nil,
         monthlyBudget: Decimal? = nil,
+        isSystem: Bool? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now,
         isDeleted: Bool? = nil,
@@ -41,6 +44,7 @@ final class Category {
         self.sortIndex = sortIndex
         self.colorHex = colorHex
         self.monthlyBudget = monthlyBudget
+        self.isSystem = isSystem
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isDeleted = isDeleted

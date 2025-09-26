@@ -23,7 +23,7 @@ struct CategoriesManageView: View {
 
                 // List of categories styled like transactions, tappable
                 List {
-                    ForEach(categories) { c in
+                    ForEach(categories.filter { ($0.isSystem ?? false) == false }) { c in
                         Button(action: {
                             selectedCategory = c
                             Haptics.selection()

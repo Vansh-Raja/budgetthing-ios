@@ -50,6 +50,8 @@ struct ExpenseEntryView: View {
     @State private var selectedEmoji: String? = nil
     @Environment(\._currencyCode) private var currencyCode
     @Environment(\.prefillCategoryId) private var prefillCategoryId
+    // optional hook; may be absent if parent doesn't provide it
+    @Environment(\.setPagerSwipeEnabled) private var setPagerSwipeEnabled
     @State private var errorToast: String? = nil
     @AppStorage("defaultAccountID") private var defaultAccountIDStr: String?
     @AppStorage("sessionSelectedAccountID") private var sessionSelectedAccountIDStr: String?
@@ -64,7 +66,7 @@ struct ExpenseEntryView: View {
 
     private var displayedEmojis: [String] {
         let fromDB = categories.map { $0.emoji }.filter { !$0.isEmpty }
-        if !fromDB.isEmpty { return Array(fromDB.prefix(10)) }
+        if !fromDB.isEmpty { return fromDB }
         return ["🍔","🛒","🚕","🏠","🎉"]
     }
 
@@ -247,7 +249,7 @@ struct ExpenseEntryView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(.white.opacity(0.08), in: Capsule())
+                        .background(Color.black.opacity(0.8), in: Capsule())
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 if let msg = errorToast {
@@ -256,7 +258,7 @@ struct ExpenseEntryView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(.white.opacity(0.12), in: Capsule())
+                        .background(Color.black.opacity(0.8), in: Capsule())
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
@@ -663,15 +665,18 @@ struct ExpenseEntryView: View {
 
     // MARK: - Emoji Row
     @ViewBuilder private func emojiRow(availableWidth: CGFloat) -> some View {
-        let emojis = Array(displayedEmojis.prefix(10))
+        let emojis = displayedEmojis
         let count = emojis.count
         let baseItem: CGFloat = 36
         let baseFont: CGFloat = 24
         let baseSpacing: CGFloat = 14
-        let needed = CGFloat(max(0, count)) * baseItem + CGFloat(max(0, count - 1)) * baseSpacing
-        let scale: CGFloat = count > 0 ? min(1.0, availableWidth / needed) : 1.0
+        let maxNonScrollingVisible = 7 // including add tile
+        let effectiveCount = min(count + 1, maxNonScrollingVisible)
+        let needed = CGFloat(effectiveCount) * baseItem + CGFloat(max(0, effectiveCount - 1)) * baseSpacing
+        let scale: CGFloat = effectiveCount > 0 ? min(1.0, availableWidth / needed) : 1.0
+        let rowHeight = baseItem * scale
 
-        HStack(spacing: baseSpacing * scale) {
+        let rowContent = HStack(spacing: baseSpacing * scale) {
             ForEach(emojis, id: \.self) { emoji in
                 Button(action: { selectedEmoji = emoji; Haptics.selection() }) {
                     VStack(spacing: 4 * scale) {
@@ -688,7 +693,6 @@ struct ExpenseEntryView: View {
                 .buttonStyle(.plain)
                 .disabled(mode == .income)
             }
-            // Trailing add tile to open Manage Categories
             Button(action: { showManageCategories = true; Haptics.selection() }) {
                 VStack(spacing: 4 * scale) {
                     Text("⊕")
@@ -698,7 +702,32 @@ struct ExpenseEntryView: View {
             }
             .buttonStyle(.plain)
         }
+
+        Group {
+            if count > 6 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    rowContent
+                        .padding(.horizontal, 2)
+                        .frame(height: rowHeight)
+                }
+                .frame(height: rowHeight)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { _ in setPagerSwipeEnabled(false) }
+                        .onEnded { _ in setPagerSwipeEnabled(true) }
+                )
+            } else {
+                rowContent
+                    .frame(height: rowHeight)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { _ in setPagerSwipeEnabled(false) }
+                            .onEnded { _ in setPagerSwipeEnabled(true) }
+                    )
+            }
+        }
         .frame(maxWidth: .infinity, alignment: .center)
+        .clipped()
     }
 
     // MARK: - Mode Toggle
