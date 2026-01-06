@@ -19,6 +19,10 @@ struct BudgetThingApp: App {
             Category.self,
             Transaction.self,
             Account.self,
+            Trip.self,
+            TripParticipant.self,
+            TripExpense.self,
+            TripSettlement.self,
         ])
 
         // Resolve App Group container URL

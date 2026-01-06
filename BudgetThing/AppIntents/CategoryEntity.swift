@@ -28,7 +28,7 @@ struct CategoryQuery: EntityQuery {
             identifiers.contains(cat.id) && (cat.isSystem ?? false) == false && (cat.isDeleted ?? false) == false
         }
         fd.sortBy = [SortDescriptor(\.sortIndex)]
-        let cats = try (try? context.fetch(fd)) ?? []
+        let cats = (try? context.fetch(fd)) ?? []
         return cats.map { CategoryEntity(id: $0.id, name: $0.name, emoji: $0.emoji) }
     }
 
@@ -42,7 +42,7 @@ struct CategoryQuery: EntityQuery {
             cat.name.localizedStandardContains(trimmed)
         }
         fd.sortBy = [SortDescriptor(\.sortIndex)]
-        let cats = try (try? context.fetch(fd)) ?? []
+        let cats = (try? context.fetch(fd)) ?? []
         return cats.map { CategoryEntity(id: $0.id, name: $0.name, emoji: $0.emoji) }
     }
 

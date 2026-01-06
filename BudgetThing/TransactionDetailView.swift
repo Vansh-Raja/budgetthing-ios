@@ -21,7 +21,31 @@ struct TransactionDetailView: View {
     @State private var selectedAccount: Account? = nil
     @FocusState private var amountFieldFocused: Bool
     @Query(sort: \Category.name) private var categories: [Category]
+    @Query(sort: \Trip.updatedAt, order: .reverse)
+    private var allTrips: [Trip]
     @State private var showDeleteDialog: Bool = false
+    @State private var showTripPicker: Bool = false
+
+    // Filter for active, non-deleted trips
+    private var activeTrips: [Trip] {
+        allTrips.filter { trip in
+            let notArchived = !trip.isArchived
+            let notDeleted = !(trip.isDeleted ?? false)
+            return notArchived && notDeleted
+        }
+    }
+
+    // Open trips = today is within startDate...endDate, or legacy trips without dates
+    private var openTrips: [Trip] {
+        let today = Calendar.current.startOfDay(for: Date())
+        return activeTrips.filter { trip in
+            // Legacy trips without dates are always shown
+            guard let start = trip.startDate, let end = trip.endDate else { return true }
+            let startDay = Calendar.current.startOfDay(for: start)
+            let endDay = Calendar.current.startOfDay(for: end)
+            return today >= startDay && today <= endDay
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -153,6 +177,11 @@ struct TransactionDetailView: View {
                         }
                 }
 
+                // Assign to Trip section
+                if item.tripExpense != nil || !openTrips.isEmpty {
+                    tripAssignmentSection
+                }
+
                 Spacer()
 
                 // Delete at bottom (styled and confirmed)
@@ -257,6 +286,124 @@ struct TransactionDetailView: View {
         f.usesGroupingSeparator = true
         let digits = f.string(from: n) ?? "0"
         return symbol + digits
+    }
+
+    // MARK: - Trip Assignment Section
+
+    private var tripAssignmentSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Trip")
+                .foregroundStyle(.white.opacity(0.7))
+                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+
+            if let tripExpense = item.tripExpense, let trip = tripExpense.trip {
+                // Already assigned to a trip
+                HStack(spacing: 12) {
+                    Text(trip.emoji)
+                        .font(.system(size: 22))
+                    Text(trip.name)
+                        .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Button(action: {
+                        // Remove from trip
+                        modelContext.delete(tripExpense)
+                        item.tripExpense = nil
+                        Haptics.selection()
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                // Not assigned - show button to assign
+                Button(action: { showTripPicker = true }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "airplane")
+                            .font(.system(size: 14))
+                        Text("Add to Trip")
+                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 16))
+                    }
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .sheet(isPresented: $showTripPicker) {
+            tripPickerSheet
+        }
+    }
+
+    private var tripPickerSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(openTrips) { trip in
+                            Button(action: {
+                                assignToTrip(trip)
+                                showTripPicker = false
+                            }) {
+                                HStack(spacing: 12) {
+                                    Text(trip.emoji)
+                                        .font(.system(size: 24))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(trip.name)
+                                            .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                                            .foregroundStyle(.white)
+                                        if let startDate = trip.startDate {
+                                            Text(startDate, style: .date)
+                                                .font(.system(size: 12))
+                                                .foregroundStyle(.white.opacity(0.5))
+                                        }
+                                    }
+                                    Spacer()
+                                    if trip.isGroup {
+                                        Image(systemName: "person.2.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(.white.opacity(0.4))
+                                    }
+                                }
+                                .padding(14)
+                                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Add to Trip")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { showTripPicker = false }
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func assignToTrip(_ trip: Trip) {
+        // Create TripExpense to link this transaction to the trip
+        let tripExpense = TripExpense(
+            transaction: item,
+            paidByParticipant: trip.participants?.first // Default to first participant for solo trips
+        )
+        tripExpense.trip = trip
+        item.tripExpense = tripExpense
+        modelContext.insert(tripExpense)
+        Haptics.success()
     }
 }
 

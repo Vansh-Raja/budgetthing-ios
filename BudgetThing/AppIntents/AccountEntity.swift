@@ -26,7 +26,7 @@ struct AccountQuery: EntityQuery {
         var fd = FetchDescriptor<Account>()
         fd.predicate = #Predicate<Account> { acc in identifiers.contains(acc.id) }
         fd.sortBy = [SortDescriptor(\.sortIndex)]
-        let accs = try (try? context.fetch(fd)) ?? []
+        let accs = (try? context.fetch(fd)) ?? []
         return accs.map { AccountEntity(id: $0.id, name: $0.name, emoji: $0.emoji) }
     }
 
@@ -40,7 +40,7 @@ struct AccountQuery: EntityQuery {
             fd.predicate = #Predicate<Account> { acc in acc.name.localizedStandardContains(trimmed) }
             fd.sortBy = [SortDescriptor(\.sortIndex)]
         }
-        let accs = try (try? context.fetch(fd)) ?? []
+        let accs = (try? context.fetch(fd)) ?? []
         return accs.map { AccountEntity(id: $0.id, name: $0.name, emoji: $0.emoji) }
     }
 

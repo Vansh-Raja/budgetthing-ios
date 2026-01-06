@@ -26,7 +26,7 @@ struct ExpenseEntryView: View {
     @State private var amountString: String = "0"
     // Note field removed per updated minimalist design
 
-    var onSave: ((Decimal, String, String?, UUID?, String?) -> Void)? = nil
+    var onSave: ((Decimal, String, String?, UUID?, String?, UUID?) -> Void)? = nil  // Added trip UUID
 
     private let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
     @State private var showSavedToast: Bool = false
@@ -47,7 +47,30 @@ struct ExpenseEntryView: View {
     // Quick categories (fetched)
     @Query(sort: \Category.sortIndex) private var categories: [Category]
     @Query(sort: \Account.sortIndex) private var accounts: [Account]
+    @Query(sort: \Trip.updatedAt, order: .reverse)
+    private var allTrips: [Trip]
     @State private var selectedEmoji: String? = nil
+
+    // Filter for active, non-deleted trips
+    private var allActiveTrips: [Trip] {
+        allTrips.filter { trip in
+            let notArchived = !trip.isArchived
+            let notDeleted = !(trip.isDeleted ?? false)
+            return notArchived && notDeleted
+        }
+    }
+
+    // Open trips = today is within startDate...endDate, or legacy trips without dates
+    private var openTrips: [Trip] {
+        let today = Calendar.current.startOfDay(for: Date())
+        return allActiveTrips.filter { trip in
+            // Legacy trips without dates are always shown
+            guard let start = trip.startDate, let end = trip.endDate else { return true }
+            let startDay = Calendar.current.startOfDay(for: start)
+            let endDay = Calendar.current.startOfDay(for: end)
+            return today >= startDay && today <= endDay
+        }
+    }
     @Environment(\._currencyCode) private var currencyCode
     @Environment(\.prefillCategoryId) private var prefillCategoryId
     // optional hook; may be absent if parent doesn't provide it
@@ -57,6 +80,7 @@ struct ExpenseEntryView: View {
     @AppStorage("sessionSelectedAccountID") private var sessionSelectedAccountIDStr: String?
     @State private var selectedAccountID: UUID? = nil
     @State private var showAccountDropdown: Bool = false
+    @State private var selectedTripID: UUID? = nil
     private enum EntryMode { case expense, income }
     @State private var mode: EntryMode = .expense
     // Unified pill sizing for the top controls
@@ -156,9 +180,15 @@ struct ExpenseEntryView: View {
                             }
                         }
                         .zIndex(1)
-                        // Emoji quick row (auto-fit up to 10, centered)
+                        // Trip emoji row (only shown if there are open trips)
+                        if !openTrips.isEmpty && mode != .income {
+                            tripEmojiRow(availableWidth: proxy.size.width - 40)
+                                .padding(.bottom, 4)
+                        }
+
+                        // Category emoji quick row (auto-fit up to 10, centered)
                         emojiRow(availableWidth: proxy.size.width - 40)
-                        .padding(.top, 5)
+                        .padding(.top, openTrips.isEmpty || mode == .income ? 5 : 0)
                         .padding(.bottom, 4)
                         .opacity(mode == .income ? 0.4 : 1.0)
 
@@ -230,7 +260,7 @@ struct ExpenseEntryView: View {
                         Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    // Centered pill across full width
+                    // Centered account pill
                     accountPill()
                         .frame(maxWidth: .infinity, alignment: .center)
                     // Trailing save button
@@ -374,7 +404,7 @@ struct ExpenseEntryView: View {
             let txType = (mode == .income) ? "income" : "expense"
             let cat = (mode == .income) ? nil : selectedEmoji
             let note = noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-            onSave?(decimal, txType, cat, selectedAccountID, note)
+            onSave?(decimal, txType, cat, selectedAccountID, note, selectedTripID)
             amountString = "0"
             equationTokens.removeAll()
             noteText = ""
@@ -666,7 +696,73 @@ struct ExpenseEntryView: View {
         )
     }
 
-    // MARK: - Emoji Row
+    // MARK: - Trip Emoji Row
+    @ViewBuilder private func tripEmojiRow(availableWidth: CGFloat) -> some View {
+        let trips = openTrips
+        let count = trips.count
+        let baseItem: CGFloat = 36
+        let baseFont: CGFloat = 24
+        let baseSpacing: CGFloat = 14
+        let maxNonScrollingVisible = 7
+        let effectiveCount = min(count, maxNonScrollingVisible)
+        let needed = CGFloat(effectiveCount) * baseItem + CGFloat(max(0, effectiveCount - 1)) * baseSpacing
+        let scale: CGFloat = effectiveCount > 0 ? min(1.0, availableWidth / needed) : 1.0
+        let rowHeight = baseItem * scale
+
+        let rowContent = HStack(spacing: baseSpacing * scale) {
+            ForEach(trips) { trip in
+                Button(action: {
+                    // Toggle selection: tap again to deselect
+                    if selectedTripID == trip.id {
+                        selectedTripID = nil
+                    } else {
+                        selectedTripID = trip.id
+                    }
+                    Haptics.selection()
+                }) {
+                    VStack(spacing: 4 * scale) {
+                        Text(trip.emoji)
+                            .font(.system(size: baseFont * scale))
+                        if selectedTripID == trip.id {
+                            Capsule()
+                                .fill(Color.orange)
+                                .frame(width: 16 * scale, height: 2 * scale)
+                        }
+                    }
+                    .frame(width: baseItem * scale, height: baseItem * scale)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+
+        Group {
+            if count > 6 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    rowContent
+                        .padding(.horizontal, 2)
+                        .frame(height: rowHeight)
+                }
+                .frame(height: rowHeight)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { _ in setPagerSwipeEnabled(false) }
+                        .onEnded { _ in setPagerSwipeEnabled(true) }
+                )
+            } else {
+                rowContent
+                    .frame(height: rowHeight)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { _ in setPagerSwipeEnabled(false) }
+                            .onEnded { _ in setPagerSwipeEnabled(true) }
+                    )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .clipped()
+    }
+
+    // MARK: - Category Emoji Row
     @ViewBuilder private func emojiRow(availableWidth: CGFloat) -> some View {
         let emojis = displayedEmojis
         let count = emojis.count

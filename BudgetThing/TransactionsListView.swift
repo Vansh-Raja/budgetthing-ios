@@ -188,7 +188,9 @@ struct TransactionsListView: View {
                     Spacer(minLength: 0)
                 }
                 .padding(24)
+                .background(Color.black)
             }
+            .scrollContentBackground(.hidden)
             .fullScreenCover(isPresented: $showingDetail) {
                 if let tx = selectedTx {
                     NavigationStack { TransactionDetailView(item: tx) }

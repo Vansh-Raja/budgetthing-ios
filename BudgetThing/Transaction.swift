@@ -22,6 +22,9 @@ final class Transaction {
     var transferFromAccountId: UUID?
     var transferToAccountId: UUID?
 
+    // Trip relationship (for trip expense tracking)
+    var tripExpense: TripExpense?
+
     // Sync-friendly metadata
     var createdAt: Date
     var updatedAt: Date

@@ -34,7 +34,7 @@ struct CategoryDetailView: View {
                         Text("Monthly Budget")
                             .foregroundStyle(.white)
                         Spacer()
-                        Text(category.monthlyBudget != nil ? "$\(category.monthlyBudget!)" : "None")
+                        Text(category.monthlyBudget.map { "\(NumberFormatter.localizedString(from: NSDecimalNumber(decimal: $0), number: .currency))" } ?? "None")
                             .foregroundStyle(.white.opacity(0.7))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)

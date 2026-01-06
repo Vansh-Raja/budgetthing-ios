@@ -18,9 +18,10 @@ struct RootPagerView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            ExpenseEntryView { amount, type, categoryEmoji, selectedAccountId, note in
+            ExpenseEntryView { amount, type, categoryEmoji, selectedAccountId, note, tripId in
                 var foundCategory: Category? = nil
                 var foundAccount: Account? = nil
+                var foundTrip: Trip? = nil
                 // Resolve category by emoji
                 if let emoji = categoryEmoji, type != "income" {
                     var fd = FetchDescriptor<Category>()
@@ -45,8 +46,37 @@ struct RootPagerView: View {
                     af.fetchLimit = 1
                     if let acc = try? modelContext.fetch(af).first { foundAccount = acc }
                 }
+                // Resolve trip if provided
+                if let tid = tripId {
+                    var tf = FetchDescriptor<Trip>()
+                    tf.fetchLimit = 1
+                    tf.predicate = #Predicate { $0.id == tid }
+                    if let trip = try? modelContext.fetch(tf).first { foundTrip = trip }
+                }
                 let tx = Transaction(amount: amount, date: .now, note: note, category: foundCategory, account: foundAccount, type: type)
                 modelContext.insert(tx)
+                // Create TripExpense if trip was selected
+                if let trip = foundTrip {
+                    let tripExpense = TripExpense(
+                        trip: trip,
+                        transaction: tx,
+                        paidByParticipant: trip.participants?.first(where: { $0.isCurrentUser }),
+                        splitType: .equal
+                    )
+                    // Calculate splits for group trips
+                    if trip.isGroup, let participants = trip.participants {
+                        let computed = TripSplitCalculator.calculateSplits(
+                            total: amount,
+                            splitType: .equal,
+                            participants: participants,
+                            splitData: nil
+                        )
+                        tripExpense.computedSplits = computed
+                    }
+                    modelContext.insert(tripExpense)
+                    tx.tripExpense = tripExpense
+                    trip.updatedAt = .now
+                }
                 // Do NOT overwrite user's default account here; default is set from Manage Accounts.
                 // Update widgets snapshot after save
                 WidgetBridge.publishSnapshots(context: modelContext)
@@ -63,6 +93,9 @@ struct RootPagerView: View {
 
             AccountsView(tabSelection: $selection)
                 .tag(2)
+
+            TripsListView(tabSelection: $selection)
+                .tag(4)
 
             SettingsView(tabSelection: $selection)
                 .tag(3)
@@ -112,6 +145,8 @@ struct FloatingPageSwitcher: View {
             switchButton(icon: "list.bullet", tag: 1)
             dividerDot()
             switchButton(icon: "creditcard", tag: 2)
+            dividerDot()
+            switchButton(icon: "airplane", tag: 4)
             dividerDot()
             switchButton(icon: "gearshape", tag: 3)
         }

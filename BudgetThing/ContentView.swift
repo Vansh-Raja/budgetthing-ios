@@ -37,7 +37,7 @@ struct ContentView: View {
             Text("Select an item")
         }
         .sheet(isPresented: $showingEntrySheet) {
-            ExpenseEntryView { _, _, _, _, _ in
+            ExpenseEntryView { _, _, _, _, _, _ in
                 // Legacy demo path; not used in app flow anymore
                 addItem()
             }
