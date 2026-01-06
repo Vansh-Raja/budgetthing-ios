@@ -65,7 +65,10 @@ struct ExpenseEntryView: View {
     @State private var showManageCategories: Bool = false
 
     private var displayedEmojis: [String] {
-        let fromDB = categories.map { $0.emoji }.filter { !$0.isEmpty }
+        let fromDB = categories
+            .filter { ($0.isSystem ?? false) == false }
+            .map { $0.emoji }
+            .filter { !$0.isEmpty }
         if !fromDB.isEmpty { return fromDB }
         return ["🍔","🛒","🚕","🏠","🎉"]
     }
