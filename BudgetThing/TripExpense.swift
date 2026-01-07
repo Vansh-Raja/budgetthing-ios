@@ -54,9 +54,9 @@ extension TripExpense {
     enum SplitType: String, Codable, CaseIterable, Identifiable {
         case equal          // Split among all participants equally
         case equalSelected  // Split among selected participants equally
+        case exact          // Exact amounts per participant
         case percentage     // Custom percentages per participant
         case shares         // Shares-based (e.g., 2:1:1)
-        case exact          // Exact amounts per participant
 
         var id: String { rawValue }
 
@@ -64,9 +64,9 @@ extension TripExpense {
             switch self {
             case .equal: return "Equal"
             case .equalSelected: return "Equal (Selected)"
+            case .exact: return "Exact Amounts"
             case .percentage: return "By Percentage"
             case .shares: return "By Shares"
-            case .exact: return "Exact Amounts"
             }
         }
 
@@ -74,9 +74,9 @@ extension TripExpense {
             switch self {
             case .equal: return "Split equally among everyone"
             case .equalSelected: return "Split equally among selected people"
+            case .exact: return "Enter exact amounts per person"
             case .percentage: return "Assign custom percentages"
             case .shares: return "Assign shares (e.g., 2:1:1)"
-            case .exact: return "Enter exact amounts per person"
             }
         }
     }

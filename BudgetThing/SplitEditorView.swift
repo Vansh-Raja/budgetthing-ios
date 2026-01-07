@@ -105,7 +105,7 @@ struct SplitEditorView: View {
             }
         }
         .onAppear {
-            initializeLocalData()
+            initializeLocalData(repopulateExisting: true)
         }
         .preferredColorScheme(.dark)
     }
@@ -129,7 +129,8 @@ struct SplitEditorView: View {
         Button(action: {
             Haptics.selection()
             splitType = type
-            initializeLocalData()
+            // Don't repopulate when changing types - reset to defaults
+            initializeLocalData(repopulateExisting: false)
         }) {
             HStack(spacing: 6) {
                 Image(systemName: type.icon)
@@ -332,18 +333,31 @@ struct SplitEditorView: View {
 
             case .exact:
                 let sum = parsedSplitData.values.reduce(0, +)
+                let remaining = totalAmount - sum
+
                 HStack {
                     Text("Total")
                     Spacer()
                     Text(formatCurrency(sum))
-                        .foregroundStyle(sum == totalAmount ? .green : .orange)
+                        .foregroundStyle(remaining == 0 ? .green : .orange)
                         .fontWeight(.semibold)
                 }
-                if sum != totalAmount {
-                    Text("Must equal \(formatCurrency(totalAmount))")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.orange)
+
+                HStack {
+                    if remaining > 0 {
+                        Text("\(formatCurrency(remaining)) left")
+                    } else if remaining < 0 {
+                        Text("Over by \(formatCurrency(-remaining))")
+                    } else {
+                        Text("\(formatCurrency(0)) left")
+                    }
+
+                    Spacer()
+
+                    Text(remaining == 0 ? "Matches \(formatCurrency(totalAmount))" : "Must equal \(formatCurrency(totalAmount))")
                 }
+                .font(.system(size: 12))
+                .foregroundStyle(remaining == 0 ? .green : .orange)
             }
         }
         .font(.system(size: 14))
@@ -377,8 +391,12 @@ struct SplitEditorView: View {
         )
     }
 
-    private func initializeLocalData() {
+    private func initializeLocalData(repopulateExisting: Bool) {
         localSplitData = [:]
+        
+        // Only check for existing data if we're repopulating (initial load)
+        // When changing split types, we want fresh defaults
+        let hasExistingData = repopulateExisting && !splitData.isEmpty
 
         switch splitType {
         case .equal:
@@ -386,33 +404,81 @@ struct SplitEditorView: View {
             break
 
         case .equalSelected:
-            // All selected by default
             for participant in participants {
-                localSplitData[participant.id] = "1"
+                if hasExistingData {
+                    // Repopulate from existing splitData
+                    if let value = splitData[participant.id], value > 0 {
+                        localSplitData[participant.id] = "1"
+                    } else {
+                        localSplitData[participant.id] = "0"
+                    }
+                } else {
+                    // All selected by default
+                    localSplitData[participant.id] = "1"
+                }
             }
 
         case .percentage:
-            // Equal percentages by default
-            let equalPct = 100 / participants.count
-            for (index, participant) in participants.enumerated() {
-                if index == participants.count - 1 {
-                    // Last one gets remainder
-                    localSplitData[participant.id] = "\(100 - equalPct * (participants.count - 1))"
-                } else {
-                    localSplitData[participant.id] = "\(equalPct)"
+            if hasExistingData {
+                for participant in participants {
+                    if let value = splitData[participant.id] {
+                        localSplitData[participant.id] = "\(NSDecimalNumber(decimal: value))"
+                    } else {
+                        localSplitData[participant.id] = "0"
+                    }
+                }
+            } else {
+                // Equal percentages by default
+                guard participants.count > 0 else { return }
+                let equalPct = 100 / participants.count
+                for (index, participant) in participants.enumerated() {
+                    if index == participants.count - 1 {
+                        // Last one gets remainder
+                        localSplitData[participant.id] = "\(100 - equalPct * (participants.count - 1))"
+                    } else {
+                        localSplitData[participant.id] = "\(equalPct)"
+                    }
                 }
             }
 
         case .shares:
-            // 1 share each by default
-            for participant in participants {
-                localSplitData[participant.id] = "1"
+            if hasExistingData {
+                for participant in participants {
+                    if let value = splitData[participant.id] {
+                        // Round to nearest integer to avoid truncation
+                        let rounded = NSDecimalNumber(decimal: value).rounding(accordingToBehavior: nil)
+                        localSplitData[participant.id] = "\(rounded.intValue)"
+                    } else {
+                        localSplitData[participant.id] = "0"
+                    }
+                }
+            } else {
+                // 1 share each by default
+                for participant in participants {
+                    localSplitData[participant.id] = "1"
+                }
             }
 
         case .exact:
-            // Empty by default
-            for participant in participants {
-                localSplitData[participant.id] = ""
+            if hasExistingData {
+                for participant in participants {
+                    if let value = splitData[participant.id] {
+                        // Format as decimal string (e.g., "50.00" or "25.50")
+                        let formatter = NumberFormatter()
+                        formatter.numberStyle = .decimal
+                        formatter.minimumFractionDigits = 0
+                        formatter.maximumFractionDigits = 2
+                        formatter.usesGroupingSeparator = false
+                        localSplitData[participant.id] = formatter.string(from: value as NSDecimalNumber) ?? ""
+                    } else {
+                        localSplitData[participant.id] = ""
+                    }
+                }
+            } else {
+                // Empty by default
+                for participant in participants {
+                    localSplitData[participant.id] = ""
+                }
             }
         }
     }

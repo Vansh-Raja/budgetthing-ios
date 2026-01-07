@@ -132,7 +132,8 @@ struct TransactionsListView: View {
                                                         Text("⇅").font(.system(size: 11, weight: .bold)).foregroundStyle(.blue)
                                                     }
                                                     .frame(width: 24, height: 18)
-                                                } else if (tx.typeRaw ?? "expense") == "income" {
+                                                } else if tx.effectiveDisplayInfo().isIncome {
+                                                    // Income (including trip expenses where user gets money back)
                                                     Text("+")
                                                         .font(.system(size: 14, weight: .bold))
                                                         .foregroundStyle(.green)
@@ -148,9 +149,10 @@ struct TransactionsListView: View {
                                                         .frame(width: 24, alignment: .center)
                                                 }
                                                 VStack(alignment: .leading, spacing: 2) {
-                                                    Text(formattedAmount(tx.amount))
+                                                    let displayInfo = tx.effectiveDisplayInfo()
+                                                    Text(formattedAmount(displayInfo.amount))
                                                         .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
-                                                        .foregroundStyle((tx.systemRaw ?? "").contains("transfer") ? .blue : (tx.systemRaw ?? "").contains("adjustment") ? .yellow : ((tx.typeRaw ?? "expense") == "income") ? .green : .white)
+                                                        .foregroundStyle((tx.systemRaw ?? "").contains("transfer") ? .blue : (tx.systemRaw ?? "").contains("adjustment") ? .yellow : displayInfo.isIncome ? .green : .white)
                                                     Text(tx.date, style: .date)
                                                         .font(.system(size: 12))
                                                         .foregroundStyle(.white.opacity(0.6))
@@ -200,7 +202,9 @@ struct TransactionsListView: View {
                                 .gesture(
                                     DragGesture(minimumDistance: 20)
                                         .onEnded { value in
-                                            if value.translation.height > 80 { showingDetail = false }
+                                            // Only dismiss if primarily vertical downward drag
+                                            let isVertical = abs(value.translation.height) > abs(value.translation.width)
+                                            if isVertical && value.translation.height > 80 { showingDetail = false }
                                         }
                                 )
                         )
@@ -305,8 +309,11 @@ struct TransactionsListView: View {
         df.locale = Locale.current
         df.dateFormat = "LLLL yyyy"
 
+        // Filter out transactions that should be hidden (not included in trip splits)
+        let visibleTxs = txs.filter { !$0.effectiveDisplayInfo().shouldHide }
+
         var groups: [String: [Transaction]] = [:]
-        for tx in txs { // txs already sorted desc by date
+        for tx in visibleTxs { // visibleTxs already sorted desc by date
             let comps = cal.dateComponents([.year, .month], from: tx.date)
             let key = String(format: "%04d-%02d", comps.year ?? 0, comps.month ?? 0)
             groups[key, default: []].append(tx)
@@ -319,9 +326,15 @@ struct TransactionsListView: View {
             let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: first.date)) ?? first.date
             let title = df.string(from: monthStart)
             let items = groups[key] ?? []
-            // Spent total excludes income and ignores transfer rows (they are neutral globally)
-            let total = items.filter { ($0.typeRaw ?? "expense") != "income" && !(($0.systemRaw ?? "").contains("transfer")) }
-                .reduce(0 as Decimal) { $0 + $1.amount }
+            // Total uses effectiveAmount (user's share for trip expenses)
+            // Excludes income-type transactions (including trip expenses where user gets money back)
+            let total = items
+                .filter { tx in
+                    let info = tx.effectiveDisplayInfo()
+                    // Exclude income and transfers from spending total
+                    return !info.isIncome && !(tx.systemRaw ?? "").contains("transfer")
+                }
+                .reduce(0 as Decimal) { $0 + $1.effectiveAmount }
             return MonthSectionModel(id: key, title: title, total: total, items: items)
         }
     }

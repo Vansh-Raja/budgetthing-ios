@@ -44,12 +44,23 @@ struct TripExpensesTab: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .sheet(item: $selectedExpense) { expense in
-            if expense.transaction != nil {
+        .fullScreenCover(item: $selectedExpense) { expense in
+            if let transaction = expense.transaction {
                 NavigationStack {
-                    TripExpenseDetailView(tripExpense: expense, trip: trip)
+                    TransactionDetailView(item: transaction)
                 }
-                .presentationDetents([.large])
+                .background(
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 20)
+                                .onEnded { value in
+                                    // Only dismiss if primarily vertical downward drag
+                                    let isVertical = abs(value.translation.height) > abs(value.translation.width)
+                                    if isVertical && value.translation.height > 80 { selectedExpense = nil }
+                                }
+                        )
+                )
             }
         }
     }
@@ -64,7 +75,7 @@ struct TripExpensesTab: View {
                 .font(.system(size: 48))
 
             Text("No expenses yet")
-                .font(Font.custom("AvenirNextCondensed-DemiBold", size: 22))
+                .font(Font.custom("AvenirNextCondensed-Heavy", size: 28))
                 .foregroundStyle(.white)
 
             Text("Add expenses from the calculator\nwith this trip selected")
@@ -150,14 +161,15 @@ struct TripExpensesTab: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text(formatCurrency(transaction.amount))
-                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 18))
+                    .font(Font.custom("AvenirNextCondensed-DemiBold", size: 20))
                     .foregroundStyle(.white)
 
-                // Split indicator for group trips
-                if trip.isGroup {
-                    Text(expense.splitType.displayName)
+                // Current user's net for this expense (group trips)
+                if trip.isGroup, let info = currentUserNetInfo(expense: expense, transaction: transaction) {
+                    Text(info.text)
                         .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(info.color)
+                        .lineLimit(1)
                 }
             }
 
@@ -171,6 +183,48 @@ struct TripExpensesTab: View {
     }
 
     // MARK: - Helpers
+
+    private func currentUserNetInfo(expense: TripExpense, transaction: Transaction) -> (text: String, color: Color)? {
+        guard let currentUser = (trip.participants ?? []).first(where: { $0.isCurrentUser }) else {
+            return nil
+        }
+        guard let paidBy = expense.paidByParticipant else {
+            return nil
+        }
+
+        let splits: [UUID: Decimal]
+        if let stored = expense.computedSplits, !stored.isEmpty {
+            splits = stored
+        } else {
+            splits = TripSplitCalculator.calculateSplits(
+                total: transaction.amount,
+                splitType: expense.splitType,
+                participants: trip.participants ?? [],
+                splitData: expense.splitData
+            )
+        }
+
+        let myShare = splits[currentUser.id] ?? 0
+
+        if paidBy.id == currentUser.id {
+            let net = transaction.amount - myShare
+
+            if net == 0 {
+                return (text: "Settled", color: .white.opacity(0.4))
+            }
+            if net > 0 {
+                return (text: "You get back \(formatCurrency(net))", color: .green)
+            }
+            return (text: "You owe \(formatCurrency(-net))", color: .orange)
+        } else {
+            if myShare <= 0 {
+                return (text: "Not included", color: .white.opacity(0.35))
+            }
+
+            let payerName = paidBy.isCurrentUser ? "You" : paidBy.name
+            return (text: "You owe \(payerName) \(formatCurrency(myShare))", color: .orange)
+        }
+    }
 
     private func formatCurrency(_ value: Decimal) -> String {
         let formatter = NumberFormatter()

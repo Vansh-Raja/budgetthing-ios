@@ -463,9 +463,9 @@ extension TripExpense.SplitType {
         switch self {
         case .equal: return "equal.circle"
         case .equalSelected: return "person.2.circle"
+        case .exact: return "number.circle"
         case .percentage: return "percent"
         case .shares: return "chart.pie"
-        case .exact: return "number.circle"
         }
     }
 }
