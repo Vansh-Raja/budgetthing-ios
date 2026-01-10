@@ -1,0 +1,993 @@
+/**
+ * Transaction Detail Screen
+ * 
+ * A rich detailed view for transactions, supporting View and Edit modes.
+ * Matches Swift's TransactionDetailView design.
+ */
+
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+    View,
+    Text,
+    StyleSheet,
+    TouchableOpacity,
+    ScrollView,
+    Alert,
+    TextInput,
+    LayoutAnimation,
+    Platform,
+    Modal,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+import { Colors } from '../constants/theme';
+import { Transaction, Trip, TripExpense, TripParticipant } from '../lib/logic/types';
+import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
+import { Actions } from '../lib/logic/actions';
+import { TransactionRepository, TripExpenseRepository, TripRepository } from '../lib/db/repositories';
+import { useCategories, useAccounts, useTransactions } from '../lib/hooks/useData';
+import { useTrips } from '../lib/hooks/useTrips';
+
+interface TransactionDetailScreenProps {
+    transactionId: string;
+    onDismiss: () => void;
+    onDelete?: () => void; // Callback after delete
+    onUpdate?: () => void; // Callback after update
+}
+
+export function TransactionDetailScreen({
+    transactionId,
+    onDismiss,
+    onDelete,
+    onUpdate
+}: TransactionDetailScreenProps) {
+    const insets = useSafeAreaInsets();
+
+    // Data
+    const { data: categories } = useCategories();
+    const { data: accounts } = useAccounts();
+    const { trips } = useTrips(); // We need trips to find related trip info
+
+    const [transaction, setTransaction] = useState<Transaction | null>(null);
+    const [tripExpense, setTripExpense] = useState<TripExpense | null>(null);
+    const [relatedTrip, setRelatedTrip] = useState<Trip | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    const [isEditing, setIsEditing] = useState(false);
+
+    // Edit State
+    const [editAmountString, setEditAmountString] = useState("");
+    const [editNote, setEditNote] = useState("");
+    const [editDate, setEditDate] = useState(new Date());
+    const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
+    const [editAccountId, setEditAccountId] = useState<string | null>(null);
+
+    // Pickers
+    const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+    const [showAccountPicker, setShowAccountPicker] = useState(false);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+
+    // Load Data
+    useEffect(() => {
+        loadData();
+    }, [transactionId, trips]);
+
+    const loadData = async () => {
+        try {
+            // 1. Get Transaction
+            const tx = await TransactionRepository.getById(transactionId);
+            if (!tx) {
+                Alert.alert("Error", "Transaction not found");
+                onDismiss();
+                return;
+            }
+            setTransaction(tx);
+
+            // 2. Setup Edit State
+            setEditAmountString((Math.abs(tx.amountCents) / 100).toString());
+            setEditNote(tx.note || "");
+            setEditDate(new Date(tx.date));
+            setEditCategoryId(tx.categoryId || null);
+            setEditAccountId(tx.accountId || null);
+
+            // 3. Check for Trip Expense relation
+            if (tx.tripExpenseId) {
+                let foundExpense: TripExpense | undefined;
+                let foundTrip: Trip | undefined;
+
+                for (const t of trips) {
+                    const exp = t.expenses?.find(e => e.id === tx.tripExpenseId || e.transactionId === tx.id);
+                    if (exp) {
+                        foundExpense = exp;
+                        foundTrip = t;
+                        break;
+                    }
+                }
+
+                if (foundExpense && foundTrip) {
+                    setTripExpense(foundExpense);
+                    setRelatedTrip(foundTrip);
+                }
+            } else {
+                // Double check reverse lookup
+                for (const t of trips) {
+                    const exp = t.expenses?.find(e => e.transactionId === tx.id);
+                    if (exp) {
+                        setTripExpense(exp);
+                        setRelatedTrip(t);
+                        break;
+                    }
+                }
+            }
+
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // derived
+    const category = categories.find(c => c.id === (isEditing ? editCategoryId : transaction?.categoryId));
+    const account = accounts.find(a => a.id === (isEditing ? editAccountId : transaction?.accountId));
+    const isIncome = transaction?.type === 'income';
+
+    // Recent categories for the quick picker (top 5 + current)
+    const quickCategories = useMemo(() => {
+        const result = categories.filter(c => !c.isSystem).slice(0, 5);
+        // Ensure current selected is in the list
+        if (editCategoryId && !result.find(c => c.id === editCategoryId)) {
+            const current = categories.find(c => c.id === editCategoryId);
+            if (current) result.unshift(current);
+        }
+        return result;
+    }, [categories, editCategoryId]);
+
+    // Save Handler
+    const handleSave = async () => {
+        if (!transaction) return;
+
+        const newAmount = parseFloat(editAmountString);
+        if (isNaN(newAmount) || newAmount < 0) {
+            Alert.alert("Invalid Amount", "Please enter a valid positive number");
+            return;
+        }
+
+        const newAmountCents = Math.round(newAmount * 100) * (isIncome ? 1 : -1);
+
+        try {
+            await TransactionRepository.update(transaction.id, {
+                amountCents: newAmountCents,
+                date: editDate.getTime(),
+                note: editNote.trim() || undefined,
+                categoryId: editCategoryId || undefined,
+                accountId: editAccountId || undefined
+            });
+
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setIsEditing(false);
+            loadData(); // refresh
+            onUpdate?.();
+        } catch (e) {
+            console.error(e);
+            Alert.alert("Error", "Failed to update transaction");
+        }
+    };
+
+    const handleDelete = () => {
+        Alert.alert(
+            "Delete Transaction?",
+            "This cannot be undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete", style: "destructive", onPress: async () => {
+                        try {
+                            await Actions.deleteTransaction(transactionId);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            onDelete?.();
+                            onDismiss();
+                        } catch (e) {
+                            Alert.alert("Error", "Failed to delete");
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleRemoveFromTrip = () => {
+        if (!relatedTrip || !tripExpense || !transaction) return;
+
+        Alert.alert(
+            "Remove from Trip?",
+            `This will keep the transaction but remove it from "${relatedTrip.name}".`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Remove", style: "destructive", onPress: async () => {
+                        try {
+                            await TripExpenseRepository.delete(tripExpense.id);
+                            await TransactionRepository.update(transaction.id, { tripExpenseId: undefined });
+
+                            setTripExpense(null);
+                            setRelatedTrip(null);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            loadData();
+                        } catch (e) {
+                            Alert.alert("Error", "Failed to remove from trip");
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    if (loading || !transaction) {
+        return (
+            <View style={[styles.container, { paddingTop: insets.top }]}>
+                <Text style={{ color: 'white', textAlign: 'center', marginTop: 20 }}>Loading...</Text>
+            </View>
+        );
+    }
+
+    return (
+        <View style={styles.container}>
+            {/* Header - Minimalistic, no title */}
+            <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+                <TouchableOpacity
+                    onPress={onDismiss}
+                    style={styles.circleButton}
+                >
+                    <Ionicons name="chevron-back" size={24} color="white" />
+                </TouchableOpacity>
+
+                <View style={{ flex: 1 }} />
+
+                {isEditing && (
+                    <TouchableOpacity
+                        onPress={handleSave}
+                        style={styles.saveButton}
+                    >
+                        <Text style={styles.saveButtonText}>Save</Text>
+                    </TouchableOpacity>
+                )}
+                {!isEditing && (
+                    <TouchableOpacity
+                        onPress={() => {
+                            setIsEditing(true);
+                            Haptics.selectionAsync();
+                        }}
+                        style={styles.editButton}
+                    >
+                        <Text style={styles.editButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+
+            <ScrollView contentContainerStyle={styles.content}>
+
+                {/* Hero Section */}
+                <View style={styles.heroSection}>
+                    {/* Emoji */}
+                    <TouchableOpacity
+                        onPress={() => isEditing && setShowCategoryPicker(true)}
+                        style={styles.emojiButton}
+                        disabled={!isEditing}
+                    >
+                        <Text style={styles.heroEmoji}>{
+                            transaction?.systemType === 'transfer' ? "⇅" :
+                                transaction?.systemType === 'adjustment' ? "🛠" :
+                                    category?.emoji || (isIncome ? "💰" : "💸")
+                        }</Text>
+                        {isEditing && (
+                            <View style={styles.editBadge}>
+                                <Ionicons name="pencil" size={12} color="black" />
+                            </View>
+                        )}
+                    </TouchableOpacity>
+
+                    {/* Amount */}
+                    {isEditing ? (
+                        <View style={styles.editAmountContainer}>
+                            <Text style={styles.currencySymbol}>{getCurrencySymbol("INR")}</Text>
+                            <TextInput
+                                style={styles.editAmountInput}
+                                value={editAmountString}
+                                onChangeText={setEditAmountString}
+                                keyboardType="decimal-pad"
+                            />
+                        </View>
+                    ) : (
+                        <Text style={styles.heroAmount}>
+                            {formatCents(Math.abs(transaction.amountCents), "INR")}
+                        </Text>
+                    )}
+
+                    {/* View Mode Meta */}
+                    {!isEditing && (
+                        <Text style={styles.metaText}>
+                            {new Date(transaction.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true })}
+                            <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
+                            {account?.emoji} {account?.name}
+                        </Text>
+                    )}
+                </View>
+
+                {/* EDIT MODE LAYOUT */}
+                {isEditing ? (
+                    <View style={styles.editForm}>
+
+                        {/* Date & Time Row */}
+                        <View style={styles.row}>
+                            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.pill}>
+                                <Text style={styles.pillText}>
+                                    {editDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.pill}>
+                                <Text style={styles.pillText}>
+                                    {editDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Account */}
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>Account</Text>
+                            <TouchableOpacity onPress={() => setShowAccountPicker(true)} style={[styles.pill, { alignSelf: 'flex-start' }]}>
+                                <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || "🏦"}</Text>
+                                <Text style={styles.pillText}>{account?.name || "Select Account"}</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Category Quick Picker */}
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>Category</Text>
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                                {quickCategories.map(c => (
+                                    <TouchableOpacity
+                                        key={c.id}
+                                        style={[styles.categoryCircle, editCategoryId === c.id && styles.categoryCircleSelected]}
+                                        onPress={() => setEditCategoryId(c.id)}
+                                    >
+                                        <Text style={{ fontSize: 24 }}>{c.emoji}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                                <TouchableOpacity
+                                    style={styles.categoryCircle}
+                                    onPress={() => setShowCategoryPicker(true)}
+                                >
+                                    <Ionicons name="grid-outline" size={20} color="white" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {/* Notes */}
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>Notes</Text>
+                            <View style={styles.notesContainer}>
+                                <TextInput
+                                    style={styles.noteInputEdit}
+                                    value={editNote}
+                                    onChangeText={setEditNote}
+                                    placeholder="Add a note..."
+                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                    multiline
+                                    textAlignVertical="top"
+                                />
+                            </View>
+                        </View>
+
+                        {/* Trip */}
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>Trip</Text>
+                            {relatedTrip ? (
+                                <View style={styles.tripPill}>
+                                    <Text>{relatedTrip.emoji}</Text>
+                                    <Text style={{ color: 'white', fontWeight: '600' }}>{relatedTrip.name}</Text>
+                                    <TouchableOpacity onPress={handleRemoveFromTrip}>
+                                        <Ionicons name="close-circle" size={18} color={Colors.error} style={{ marginLeft: 4 }} />
+                                    </TouchableOpacity>
+                                </View>
+                            ) : (
+                                <TouchableOpacity style={styles.addToTripButton}>
+                                    <Ionicons name="airplane" size={16} color="rgba(255,255,255,0.6)" />
+                                    <Text style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Add to Trip</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                    </View>
+                ) : (
+                    /* VIEW MODE LAYOUT */
+                    <View style={styles.dataSection}>
+                        {/* Note (Only if exists) */}
+                        {!!transaction.note && (
+                            <View style={styles.viewNoteContainer}>
+                                <Text style={styles.viewNoteText}>{transaction.note}</Text>
+                            </View>
+                        )}
+
+                        {/* Trip Card */}
+                        {relatedTrip && (
+                            <View style={styles.tripSection}>
+                                {/* Trip Label */}
+                                <Text style={styles.sectionLabel}>Trip</Text>
+
+                                {/* Trip Badge Row */}
+                                <View style={styles.tripBadge}>
+                                    <Text style={{ fontSize: 22, marginRight: 10 }}>{relatedTrip.emoji}</Text>
+                                    <Text style={styles.tripName}>{relatedTrip.name}</Text>
+                                    <View style={{ flex: 1 }} />
+                                    <TouchableOpacity onPress={handleRemoveFromTrip}>
+                                        <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.5)" />
+                                    </TouchableOpacity>
+                                </View>
+
+                                {/* Split Details Section - for group trips */}
+                                {tripExpense && relatedTrip.isGroup && (
+                                    <View style={styles.splitDetailsSection}>
+                                        <Text style={styles.splitDetailsLabel}>Split Details</Text>
+
+                                        <View style={styles.splitCard}>
+                                            {/* Paid By Row */}
+                                            {(() => {
+                                                const payer = relatedTrip.participants?.find(p => p.id === tripExpense.paidByParticipantId);
+                                                if (payer) {
+                                                    return (
+                                                        <View style={styles.paidByRow}>
+                                                            <View style={[styles.avatar, { backgroundColor: '#' + (payer.colorHex || 'FF9500') }]}>
+                                                                <Text style={styles.avatarLetter}>{payer.name?.[0]?.toUpperCase() || '?'}</Text>
+                                                            </View>
+                                                            <Text style={styles.paidByText}>
+                                                                {payer.isCurrentUser ? 'You paid' : `${payer.name} paid`}
+                                                            </Text>
+                                                            <View style={{ flex: 1 }} />
+                                                            <Text style={styles.paidByAmount}>
+                                                                {formatCents(Math.abs(transaction.amountCents), "INR")}
+                                                            </Text>
+                                                        </View>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
+
+                                            {/* Split Type Row */}
+                                            <View style={styles.splitTypeRow}>
+                                                <Ionicons
+                                                    name={
+                                                        tripExpense.splitType === 'equal' ? 'people-outline' :
+                                                            tripExpense.splitType === 'percentage' ? 'pie-chart-outline' :
+                                                                tripExpense.splitType === 'shares' ? 'layers-outline' :
+                                                                    tripExpense.splitType === 'exact' ? 'cash-outline' : 'checkmark-circle-outline'
+                                                    }
+                                                    size={14}
+                                                    color={Colors.accent}
+                                                />
+                                                <Text style={styles.splitTypeText}>
+                                                    By {tripExpense.splitType === 'equal' ? 'Equal' :
+                                                        tripExpense.splitType === 'equalSelected' ? 'Selected' :
+                                                            tripExpense.splitType === 'percentage' ? 'Percentage' :
+                                                                tripExpense.splitType === 'shares' ? 'Shares' :
+                                                                    tripExpense.splitType === 'exact' ? 'Exact' : tripExpense.splitType}
+                                                </Text>
+                                            </View>
+
+                                            {/* Participant Splits */}
+                                            {relatedTrip.participants?.map(participant => {
+                                                const owedAmount = tripExpense.computedSplits?.[participant.id];
+                                                if (!owedAmount || owedAmount <= 0) return null;
+
+                                                return (
+                                                    <View key={participant.id} style={styles.participantRow}>
+                                                        <View style={[styles.avatarSmall, { backgroundColor: '#' + (participant.colorHex || 'FF9500') }]}>
+                                                            <Text style={styles.avatarLetterSmall}>{participant.name?.[0]?.toUpperCase() || '?'}</Text>
+                                                        </View>
+                                                        <Text style={styles.participantName}>
+                                                            {participant.isCurrentUser ? 'You' : participant.name}
+                                                        </Text>
+                                                        <View style={{ flex: 1 }} />
+                                                        <Text style={styles.participantAmount}>
+                                                            {formatCents(owedAmount, "INR")}
+                                                        </Text>
+                                                    </View>
+                                                );
+                                            })}
+                                        </View>
+                                    </View>
+                                )}
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {/* Delete Button */}
+                <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={handleDelete}
+                >
+                    <Text style={styles.deleteText}>Delete Transaction</Text>
+                </TouchableOpacity>
+
+                <View style={{ height: 100 }} />
+            </ScrollView>
+
+            {/* Modals for Editing */}
+
+            {/* Date Picker (Platform specific) */}
+            {showDatePicker && Platform.OS === 'ios' && (
+                <Modal transparent animationType="fade">
+                    <View style={styles.dateModalBg}>
+                        <View style={styles.datePickerContainer}>
+                            <View style={{ alignItems: 'flex-end', padding: 8 }}>
+                                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                                    <Text style={{ color: Colors.accent, fontWeight: 'bold' }}>Done</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <DateTimePicker
+                                value={editDate}
+                                mode="datetime"
+                                display="spinner"
+                                onChange={(e, d) => {
+                                    if (d) setEditDate(d);
+                                }}
+                                textColor="white"
+                            />
+                        </View>
+                    </View>
+                </Modal>
+            )}
+
+            {/* Simple Category Picker Modal */}
+            <Modal visible={showCategoryPicker} animationType="slide" presentationStyle="pageSheet">
+                <View style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Select Category</Text>
+                        <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
+                            <Text style={{ color: Colors.accent, fontSize: 16 }}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <ScrollView contentContainerStyle={{ padding: 20 }}>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 15 }}>
+                            {categories.filter(c => !c.isSystem).map(c => (
+                                <TouchableOpacity
+                                    key={c.id}
+                                    style={styles.pickerItem}
+                                    onPress={() => {
+                                        setEditCategoryId(c.id);
+                                        setShowCategoryPicker(false);
+                                    }}
+                                >
+                                    <Text style={{ fontSize: 32 }}>{c.emoji}</Text>
+                                    <Text style={{ color: 'white', fontSize: 12 }}>{c.name}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </ScrollView>
+                </View>
+            </Modal>
+
+            {/* Simple Account Picker Modal */}
+            <Modal visible={showAccountPicker} animationType="slide" presentationStyle="pageSheet">
+                <View style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Select Account</Text>
+                        <TouchableOpacity onPress={() => setShowAccountPicker(false)}>
+                            <Text style={{ color: Colors.accent, fontSize: 16 }}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <ScrollView contentContainerStyle={{ padding: 20 }}>
+                        {accounts.map(a => (
+                            <TouchableOpacity
+                                key={a.id}
+                                style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}
+                                onPress={() => {
+                                    setEditAccountId(a.id);
+                                    setShowAccountPicker(false);
+                                }}
+                            >
+                                <Text style={{ fontSize: 24, marginRight: 15 }}>{a.emoji}</Text>
+                                <Text style={{ fontSize: 18, color: 'white', fontFamily: 'AvenirNextCondensed-DemiBold' }}>{a.name}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            </Modal>
+
+        </View>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#000',
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingBottom: 10,
+    },
+    circleButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    saveButton: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    saveButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    editButton: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    editButtonText: {
+        color: 'white',
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    content: {
+        paddingHorizontal: 20,
+        paddingTop: 10,
+    },
+
+    // Hero
+    heroSection: {
+        alignItems: 'center',
+        marginBottom: 40,
+        marginTop: 60, // Increased top spacing
+    },
+    heroEmoji: {
+        fontSize: 64, // Bigger like Swift
+        marginBottom: 10,
+    },
+    emojiButton: {
+        position: 'relative',
+    },
+    editBadge: {
+        position: 'absolute',
+        bottom: 10,
+        right: -5,
+        backgroundColor: 'white',
+        borderRadius: 10,
+        width: 20,
+        height: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'black',
+    },
+    heroAmount: {
+        fontSize: 48,
+        fontFamily: 'AvenirNextCondensed-Heavy',
+        color: 'white',
+        marginBottom: 8,
+    },
+    editAmountContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    currencySymbol: {
+        fontSize: 48,
+        color: 'rgba(255,255,255,0.5)',
+        fontFamily: 'AvenirNextCondensed-Heavy',
+    },
+    editAmountInput: {
+        fontSize: 48,
+        color: 'white',
+        fontFamily: 'AvenirNextCondensed-Heavy',
+        minWidth: 80,
+    },
+
+    // View Meta
+    metaText: {
+        fontSize: 16,
+        color: 'rgba(255,255,255,0.6)',
+        fontFamily: 'System',
+    },
+
+    // Edit Layout
+    editForm: {
+        gap: 24,
+    },
+    row: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    pill: {
+        backgroundColor: '#1C1C1E',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    pillText: {
+        color: 'white',
+        fontSize: 16,
+    },
+    fieldGroup: {
+        gap: 10,
+    },
+    label: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 14,
+        marginLeft: 4,
+    },
+    categoryCircle: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#1C1C1E',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    categoryCircleSelected: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderWidth: 1,
+        borderColor: Colors.accent,
+    },
+    notesContainer: {
+        backgroundColor: '#1C1C1E',
+        borderRadius: 16,
+        padding: 16,
+        minHeight: 120,
+    },
+    noteInputEdit: {
+        color: 'white',
+        fontSize: 16,
+        lineHeight: 22,
+        minHeight: 100,
+    },
+    tripPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1C1C1E',
+        padding: 12,
+        borderRadius: 20,
+        alignSelf: 'flex-start',
+        gap: 8,
+    },
+    addToTripButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1C1C1E',
+        padding: 12,
+        borderRadius: 12,
+        alignSelf: 'flex-start',
+        gap: 8,
+    },
+
+    // View Layout
+    dataSection: {
+        gap: 24,
+    },
+    viewNoteContainer: {
+        backgroundColor: '#1C1C1E',
+        borderRadius: 16,
+        padding: 16,
+    },
+    viewNoteText: {
+        color: 'white',
+        fontSize: 18,
+        lineHeight: 24,
+    },
+    tripCard: {
+        backgroundColor: '#1C1C1E',
+        borderRadius: 16,
+        padding: 16,
+    },
+    tripHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    tripName: {
+        color: 'white',
+        fontSize: 17,
+        fontWeight: '600',
+        flex: 1,
+    },
+    removeButton: {
+        padding: 4,
+    },
+    splitRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 4,
+    },
+    avatarPlaceholder: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: '#333',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarText: {
+        color: 'white',
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    splitMainText: {
+        color: 'white',
+        fontSize: 14,
+    },
+    splitAmountText: {
+        color: 'white',
+        fontSize: 16,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+    divider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginVertical: 12,
+        marginLeft: 44, // Align with text
+    },
+
+    // Delete
+    deleteButton: {
+        backgroundColor: '#2C2C2E', // Subtle dark button
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginTop: 40,
+    },
+    deleteText: {
+        color: Colors.error,
+        fontSize: 17,
+        fontWeight: '600',
+    },
+
+    // Modals
+    dateModalBg: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    datePickerContainer: {
+        backgroundColor: '#1C1C1E',
+        paddingBottom: 20,
+    },
+    modalContainer: {
+        flex: 1,
+        backgroundColor: '#1C1C1E',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.1)',
+    },
+    modalTitle: {
+        color: 'white',
+        fontSize: 18,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+    pickerItem: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 70,
+        height: 70,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 12,
+    },
+
+    // Trip Section - Split Details
+    tripSection: {
+        gap: 12,
+    },
+    sectionLabel: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 18,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+    tripBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        padding: 12,
+        borderRadius: 10,
+    },
+    splitDetailsSection: {
+        marginTop: 8,
+        gap: 8,
+    },
+    splitDetailsLabel: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 16,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+    splitCard: {
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: 12,
+        overflow: 'hidden',
+    },
+    paidByRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 14,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        gap: 12,
+    },
+    avatar: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarLetter: {
+        color: 'white',
+        fontSize: 12,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+    paidByText: {
+        color: 'white',
+        fontSize: 15,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+    paidByAmount: {
+        color: 'white',
+        fontSize: 15,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+    splitTypeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 14,
+        gap: 8,
+    },
+    splitTypeText: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 14,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+    participantRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        gap: 12,
+    },
+    avatarSmall: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarLetterSmall: {
+        color: 'white',
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    participantName: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 14,
+    },
+    participantAmount: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 14,
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+    },
+});

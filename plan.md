@@ -12,6 +12,25 @@ Rewrite the existing native iOS SwiftUI budget tracker as an **Expo (React Nativ
 
 ---
 
+## Current Codebase Status (2026-01-08)
+
+This section reflects what’s actually present in the repo today (not just the intended target state).
+
+### Implemented (Expo app)
+
+- **Pager-based navigation**: `expo-app/app/(tabs)/index.tsx`
+- **Core screens exist**: `expo-app/screens/CalculatorScreen.tsx`, `expo-app/screens/TransactionsScreen.tsx`, `expo-app/screens/AccountsScreen.tsx`, `expo-app/screens/TripsScreen.tsx`, `expo-app/screens/TripDetailScreen.tsx`, `expo-app/screens/SettingsScreen.tsx`, `expo-app/screens/OnboardingScreen.tsx`
+- **SQLite schema + migrations**: `expo-app/lib/db/schema.ts` and `expo-app/lib/db/database.ts`
+- **Repository layer (CRUD)**: `expo-app/lib/db/repositories.ts`
+- **Business logic + tests**: `expo-app/lib/logic/tripSplitCalculator.ts` + `expo-app/lib/logic/__tests__/tripSplitCalculator.test.ts` (and corresponding balance/summary modules/tests)
+
+### Partially implemented / still stubbed
+
+- **Trip add-expense from Trip Detail**: `expo-app/screens/AddExpenseScreen.tsx` still uses `MOCK_TRIPS` and doesn’t persist to SQLite yet.
+- **Auth + Sync**: `expo-app/app/_layout.tsx` wires Clerk + Convex providers, and `expo-app/lib/sync/syncEngine.ts` exists, but the Convex backend functions (`expo-app/convex/…`) are not in the repo yet.
+
+---
+
 ## Scope Summary
 
 | Feature | Status |
@@ -586,34 +605,35 @@ Future: if needed, can add SQLCipher or similar.
 
 ### Phase 1: Foundation (1-2 weeks)
 
-- [ ] Initialize Expo project with TypeScript
-- [ ] Set up SQLite with schema + migrations
-- [ ] Port business logic modules (split calc, balance calc, currency formatting)
-- [ ] Write unit tests for ported logic
+- [x] Initialize Expo project with TypeScript
+- [x] Set up SQLite with schema + migrations
+- [x] Port business logic modules (split calc, balance calc, currency formatting)
+- [x] Write unit tests for ported logic
 
 ### Phase 2: Core UI (2-3 weeks)
 
-- [ ] Build pager navigation + floating tab switcher
-- [ ] Implement Calculator screen (ExpenseEntryView parity)
-- [ ] Implement Transactions list (with month grouping, selection, filters)
-- [ ] Implement Accounts view + detail
-- [ ] Implement Settings view
-- [ ] Implement onboarding flow
+- [x] Build pager navigation + floating tab switcher
+- [x] Implement Calculator screen (ExpenseEntryView parity)
+- [x] Implement Transactions list (with month grouping, selection, filters)
+- [x] Implement Accounts view + detail
+- [x] Implement Settings view
+- [x] Implement onboarding flow
 
 ### Phase 3: Trips Feature (1-2 weeks)
 
-- [ ] Trips list + add/edit
-- [ ] Trip detail with tabs (Expenses, Balances, Settle Up)
-- [ ] Split editor
-- [ ] Trip assignment flows
+- [x] Trips list + add
+- [x] Trip detail with tabs (Expenses, Balances, Settle Up)
+- [x] Split editor
+- [ ] Add expense from Trip Detail (DB-backed; remove `MOCK_TRIPS` usage)
 
 ### Phase 4: Auth + Sync (1-2 weeks)
 
-- [ ] Integrate Clerk (Apple Sign-In)
-- [ ] Set up Convex backend (schema, auth config)
-- [ ] Implement sync engine (outbox, pull, conflict resolution)
-- [ ] Guest → signed-in upgrade flow
-- [ ] Sign-out behavior
+- [x] Wire Clerk + Convex providers in app shell (keys still placeholders)
+- [x] Set up Convex backend (schema, auth config)
+- [x] Implement sync engine end-to-end (outbox, pull, conflict resolution)
+- [x] Guest → signed-in upgrade flow
+- [x] Sign-out behavior
+
 
 ### Phase 5: Polish + Parity QA (1 week)
 

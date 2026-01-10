@@ -4,6 +4,22 @@ This file provides essential context for AI agents working on this codebase. It 
 
 ---
 
+## Important: Follow the Plan
+
+**Always refer to `plan.md` for the detailed migration blueprint.** The plan contains:
+- Architecture decisions and rationale
+- Database schemas (SQLite local + Convex backend)
+- Sync engine design
+- Implementation phases with checklists
+- UI parity requirements
+
+**Keep both files updated:**
+- Update `plan.md` checkboxes as tasks are completed
+- Add new decisions or changes to the plan as they arise
+- Update this file (`AGENTS.md`) if project structure or key concepts change
+
+---
+
 ## Project Overview
 
 **BudgetThing** is a personal finance / budget tracking app. It currently exists as a **native iOS SwiftUI app** but is being migrated to **Expo (React Native) + Convex** for cross-platform support and cloud sync.
