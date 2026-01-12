@@ -8,6 +8,9 @@
       "distribution": "store",
       "ios": {
         "resourceClass": "m-medium"
+      },
+      "env": {
+        "EXPO_NO_CAPABILITY_SYNC": "1"
       }
     }
   }

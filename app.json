@@ -17,7 +17,10 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.Vansh.BudgetThing",
       "buildNumber": "200",
-      "icon": "./assets/images/app-icon-1024.png"
+      "icon": "./assets/images/app-icon-1024.png",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
