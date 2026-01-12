@@ -4,19 +4,18 @@
  * Uses Clerk's SSO integration for Apple Sign-In on iOS.
  */
 
-import React, { useState, useCallback } from 'react';
-import {
-    TouchableOpacity,
-    StyleSheet,
-    ActivityIndicator,
-    Alert,
-    View,
-} from 'react-native';
 import { Text } from '@/components/ui/LockedText';
 import { useSSO } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
+import { useCallback, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    StyleSheet,
+    TouchableOpacity
+} from 'react-native';
 
 // Needed for OAuth redirect handling
 WebBrowser.maybeCompleteAuthSession();
@@ -41,6 +40,8 @@ export function AppleSignInButton({
         onSignInStart?.();
 
         try {
+            // TODO: For App Store release, switch to native Apple Sign In (expo-apple-authentication)
+            // to avoid rejection risk. Web-based flow is sufficient for TestFlight.
             const { createdSessionId, setActive } = await startSSOFlow({
                 strategy: 'oauth_apple',
             });

@@ -5,34 +5,33 @@
  * Now includes Account section with Sign In / Sign Out functionality
  */
 
-import React, { useState, useCallback } from 'react';
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  StatusBar,
-  Switch,
-  Linking,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
 import { Text } from '@/components/ui/LockedText';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import React, { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '../constants/theme';
-import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
+import { useAuth } from '@clerk/clerk-expo';
+import { useMutation } from 'convex/react';
 import {
   AppleSignInButton,
+  DeleteAccountDialog,
   SignOutDialog,
   UserProfileCard,
-  DeleteAccountDialog,
 } from '../components/auth';
-import { useMutation } from 'convex/react';
+import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
 import { api } from '../convex/_generated/api';
-import { useAuth } from '@clerk/clerk-expo';
 import { useAuthState } from '../lib/auth/useAuthHooks';
 import { clearAllData } from '../lib/db/database';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
@@ -374,7 +373,7 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
             label="View Tutorial"
             onPress={() => {
               Haptics.selectionAsync();
-              Alert.alert("Tutorial", "Onboarding flow coming soon");
+              router.push({ pathname: '/onboarding', params: { fromSettings: 'true' } });
             }}
             rightElement={<Chevron />}
           />

@@ -59,6 +59,16 @@
 		585A4FAE2E7BF7A100D8E0B5 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		585A4FC42E7BF7A300D8E0B5 /* Exceptions for "BudgetThingWidgets" folder in "BudgetThingWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 585A4FA92E7BF7A100D8E0B5 /* BudgetThingWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		584F53422E64DC6300C17B82 /* BudgetThing */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -77,6 +87,9 @@
 		};
 		585A4FB02E7BF7A100D8E0B5 /* BudgetThingWidgets */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				585A4FC42E7BF7A300D8E0B5 /* Exceptions for "BudgetThingWidgets" folder in "BudgetThingWidgetsExtension" target */,
+			);
 			path = BudgetThingWidgets;
 			sourceTree = "<group>";
 		};

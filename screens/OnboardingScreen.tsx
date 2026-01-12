@@ -4,21 +4,20 @@
  * Displayed on first launch.
  */
 
-import React, { useRef } from 'react';
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
-  Image,
-  StatusBar,
-} from 'react-native';
 import { Text } from '@/components/ui/LockedText';
-import PagerView from 'react-native-pager-view';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useRef } from 'react';
+import {
+  Dimensions,
+  StatusBar,
+  StyleSheet,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import PagerView from 'react-native-pager-view';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '../constants/theme';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
@@ -55,6 +54,9 @@ const PAGES = [
 export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ fromSettings?: string }>();
+  const fromSettings = params.fromSettings === 'true';
+
   const pagerRef = useRef<PagerView>(null);
   const [activeIndex, setActiveIndex] = React.useState(0);
   const { updateSettings } = useUserSettings();
@@ -66,8 +68,15 @@ export function OnboardingScreen() {
     } else {
       // Finish
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await updateSettings({ hasSeenOnboarding: true });
-      router.replace('/(tabs)');
+
+      if (fromSettings) {
+        // Just go back if viewed from settings
+        router.back();
+      } else {
+        // Complete onboarding flow
+        await updateSettings({ hasSeenOnboarding: true });
+        router.replace('/(tabs)');
+      }
     }
   };
 
@@ -124,7 +133,7 @@ export function OnboardingScreen() {
           activeOpacity={0.8}
         >
           <Text style={styles.buttonText}>
-            {activeIndex === PAGES.length - 1 ? "Get Started" : "Next"}
+            {activeIndex === PAGES.length - 1 ? (fromSettings ? "Done" : "Get Started") : "Next"}
           </Text>
           <Ionicons
             name={activeIndex === PAGES.length - 1 ? "rocket" : "arrow-forward"}

@@ -1,46 +1,39 @@
+# Expo / React Native
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.convex/
+.kotlin/
+.metro-health-check*
+/ios
+/android
+
+# Environment
+.env*.local
+*.pem
+
+# Build artifacts
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.tsbuildinfo
+
+# Native signing
+*.p8
+*.p12
+*.jks
+*.key
+*.mobileprovision
+*.orig.*
+
 # macOS
 .DS_Store
 
-# Xcode
-build/
-DerivedData/
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
-*.xccheckout
-*.xcscmblueprint
-*.moved-aside
-*.xcuserstate
-*.xcworkspace/xcuserdata/
-*.xcodeproj/project.xcworkspace/xcuserdata/
-*.xcodeproj/xcuserdata/
-
-# Swift Package Manager
-.swiftpm/
-.build/
-Packages/
-Package.pins
-# Keep Package.resolved committed
-
-# CocoaPods
-Pods/
-
-# Carthage
-Carthage/Build/
-
-# Fastlane
-fastlane/report.xml
-fastlane/Preview.html
-fastlane/screenshots
-fastlane/test_output
-fastlane/readme.md
-
-# Code coverage
-*.gcno
-*.profraw
-*.profdata
-
+# Legacy Swift (reference only)
+legacySwiftApp/DerivedData/
+legacySwiftApp/build/
 
 # My Folders
 AppScreenies/
