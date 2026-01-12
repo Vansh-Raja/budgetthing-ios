@@ -7,7 +7,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   SectionList,
@@ -17,6 +16,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -33,6 +33,9 @@ import { TransactionRepository } from '../lib/db/repositories';
 import { TransactionDetailScreen } from './TransactionDetailScreen';
 import { useTrips } from '../lib/hooks/useTrips';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
+import { useAuth } from '@clerk/clerk-expo';
+import { Tabs } from '../constants/theme';
 
 // ============================================================================
 // Types & Props
@@ -134,6 +137,22 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   const { data: transactions, refresh } = useTransactions();
   const { data: categories } = useCategories();
   const { trips, refresh: refreshTrips } = useTrips();
+  const { syncNow } = useSyncStatus();
+  const { isSignedIn } = useAuth();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    syncNow('manual_refresh')
+      .then(() => Promise.all([refresh(), refreshTrips()]))
+      .catch((error) => {
+        console.error('[Transactions] Refresh failed:', error);
+      })
+      .finally(() => {
+        setIsRefreshing(false);
+      });
+  }, [syncNow, refresh, refreshTrips]);
 
   // Map to find trip expense info for a transaction
   const tripExpenseMap = useMemo(() => {
@@ -283,7 +302,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
     const months = sections.map(s => ({ id: s.id, title: s.title }));
 
     return { monthSections: sections, allMonths: months };
-  }, [transactions]);
+  }, [transactions, getEffectiveDisplayInfo]);
 
   const filteredSections = useMemo(() => {
     if (!selectedMonthKey) return monthSections;
@@ -338,7 +357,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         }
       ]
     );
-  }, [selectedIds, refresh]);
+  }, [selectedIds, refresh, refreshTrips]);
 
   const handleMove = useCallback(() => {
     // TODO: Show move sheet
@@ -354,8 +373,8 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   }, []);
 
   // Capability checks
-  const canMove = selectedIds.size > 0; // Simplified for mock
-  const canChangeCategory = selectedIds.size > 0; // Simplified for mock
+  const canMove = selectedIds.size > 0;
+  const canChangeCategory = selectedIds.size > 0;
 
   const renderItem = useCallback(({ item }: { item: Transaction }) => {
     const category = item.categoryId ? categoryMap[item.categoryId] : null;
@@ -497,6 +516,8 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         <SectionList
           sections={filteredSections}
           keyExtractor={(item) => item.id}
+          onRefresh={handleRefresh}
+          refreshing={isRefreshing}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 24 }}
@@ -507,7 +528,23 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
               <Text style={styles.emptyTitle}>No transactions yet</Text>
               <Text style={styles.emptySubtitle}>
                 Add an amount on the calculator and tap the checkmark to save.
+                {!isSignedIn ? ' Or sign in to restore your synced data.' : ''}
               </Text>
+
+              {!isSignedIn && (
+                <TouchableOpacity
+                  style={styles.signInCta}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    const settingsIndex = Tabs.findIndex((t) => t.key === 3);
+                    if (settingsIndex >= 0) onSelectIndex(settingsIndex);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.signInCtaText}>Sign in to restore synced data</Text>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.accent} />
+                </TouchableOpacity>
+              )}
             </View>
           }
         />
@@ -770,11 +807,29 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   emptySubtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
-    maxWidth: 240,
-    lineHeight: 22,
+    marginTop: 6,
+    maxWidth: 280,
+    lineHeight: 18,
+  },
+  signInCta: {
+    marginTop: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 9999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  signInCtaText: {
+    fontFamily: 'AvenirNextCondensed-DemiBold',
+    fontSize: 16,
+    color: Colors.accent,
   },
 
   // Bottom Overlay

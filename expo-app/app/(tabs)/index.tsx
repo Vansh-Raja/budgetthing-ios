@@ -19,26 +19,37 @@ import { Colors, Tabs } from '../../constants/theme';
 export default function MainTabsScreen() {
   const pagerRef = useRef<PagerView>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [tripsAddRequestId, setTripsAddRequestId] = useState(0);
   const insets = useSafeAreaInsets();
 
   const handleSelectIndex = useCallback((index: number) => {
-    console.log('Tab selected:', index);
     setSelectedIndex(index);
     pagerRef.current?.setPage(index);
   }, []);
 
   const handlePageSelected = useCallback((e: { nativeEvent: { position: number } }) => {
-    console.log('Page selected:', e.nativeEvent.position);
     setSelectedIndex(e.nativeEvent.position);
   }, []);
+
+  const handleRequestAddTrip = useCallback(() => {
+    const tripsIndex = Tabs.findIndex((tab) => tab.key === 4);
+    if (tripsIndex < 0) return;
+
+    handleSelectIndex(tripsIndex);
+
+    // Ensure the pager updates before opening the add sheet.
+    setTimeout(() => {
+      setTripsAddRequestId((id) => id + 1);
+    }, 0);
+  }, [handleSelectIndex]);
 
   // Render screen based on tab key (not index, since order is weird)
   const renderScreen = (tabKey: number) => {
     switch (tabKey) {
-      case 0: return <CalculatorScreen />;
+      case 0: return <CalculatorScreen onRequestAddTrip={handleRequestAddTrip} />;
       case 1: return <TransactionsScreen selectedIndex={selectedIndex} onSelectIndex={handleSelectIndex} />;
       case 2: return <AccountsScreen selectedIndex={selectedIndex} onSelectIndex={handleSelectIndex} />;
-      case 4: return <TripsScreen selectedIndex={selectedIndex} onSelectIndex={handleSelectIndex} />;
+      case 4: return <TripsScreen selectedIndex={selectedIndex} onSelectIndex={handleSelectIndex} addTripRequestId={tripsAddRequestId} />;
       case 3: return <SettingsScreen selectedIndex={selectedIndex} onSelectIndex={handleSelectIndex} />;
       default: return <CalculatorScreen />;
     }

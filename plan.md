@@ -595,6 +595,9 @@ Future: if needed, can add SQLCipher or similar.
 
 - Transfers: show in both accounts, excluded from category totals
 - Adjustments: affect balance, show as system transaction
+- [x] Account current-balance edits insert `systemType="adjustment"` (category: `System · Adjustment`)
+- [x] Default account (`userSettings.defaultAccountId`) preselects calculator account (does not affect account order)
+- [x] Calculator ⊕: categories opens Manage Categories; trips switches tabs and opens Add Trip
 - Trip effectiveAmount/hiding rules (`Transaction+TripShare.swift`)
 - All 5 split types with edge cases
 - Month grouping and totals

@@ -8,13 +8,13 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
     StatusBar,
     Modal,
 } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -127,8 +127,15 @@ export default function AccountDetailScreen() {
 
         let balance = 0;
         if (isCredit) {
-            balance = (account.limitAmountCents || 0) - expensesAll + incomesAll;
+            if (account.limitAmountCents !== undefined) {
+                // Available credit
+                balance = account.limitAmountCents - expensesAll + incomesAll;
+            } else {
+                // No limit set: show outstanding (spent − added)
+                balance = expensesAll - incomesAll;
+            }
         } else {
+            // Balance = opening + incomes − expenses
             balance = (account.openingBalanceCents || 0) + incomesAll - expensesAll;
         }
 
@@ -185,7 +192,7 @@ export default function AccountDetailScreen() {
         refreshAccounts();
     };
 
-    const windowLabel = (account?.kind === 'card' && account?.billingCycleDay)
+    const windowLabel = (account?.kind === 'card' && account?.billingCycleDay && account.billingCycleDay >= 1 && account.billingCycleDay <= 28)
         ? 'This billing cycle'
         : 'This month';
 

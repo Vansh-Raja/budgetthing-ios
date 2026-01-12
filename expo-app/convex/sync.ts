@@ -186,6 +186,22 @@ export const pull = query({
 });
 
 /**
+ * Latest sequence number for this user's changelog.
+ *
+ * Used as a lightweight realtime "poke" signal so clients can pull immediately
+ * when any other device writes.
+ */
+export const latestSeq = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const userId = identity.subject;
+    return await getLastSeq(ctx, userId);
+  },
+});
+
+/**
  * Whoami query: useful for testing auth integration
  */
 export const whoami = query({

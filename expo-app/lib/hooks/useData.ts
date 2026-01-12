@@ -1,16 +1,18 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Alert } from 'react-native';
 import { TransactionRepository, CategoryRepository, AccountRepository } from '../db/repositories';
 import { Transaction, Category, Account } from '../logic/types';
-import { isDatabaseReady, waitForDatabase } from '../db/database';
-
-import { GlobalEvents } from '../events';
+import { waitForDatabase } from '../db/database';
+import { Events, GlobalEvents } from '../events';
 
 export function useRepository<T>(fetcher: () => Promise<T[]>) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+
+  // PagerView tabs don't trigger navigation focus changes, so we always do
+  // an initial mount refresh. `useFocusEffect` remains useful for stacked routes.
+  const skipNextFocusRefreshRef = useRef(true);
 
   const refresh = useCallback(async () => {
     try {
@@ -22,16 +24,24 @@ export function useRepository<T>(fetcher: () => Promise<T[]>) {
       const result = await fetcher();
       setData(result);
     } catch (e) {
-      console.log('Data fetch pending (db initializing):', e);
       setError(e as Error);
-      // Don't spam logs - this is expected during startup
     } finally {
       setLoading(false);
     }
   }, [fetcher]);
 
+  // Initial load
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Re-fetch when a navigation route regains focus (not triggered by PagerView)
   useFocusEffect(
     useCallback(() => {
+      if (skipNextFocusRefreshRef.current) {
+        skipNextFocusRefreshRef.current = false;
+        return;
+      }
       refresh();
     }, [refresh])
   );
@@ -43,16 +53,28 @@ export function useTransactions() {
   const result = useRepository<Transaction>(TransactionRepository.getAll);
 
   useEffect(() => {
-    return GlobalEvents.on('transactions_changed', result.refresh);
+    return GlobalEvents.on(Events.transactionsChanged, result.refresh);
   }, [result.refresh]);
 
   return result;
 }
 
 export function useCategories() {
-  return useRepository<Category>(CategoryRepository.getAll);
+  const result = useRepository<Category>(CategoryRepository.getAll);
+
+  useEffect(() => {
+    return GlobalEvents.on(Events.categoriesChanged, result.refresh);
+  }, [result.refresh]);
+
+  return result;
 }
 
 export function useAccounts() {
-  return useRepository<Account>(AccountRepository.getAll);
+  const result = useRepository<Account>(AccountRepository.getAll);
+
+  useEffect(() => {
+    return GlobalEvents.on(Events.accountsChanged, result.refresh);
+  }, [result.refresh]);
+
+  return result;
 }

@@ -4,16 +4,16 @@
  * Pixel-perfect port of TripsListView.swift
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   StatusBar,
   Alert,
 } from 'react-native';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import { Text } from '@/components/ui/LockedText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -26,6 +26,7 @@ import { TripDetailScreen } from './TripDetailScreen';
 import { AddTripScreen } from './AddTripScreen';
 import { Modal } from 'react-native';
 import { useTrips } from '../lib/hooks/useTrips';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { TripRepository, TripParticipantRepository } from '../lib/db/repositories';
 
 // ============================================================================
@@ -35,26 +36,50 @@ import { TripRepository, TripParticipantRepository } from '../lib/db/repositorie
 interface TripsScreenProps {
   selectedIndex: number;
   onSelectIndex: (index: number) => void;
+  addTripRequestId?: number;
 }
 
 // ============================================================================
 // Main Component
 // ============================================================================
 
-export function TripsScreen({ selectedIndex, onSelectIndex }: TripsScreenProps) {
+export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0 }: TripsScreenProps) {
   const insets = useSafeAreaInsets();
   const { trips, refresh } = useTrips();
+  const { syncNow } = useSyncStatus();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    syncNow('manual_refresh')
+      .then(() => refresh())
+      .catch((error) => {
+        console.error('[Trips] Refresh failed:', error);
+      })
+      .finally(() => {
+        setIsRefreshing(false);
+      });
+  }, [syncNow, refresh]);
 
   // State
   const [showFloatingPager, setShowFloatingPager] = useState(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [showAddTrip, setShowAddTrip] = useState(false);
 
+  useEffect(() => {
+    if (addTripRequestId <= 0) return;
+    setSelectedTripId(null);
+    setShowAddTrip(true);
+  }, [addTripRequestId]);
+
   const selectedTrip = useMemo(() => trips.find(t => t.id === selectedTripId) || null, [trips, selectedTripId]);
 
-  // Derived state
-  const activeTrips = useMemo(() => trips.filter(t => !t.isArchived), [trips]);
-  const archivedTrips = useMemo(() => trips.filter(t => t.isArchived), [trips]);
+  const [orderedTrips, setOrderedTrips] = useState<Trip[]>([]);
+
+  useEffect(() => {
+    setOrderedTrips(trips);
+  }, [trips]);
 
   const handleAddTrip = () => {
     Haptics.selectionAsync();
@@ -88,7 +113,6 @@ export function TripsScreen({ selectedIndex, onSelectIndex }: TripsScreenProps) 
         }
       }
 
-      console.log("Trip added:", createdTrip);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowAddTrip(false);
       refresh();
@@ -102,6 +126,15 @@ export function TripsScreen({ selectedIndex, onSelectIndex }: TripsScreenProps) 
     Haptics.selectionAsync();
     setSelectedTripId(trip.id);
   };
+
+  const handleReorder = useCallback(({ data }: { data: Trip[] }) => {
+    setOrderedTrips(data);
+
+    TripRepository.reorder(data.map(t => t.id)).catch((error) => {
+      console.error('[Trips] Failed to reorder trips:', error);
+      refresh();
+    });
+  }, [refresh]);
 
   return (
     <View style={styles.container}>
@@ -137,42 +170,39 @@ export function TripsScreen({ selectedIndex, onSelectIndex }: TripsScreenProps) 
             </TouchableOpacity>
           </View>
         ) : (
-          <ScrollView
+          <DraggableFlatList
+            data={orderedTrips}
+            keyExtractor={(item) => item.id}
+            onDragEnd={handleReorder}
+            renderItem={({ item: trip, drag, isActive, getIndex }: RenderItemParams<Trip>) => {
+              const index = getIndex?.() ?? -1;
+              const showArchivedHeader =
+                index >= 0 &&
+                trip.isArchived &&
+                (index === 0 || !orderedTrips[index - 1]?.isArchived);
+
+              return (
+                <View style={[trip.isArchived && { opacity: 0.6 }]}>
+                  {showArchivedHeader && <Text style={styles.sectionHeader}>Archived</Text>}
+                  <TouchableOpacity
+                    onPress={() => handleTripPress(trip)}
+                    onLongPress={() => {
+                      Haptics.selectionAsync();
+                      drag();
+                    }}
+                    disabled={isActive}
+                    activeOpacity={0.7}
+                  >
+                    <TripCard trip={trip} />
+                  </TouchableOpacity>
+                </View>
+              );
+            }}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
-          >
-            {/* Active Trips */}
-            {activeTrips.length > 0 && (
-              <View style={styles.section}>
-                {activeTrips.map(trip => (
-                  <TouchableOpacity
-                    key={trip.id}
-                    onPress={() => handleTripPress(trip)}
-                    activeOpacity={0.7}
-                  >
-                    <TripCard trip={trip} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Archived Trips */}
-            {archivedTrips.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionHeader}>Archived</Text>
-                {archivedTrips.map(trip => (
-                  <TouchableOpacity
-                    key={trip.id}
-                    onPress={() => handleTripPress(trip)}
-                    activeOpacity={0.7}
-                    style={{ opacity: 0.6 }}
-                  >
-                    <TripCard trip={trip} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </ScrollView>
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+          />
         )}
       </View>
 

@@ -2,15 +2,15 @@
  * Manage Categories Screen
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     TouchableOpacity,
-    ScrollView,
     Modal,
 } from 'react-native';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import { Text } from '@/components/ui/LockedText';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors } from '../constants/theme';
 import { Category } from '../lib/logic/types';
 import { useCategories } from '../lib/hooks/useData';
+import { CategoryRepository } from '../lib/db/repositories';
 import { EditCategoryScreen } from './EditCategoryScreen';
 
 export function ManageCategoriesScreen() {
@@ -26,10 +27,31 @@ export function ManageCategoriesScreen() {
 
     const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
     const [showEditor, setShowEditor] = useState(false);
+    const [orderedUserCategories, setOrderedUserCategories] = useState<Category[]>([]);
 
     // Filter out system categories
-    const userCategories = categories.filter(c => !c.isSystem).sort((a, b) => a.sortIndex - b.sortIndex);
-    const systemCategories = categories.filter(c => c.isSystem);
+    const userCategories = useMemo(
+        () => categories.filter(c => !c.isSystem).sort((a, b) => a.sortIndex - b.sortIndex),
+        [categories]
+    );
+    const systemCategories = useMemo(
+        () => categories.filter(c => c.isSystem).sort((a, b) => a.sortIndex - b.sortIndex),
+        [categories]
+    );
+
+    useEffect(() => {
+        setOrderedUserCategories(userCategories);
+    }, [userCategories]);
+
+    const handleReorder = async ({ data }: { data: Category[] }) => {
+        setOrderedUserCategories(data);
+        try {
+            await CategoryRepository.reorder(data.map(c => c.id));
+        } catch (e) {
+            console.error('[ManageCategories] Failed to reorder categories:', e);
+            refresh();
+        }
+    };
 
     const handleEdit = (id: string) => {
         Haptics.selectionAsync();
@@ -53,33 +75,103 @@ export function ManageCategoriesScreen() {
         handleEditorDismiss();
     };
 
-    const CategoryRow = ({ category }: { category: Category }) => (
-        <TouchableOpacity
-            style={styles.row}
-            onPress={() => handleEdit(category.id)}
-            activeOpacity={0.7}
-            disabled={category.isSystem}
-        >
-            <View style={styles.emojiContainer}>
-                <Text style={styles.emoji}>{category.emoji}</Text>
-            </View>
+    const renderUserCategory = ({ item: category, drag, isActive, getIndex }: RenderItemParams<Category>) => {
+        const index = getIndex?.() ?? -1;
+        const isFirst = index === 0;
+        const isLast = index === orderedUserCategories.length - 1;
 
-            <View style={styles.textContainer}>
-                <Text style={[styles.name, category.isSystem && styles.systemName]}>{category.name}</Text>
-                {category.monthlyBudgetCents ? (
-                    <Text style={styles.subtitle}>Budget: ₹{(category.monthlyBudgetCents / 100).toFixed(0)}/mo</Text>
-                ) : null}
-            </View>
+        return (
+            <View
+                style={[
+                    styles.cardRowContainer,
+                    isFirst && styles.cardRowFirst,
+                    isLast && styles.cardRowLast,
+                    isActive && styles.cardRowActive,
+                ]}
+            >
+                <View style={styles.rowContainer}>
+                    <TouchableOpacity
+                        style={styles.rowMain}
+                        onPress={() => handleEdit(category.id)}
+                        activeOpacity={0.7}
+                        disabled={isActive}
+                    >
+                        <View style={styles.emojiContainer}>
+                            <Text style={styles.emoji}>{category.emoji}</Text>
+                        </View>
 
-            {!category.isSystem && (
-                <Ionicons name="chevron-forward" size={20} color="rgba(255, 255, 255, 0.3)" />
-            )}
-        </TouchableOpacity>
-    );
+                        <View style={styles.textContainer}>
+                            <Text style={styles.name}>{category.name}</Text>
+                            {category.monthlyBudgetCents ? (
+                                <Text style={styles.subtitle}>Budget: ₹{(category.monthlyBudgetCents / 100).toFixed(0)}/mo</Text>
+                            ) : null}
+                        </View>
+
+                        <Ionicons name="chevron-forward" size={20} color="rgba(255, 255, 255, 0.3)" style={styles.chevron} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.dragHandle}
+                        onLongPress={() => {
+                            Haptics.selectionAsync();
+                            drag();
+                        }}
+                        delayLongPress={150}
+                        activeOpacity={0.7}
+                        disabled={isActive}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                        <Ionicons name="reorder-three" size={24} color="rgba(255, 255, 255, 0.35)" />
+                    </TouchableOpacity>
+                </View>
+
+                {!isLast && <View style={styles.divider} />}
+            </View>
+        );
+    };
+
+    const renderSystemSection = () => {
+        if (systemCategories.length === 0) return null;
+
+        return (
+            <View style={styles.section}>
+                <Text style={styles.sectionHeader}>System</Text>
+                {systemCategories.map((category, index) => {
+                    const isFirst = index === 0;
+                    const isLast = index === systemCategories.length - 1;
+
+                    return (
+                        <View
+                            key={category.id}
+                            style={[
+                                styles.cardRowContainer,
+                                isFirst && styles.cardRowFirst,
+                                isLast && styles.cardRowLast,
+                                styles.cardRowDisabled,
+                            ]}
+                        >
+                            <View style={styles.row}>
+                                <View style={styles.emojiContainer}>
+                                    <Text style={styles.emoji}>{category.emoji}</Text>
+                                </View>
+
+                                <View style={styles.textContainer}>
+                                    <Text style={[styles.name, styles.systemName]}>{category.name}</Text>
+                                </View>
+                            </View>
+
+                            {!isLast && <View style={styles.divider} />}
+                        </View>
+                    );
+                })}
+            </View>
+        );
+    };
 
     return (
         <View style={styles.container}>
             <Stack.Screen options={{
+                headerShown: true,
                 title: "Categories",
                 headerStyle: { backgroundColor: '#000000' },
                 headerTintColor: '#FFFFFF',
@@ -95,35 +187,21 @@ export function ManageCategoriesScreen() {
                 ),
             }} />
 
-            <ScrollView contentContainerStyle={styles.content}>
-                {userCategories.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionHeader}>Your Categories</Text>
-                        <View style={styles.card}>
-                            {userCategories.map((category, i) => (
-                                <View key={category.id}>
-                                    <CategoryRow category={category} />
-                                    {i < userCategories.length - 1 && <View style={styles.divider} />}
-                                </View>
-                            ))}
+            <DraggableFlatList
+                data={orderedUserCategories}
+                keyExtractor={(item) => item.id}
+                onDragEnd={handleReorder}
+                renderItem={renderUserCategory}
+                contentContainerStyle={styles.content}
+                ListHeaderComponent={
+                    orderedUserCategories.length > 0 ? (
+                        <View style={styles.section}>
+                            <Text style={styles.sectionHeader}>Your Categories</Text>
                         </View>
-                    </View>
-                )}
-
-                {systemCategories.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionHeader}>System</Text>
-                        <View style={styles.card}>
-                            {systemCategories.map((category, i) => (
-                                <View key={category.id}>
-                                    <CategoryRow category={category} />
-                                    {i < systemCategories.length - 1 && <View style={styles.divider} />}
-                                </View>
-                            ))}
-                        </View>
-                    </View>
-                )}
-            </ScrollView>
+                    ) : null
+                }
+                ListFooterComponent={<View style={styles.footer}>{renderSystemSection()}</View>}
+            />
 
             <Modal
                 visible={showEditor}
@@ -148,7 +226,7 @@ const styles = StyleSheet.create({
     },
     content: {
         padding: 20,
-        gap: 24,
+        paddingBottom: 40,
     },
     section: {
         gap: 8,
@@ -160,16 +238,53 @@ const styles = StyleSheet.create({
         marginLeft: 16,
         textTransform: 'uppercase',
     },
-    card: {
+    footer: {
+        marginTop: 24,
+    },
+    cardRowContainer: {
         backgroundColor: 'rgba(255, 255, 255, 0.08)',
-        borderRadius: 16,
         overflow: 'hidden',
+    },
+    cardRowFirst: {
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+    },
+    cardRowLast: {
+        borderBottomLeftRadius: 16,
+        borderBottomRightRadius: 16,
+    },
+    cardRowActive: {
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    cardRowDisabled: {
+        opacity: 0.6,
+    },
+    rowContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
     },
     row: {
         flexDirection: 'row',
         alignItems: 'center',
         padding: 16,
         gap: 16,
+    },
+    rowMain: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        gap: 16,
+    },
+    chevron: {
+        marginRight: 6,
+    },
+    dragHandle: {
+        paddingRight: 14,
+        paddingVertical: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     emojiContainer: {
         width: 40,

@@ -4,7 +4,6 @@ export async function seedDatabaseIfNeeded() {
   // Categories
   const categories = await CategoryRepository.getAll();
   if (categories.length === 0) {
-    console.log("Seeding categories...");
     const defaults = [
       { emoji: "🍔", name: "Food" },
       { emoji: "🛒", name: "Groceries" },
@@ -23,7 +22,6 @@ export async function seedDatabaseIfNeeded() {
   // Accounts
   const accounts = await AccountRepository.getAll();
   if (accounts.length === 0) {
-    console.log("Seeding default account...");
     const cash = await AccountRepository.create({ name: "Cash", emoji: "💵", kind: "cash", sortIndex: 0 });
     // Default account ID stored in UserSettings
     await UserSettingsRepository.update({ defaultAccountId: cash.id });

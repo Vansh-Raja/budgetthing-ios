@@ -1,7 +1,7 @@
 /**
  * TripBalanceCalculator - Calculates balances and debts for group trips
  * 
- * This is a direct port of TripBalanceCalculator.swift with identical behavior.
+ * Ported from the Swift app (with settlement behavior adapted for “settle up”).
  * All amounts are in cents (integers) to avoid floating-point issues.
  */
 
@@ -58,7 +58,7 @@ export function calculateBalances(
     }
   }
 
-  // Process settlements - when A pays B, it's like A paid for something B owed
+  // Process settlements - recorded payments reduce outstanding balances
   for (const settlement of settlements) {
     const fromId = settlement.fromParticipantId;
     const toId = settlement.toParticipantId;

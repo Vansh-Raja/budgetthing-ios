@@ -7,12 +7,12 @@
 import React, { useState, useCallback } from 'react';
 import {
     TouchableOpacity,
-    Text,
     StyleSheet,
     ActivityIndicator,
     Alert,
     View,
 } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import { useSSO } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';

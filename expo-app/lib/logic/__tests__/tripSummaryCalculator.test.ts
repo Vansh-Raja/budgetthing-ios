@@ -37,6 +37,7 @@ function makeTrip(options: {
     id: uuidv4(),
     name: options.name ?? 'Test Trip',
     emoji: '🧳',
+    sortIndex: 0,
     isGroup: true,
     isArchived: false,
     startDate: options.startDate,

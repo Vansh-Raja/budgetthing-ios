@@ -31,7 +31,7 @@ export const Actions = {
      * Create a new trip with initial participants
      */
     async createTrip(
-        tripData: Omit<Trip, 'id' | 'createdAtMs' | 'updatedAtMs' | 'participants' | 'expenses' | 'settlements'>,
+        tripData: Omit<Trip, 'id' | 'createdAtMs' | 'updatedAtMs' | 'sortIndex' | 'participants' | 'expenses' | 'settlements'>,
         participantsData: { name: string; isCurrentUser: boolean }[]
     ): Promise<Trip> {
         return await withTransaction(async () => {

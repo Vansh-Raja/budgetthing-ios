@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as deleteMyAccount from "../deleteMyAccount.js";
 import type * as sync from "../sync.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  deleteMyAccount: typeof deleteMyAccount;
   sync: typeof sync;
 }>;
 

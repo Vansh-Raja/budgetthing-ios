@@ -2,22 +2,21 @@
  * Currency Picker Screen
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
-    TextInput,
 } from 'react-native';
+import { Text, TextInput } from '@/components/ui/LockedText';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { Colors } from '../constants/theme';
 import { CURRENCIES, getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { UserSettingsRepository } from '../lib/db/repositories';
+import { useUserSettings } from '../lib/hooks/useUserSettings';
 
 interface CurrencyPickerScreenProps {
     currentCurrency?: string;
@@ -25,10 +24,18 @@ interface CurrencyPickerScreenProps {
     onDismiss?: () => void;
 }
 
-export function CurrencyPickerScreen({ currentCurrency = 'INR', onSelect, onDismiss }: CurrencyPickerScreenProps) {
+export function CurrencyPickerScreen({ currentCurrency, onSelect, onDismiss }: CurrencyPickerScreenProps) {
     const router = useRouter();
+    const { settings, updateSettings } = useUserSettings();
+
+    const effectiveCurrentCurrency = currentCurrency ?? settings?.currencyCode ?? 'INR';
+
     const [search, setSearch] = useState('');
-    const [selected, setSelected] = useState(currentCurrency);
+    const [selected, setSelected] = useState(effectiveCurrentCurrency);
+
+    useEffect(() => {
+        setSelected(effectiveCurrentCurrency);
+    }, [effectiveCurrentCurrency]);
 
     const filteredCurrencies = useMemo(() => {
         if (!search) return CURRENCIES;
@@ -45,7 +52,7 @@ export function CurrencyPickerScreen({ currentCurrency = 'INR', onSelect, onDism
         setSelected(code);
 
         try {
-            await UserSettingsRepository.update({ currencyCode: code });
+            await updateSettings({ currencyCode: code });
             if (onSelect) onSelect(code);
             if (onDismiss) onDismiss();
             else router.back();
@@ -57,6 +64,7 @@ export function CurrencyPickerScreen({ currentCurrency = 'INR', onSelect, onDism
     return (
         <View style={styles.container}>
             <Stack.Screen options={{
+                headerShown: true,
                 title: "Currency",
                 headerStyle: { backgroundColor: '#000000' },
                 headerTintColor: '#FFFFFF',

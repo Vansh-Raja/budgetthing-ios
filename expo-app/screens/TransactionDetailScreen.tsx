@@ -8,28 +8,30 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
     Alert,
-    TextInput,
     LayoutAnimation,
     Platform,
     Modal,
 } from 'react-native';
+import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { Colors } from '../constants/theme';
-import { Transaction, Trip, TripExpense, TripParticipant } from '../lib/logic/types';
+import { SplitType, Transaction, Trip, TripExpense } from '../lib/logic/types';
 import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { Actions } from '../lib/logic/actions';
-import { TransactionRepository, TripExpenseRepository, TripRepository } from '../lib/db/repositories';
-import { useCategories, useAccounts, useTransactions } from '../lib/hooks/useData';
+import { withTransaction } from '../lib/db/database';
+import { TransactionRepository, TripExpenseRepository } from '../lib/db/repositories';
+import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import { useCategories, useAccounts } from '../lib/hooks/useData';
 import { useTrips } from '../lib/hooks/useTrips';
+import { SplitEditorScreen } from './SplitEditorScreen';
 
 interface TransactionDetailScreenProps {
     transactionId: string;
@@ -65,10 +67,18 @@ export function TransactionDetailScreen({
     const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
     const [editAccountId, setEditAccountId] = useState<string | null>(null);
 
+    // Trip editing state (group trips)
+    const [editPaidByParticipantId, setEditPaidByParticipantId] = useState<string | null>(null);
+    const [editSplitType, setEditSplitType] = useState<SplitType>('equal');
+    const [editSplitData, setEditSplitData] = useState<Record<string, number>>({});
+    const [editComputedSplits, setEditComputedSplits] = useState<Record<string, number>>({});
+
     // Pickers
     const [showCategoryPicker, setShowCategoryPicker] = useState(false);
     const [showAccountPicker, setShowAccountPicker] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
+    const [showSplitEditor, setShowSplitEditor] = useState(false);
+    const [showPayerPicker, setShowPayerPicker] = useState(false);
 
     // Load Data
     useEffect(() => {
@@ -135,6 +145,57 @@ export function TransactionDetailScreen({
     const account = accounts.find(a => a.id === (isEditing ? editAccountId : transaction?.accountId));
     const isIncome = transaction?.type === 'income';
 
+    // Sync trip-edit state from DB when not editing.
+    useEffect(() => {
+        if (isEditing) return;
+
+        if (!relatedTrip || !tripExpense || !relatedTrip.isGroup) {
+            setEditPaidByParticipantId(null);
+            setEditSplitType('equal');
+            setEditSplitData({});
+            setEditComputedSplits({});
+            return;
+        }
+
+        setEditPaidByParticipantId(tripExpense.paidByParticipantId ?? null);
+        setEditSplitType(tripExpense.splitType);
+        setEditSplitData(tripExpense.splitData ?? {});
+        setEditComputedSplits(tripExpense.computedSplits ?? {});
+    }, [isEditing, relatedTrip, tripExpense]);
+
+    // Live-preview recompute for group-trip splits while editing.
+    useEffect(() => {
+        if (!isEditing) return;
+        if (!relatedTrip || !tripExpense || !relatedTrip.isGroup) return;
+
+        const parsed = parseFloat(editAmountString);
+        const totalAmountCents = Math.round((Number.isFinite(parsed) ? parsed : 0) * 100);
+        if (totalAmountCents <= 0) {
+            setEditComputedSplits({});
+            return;
+        }
+
+        const computed = TripSplitCalculator.calculateSplits(
+            totalAmountCents,
+            editSplitType,
+            relatedTrip.participants ?? [],
+            editSplitData
+        );
+        setEditComputedSplits(computed);
+    }, [isEditing, relatedTrip, tripExpense, editAmountString, editSplitType, editSplitData]);
+
+    const ensurePayerSelected = () => {
+        if (!relatedTrip?.participants || relatedTrip.participants.length === 0) return null;
+
+        if (editPaidByParticipantId && relatedTrip.participants.some(p => p.id === editPaidByParticipantId)) {
+            return editPaidByParticipantId;
+        }
+
+        const fallback = relatedTrip.participants.find(p => p.isCurrentUser)?.id ?? relatedTrip.participants[0].id;
+        setEditPaidByParticipantId(fallback);
+        return fallback;
+    };
+ 
     // Recent categories for the quick picker (top 5 + current)
     const quickCategories = useMemo(() => {
         const result = categories.filter(c => !c.isSystem).slice(0, 5);
@@ -159,12 +220,32 @@ export function TransactionDetailScreen({
         const newAmountCents = Math.round(newAmount * 100) * (isIncome ? 1 : -1);
 
         try {
-            await TransactionRepository.update(transaction.id, {
-                amountCents: newAmountCents,
-                date: editDate.getTime(),
-                note: editNote.trim() || undefined,
-                categoryId: editCategoryId || undefined,
-                accountId: editAccountId || undefined
+            await withTransaction(async () => {
+                await TransactionRepository.update(transaction.id, {
+                    amountCents: newAmountCents,
+                    date: editDate.getTime(),
+                    note: editNote.trim() || undefined,
+                    categoryId: editCategoryId || undefined,
+                    accountId: editAccountId || undefined
+                });
+
+                // If this transaction is part of a group trip, update payer + split metadata as well.
+                if (relatedTrip?.isGroup && tripExpense) {
+                    const totalAmountCents = Math.abs(newAmountCents);
+                    const computed = TripSplitCalculator.calculateSplits(
+                        totalAmountCents,
+                        editSplitType,
+                        relatedTrip.participants ?? [],
+                        editSplitData
+                    );
+
+                    await TripExpenseRepository.update(tripExpense.id, {
+                        paidByParticipantId: editPaidByParticipantId ?? tripExpense.paidByParticipantId,
+                        splitType: editSplitType,
+                        splitData: editSplitData,
+                        computedSplits: computed,
+                    });
+                }
             });
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -401,6 +482,116 @@ export function TransactionDetailScreen({
                             )}
                         </View>
 
+                        {/* Split Details - editable for group trips */}
+                        {relatedTrip && relatedTrip.isGroup && tripExpense && (
+                            <View style={styles.splitDetailsSection}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Text style={styles.splitDetailsLabel}>Split Details</Text>
+                                    <View style={{ flex: 1 }} />
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            Haptics.selectionAsync();
+                                            ensurePayerSelected();
+                                            setShowSplitEditor(true);
+                                        }}
+                                        activeOpacity={0.7}
+                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                    >
+                                        <Text style={{ color: Colors.accent, fontSize: 12, fontWeight: '600' }}>Edit</Text>
+                                        <Ionicons name="chevron-forward" size={12} color={Colors.accent} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                <View style={styles.splitCard}>
+                                    <TouchableOpacity
+                                        style={styles.paidByRow}
+                                        onPress={() => {
+                                            Haptics.selectionAsync();
+                                            setShowPayerPicker(true);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        {(() => {
+                                            const payer = relatedTrip.participants?.find(p => p.id === editPaidByParticipantId);
+                                            const parsed = parseFloat(editAmountString);
+                                            const amountCents = Math.round((Number.isFinite(parsed) ? parsed : 0) * 100);
+                                            const displayAmountCents = amountCents > 0 ? amountCents : Math.abs(transaction.amountCents);
+
+                                            if (payer) {
+                                                return (
+                                                    <>
+                                                        <View style={[styles.avatar, { backgroundColor: '#' + (payer.colorHex || 'FF9500') }]}>
+                                                            <Text style={styles.avatarLetter}>{payer.name?.[0]?.toUpperCase() || '?'}</Text>
+                                                        </View>
+                                                        <Text style={styles.paidByText}>
+                                                            {payer.isCurrentUser ? 'You paid' : `${payer.name} paid`}
+                                                        </Text>
+                                                        <View style={{ flex: 1 }} />
+                                                        <Text style={styles.paidByAmount}>{formatCents(displayAmountCents, "INR")}</Text>
+                                                        <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.35)" />
+                                                    </>
+                                                );
+                                            }
+
+                                            return (
+                                                <>
+                                                    <View style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
+                                                        <Ionicons name="person-outline" size={14} color="rgba(255,255,255,0.75)" />
+                                                    </View>
+                                                    <Text style={styles.paidByText}>Select who paid</Text>
+                                                    <View style={{ flex: 1 }} />
+                                                    <Text style={styles.paidByAmount}>{formatCents(displayAmountCents, "INR")}</Text>
+                                                    <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.35)" />
+                                                </>
+                                            );
+                                        })()}
+                                    </TouchableOpacity>
+
+                                    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
+
+                                    <View style={styles.splitTypeRow}>
+                                        <Ionicons
+                                            name={
+                                                editSplitType === 'equal' ? 'people-outline' :
+                                                    editSplitType === 'percentage' ? 'pie-chart-outline' :
+                                                        editSplitType === 'shares' ? 'layers-outline' :
+                                                            editSplitType === 'exact' ? 'cash-outline' : 'checkmark-circle-outline'
+                                            }
+                                            size={14}
+                                            color={Colors.accent}
+                                        />
+                                        <Text style={styles.splitTypeText}>
+                                            By {editSplitType === 'equal' ? 'Equal' :
+                                                editSplitType === 'equalSelected' ? 'Selected' :
+                                                    editSplitType === 'percentage' ? 'Percentage' :
+                                                        editSplitType === 'shares' ? 'Shares' :
+                                                            editSplitType === 'exact' ? 'Exact' : editSplitType}
+                                        </Text>
+                                    </View>
+
+                                    {relatedTrip.participants?.map(participant => {
+                                        const owedAmount = editComputedSplits?.[participant.id];
+                                        if (!owedAmount || owedAmount <= 0) return null;
+
+                                        return (
+                                            <View key={participant.id} style={styles.participantRow}>
+                                                <View style={[styles.avatarSmall, { backgroundColor: '#' + (participant.colorHex || 'FF9500') }]}>
+                                                    <Text style={styles.avatarLetterSmall}>{participant.name?.[0]?.toUpperCase() || '?'}</Text>
+                                                </View>
+                                                <Text style={styles.participantName}>
+                                                    {participant.isCurrentUser ? 'You' : participant.name}
+                                                </Text>
+                                                <View style={{ flex: 1 }} />
+                                                <Text style={styles.participantAmount}>
+                                                    {formatCents(owedAmount, "INR")}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })}
+                                </View>
+                            </View>
+                        )}
+ 
                     </View>
                 ) : (
                     /* VIEW MODE LAYOUT */
@@ -592,6 +783,74 @@ export function TransactionDetailScreen({
                             >
                                 <Text style={{ fontSize: 24, marginRight: 15 }}>{a.emoji}</Text>
                                 <Text style={{ fontSize: 18, color: 'white', fontFamily: 'AvenirNextCondensed-DemiBold' }}>{a.name}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            </Modal>
+
+            {/* Trip Split Editor Modal */}
+            <Modal
+                visible={showSplitEditor}
+                animationType="slide"
+                presentationStyle="pageSheet"
+                onRequestClose={() => setShowSplitEditor(false)}
+            >
+                {relatedTrip && tripExpense && relatedTrip.isGroup && (
+                    <SplitEditorScreen
+                        participants={relatedTrip.participants ?? []}
+                        totalAmountCents={Math.max(0, Math.round((parseFloat(editAmountString) || 0) * 100))}
+                        currencyCode="INR"
+                        initialSplitType={editSplitType}
+                        initialSplitData={editSplitData}
+                        payerId={editPaidByParticipantId || undefined}
+                        onPayerChange={(id) => setEditPaidByParticipantId(id)}
+                        onSave={(splitType, splitData, computedSplits) => {
+                            setEditSplitType(splitType);
+                            setEditSplitData(splitData);
+                            setEditComputedSplits(computedSplits);
+                            setShowSplitEditor(false);
+                        }}
+                        onCancel={() => setShowSplitEditor(false)}
+                    />
+                )}
+            </Modal>
+
+            {/* Payer Picker Modal */}
+            <Modal
+                visible={showPayerPicker}
+                animationType="slide"
+                presentationStyle="pageSheet"
+                onRequestClose={() => setShowPayerPicker(false)}
+            >
+                <View style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Who paid?</Text>
+                        <TouchableOpacity onPress={() => setShowPayerPicker(false)}>
+                            <Text style={{ color: Colors.accent, fontSize: 16 }}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <ScrollView contentContainerStyle={{ padding: 20 }}>
+                        {(relatedTrip?.participants ?? []).map(p => (
+                            <TouchableOpacity
+                                key={p.id}
+                                style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}
+                                onPress={() => {
+                                    Haptics.selectionAsync();
+                                    setEditPaidByParticipantId(p.id);
+                                    setShowPayerPicker(false);
+                                }}
+                            >
+                                <View style={[styles.avatar, { backgroundColor: '#' + (p.colorHex || 'FF9500') }]}>
+                                    <Text style={styles.avatarLetter}>{p.name?.[0]?.toUpperCase() || '?'}</Text>
+                                </View>
+                                <Text style={{ marginLeft: 12, fontSize: 18, color: 'white', fontFamily: 'AvenirNextCondensed-DemiBold' }}>
+                                    {p.isCurrentUser ? 'You' : p.name}
+                                </Text>
+                                <View style={{ flex: 1 }} />
+                                {editPaidByParticipantId === p.id && (
+                                    <Ionicons name="checkmark" size={18} color={Colors.accent} />
+                                )}
                             </TouchableOpacity>
                         ))}
                     </ScrollView>

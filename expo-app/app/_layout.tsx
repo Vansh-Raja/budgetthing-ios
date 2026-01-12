@@ -12,7 +12,7 @@ import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import { ConvexReactClient } from 'convex/react';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { tokenCache } from '../lib/auth/tokenCache';
-import { seedDatabaseIfNeeded } from '../lib/db/seed';
+import { SyncProvider } from '../lib/sync/SyncProvider';
 import * as Linking from 'expo-linking';
 
 export {
@@ -20,16 +20,20 @@ export {
   ErrorBoundary,
 } from 'expo-router';
 
-// Default to placeholders if not set (will fail at runtime if not configured)
-const CLERK_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_PLACEHOLDER';
-const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || 'https://placeholder.convex.cloud';
+const CLERK_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
+const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL ?? '';
+
+// Fail fast in non-dev so we don't ship with placeholders.
+if (!__DEV__) {
+  if (!CLERK_KEY) throw new Error('Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY');
+  if (!CONVEX_URL) throw new Error('Missing EXPO_PUBLIC_CONVEX_URL');
+}
 
 const convex = new ConvexReactClient(CONVEX_URL, {
   unsavedChangesWarning: false,
 });
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
@@ -58,13 +62,6 @@ export default function RootLayout() {
     if (error) throw error;
   }, [error]);
 
-  useEffect(() => {
-    if (loaded) {
-      // Seed database
-      seedDatabaseIfNeeded().catch(console.error);
-      // SplashScreen.hideAsync(); // Moved to InitialLayout
-    }
-  }, [loaded]);
 
   if (!loaded) {
     return null;
@@ -85,9 +82,11 @@ function RootLayoutNav() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <SafeAreaProvider>
             <ThemeProvider value={AppTheme}>
-              <UserSettingsProvider>
-                <InitialLayout />
-              </UserSettingsProvider>
+              <SyncProvider>
+                <UserSettingsProvider>
+                  <InitialLayout />
+                </UserSettingsProvider>
+              </SyncProvider>
             </ThemeProvider>
           </SafeAreaProvider>
         </GestureHandlerRootView>
@@ -188,10 +187,17 @@ function InitialLayout() {
   }, [isReady, router]);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="onboarding" options={{ gestureEnabled: false, animation: 'fade' }} />
+    <Stack
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: '#000000' },
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: { fontFamily: 'AvenirNextCondensed-DemiBold', fontSize: 18 },
+      }}
+    >
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="settings" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false, animation: 'fade' }} />
     </Stack>
   );
 }

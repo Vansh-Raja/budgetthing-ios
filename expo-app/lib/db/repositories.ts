@@ -22,7 +22,7 @@ import {
   SystemType,
   AccountKind,
 } from '../logic/types';
-import { GlobalEvents } from '../events';
+import { Events, GlobalEvents } from '../events';
 
 // =============================================================================
 // Account Repository
@@ -63,7 +63,7 @@ function rowToAccount(row: AccountRow): Account {
 export const AccountRepository = {
   async getAll(): Promise<Account[]> {
     const rows = await queryAll<AccountRow>(
-      `SELECT * FROM ${TABLES.ACCOUNTS} WHERE deletedAtMs IS NULL ORDER BY sortIndex`
+      `SELECT * FROM ${TABLES.ACCOUNTS} WHERE deletedAtMs IS NULL ORDER BY sortIndex, createdAtMs`
     );
     return rows.map(rowToAccount);
   },
@@ -76,9 +76,14 @@ export const AccountRepository = {
     return row ? rowToAccount(row) : null;
   },
 
-  async create(account: Omit<Account, 'id' | 'createdAtMs' | 'updatedAtMs'>): Promise<Account> {
+  async create(account: Omit<Account, 'id' | 'createdAtMs' | 'updatedAtMs' | 'sortIndex'> & { sortIndex?: number }): Promise<Account> {
     const id = uuidv4();
     const now = Date.now();
+
+    const row = await queryFirst<{ maxSortIndex: number }>(
+      `SELECT COALESCE(MAX(sortIndex), -1) AS maxSortIndex FROM ${TABLES.ACCOUNTS} WHERE deletedAtMs IS NULL`
+    );
+    const sortIndex = account.sortIndex ?? ((row?.maxSortIndex ?? -1) + 1);
 
     await run(
       `INSERT INTO ${TABLES.ACCOUNTS} 
@@ -90,7 +95,7 @@ export const AccountRepository = {
         account.name,
         account.emoji,
         account.kind,
-        account.sortIndex,
+        sortIndex,
         account.openingBalanceCents ?? null,
         account.limitAmountCents ?? null,
         account.billingCycleDay ?? null,
@@ -102,7 +107,8 @@ export const AccountRepository = {
       ]
     );
 
-    return { ...account, id, createdAtMs: now, updatedAtMs: now };
+    GlobalEvents.emit(Events.accountsChanged);
+    return { ...account, sortIndex, id, createdAtMs: now, updatedAtMs: now };
   },
 
   async update(id: string, updates: Partial<Omit<Account, 'id' | 'createdAtMs'>>): Promise<void> {
@@ -120,6 +126,7 @@ export const AccountRepository = {
 
     values.push(id);
     await run(`UPDATE ${TABLES.ACCOUNTS} SET ${fields.join(', ')} WHERE id = ?`, values);
+    GlobalEvents.emit(Events.accountsChanged);
   },
 
   async delete(id: string): Promise<void> {
@@ -128,6 +135,22 @@ export const AccountRepository = {
       `UPDATE ${TABLES.ACCOUNTS} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
+    GlobalEvents.emit(Events.accountsChanged);
+  },
+
+  async reorder(idsInOrder: string[]): Promise<void> {
+    const now = Date.now();
+
+    await withTransaction(async () => {
+      for (const [index, id] of idsInOrder.entries()) {
+        await run(
+          `UPDATE ${TABLES.ACCOUNTS} SET sortIndex = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
+          [index, now, id]
+        );
+      }
+
+      GlobalEvents.emit(Events.accountsChanged);
+    });
   },
 };
 
@@ -164,7 +187,7 @@ function rowToCategory(row: CategoryRow): Category {
 export const CategoryRepository = {
   async getAll(): Promise<Category[]> {
     const rows = await queryAll<CategoryRow>(
-      `SELECT * FROM ${TABLES.CATEGORIES} WHERE deletedAtMs IS NULL ORDER BY sortIndex`
+      `SELECT * FROM ${TABLES.CATEGORIES} WHERE deletedAtMs IS NULL ORDER BY sortIndex, createdAtMs`
     );
     return rows.map(rowToCategory);
   },
@@ -177,9 +200,20 @@ export const CategoryRepository = {
     return row ? rowToCategory(row) : null;
   },
 
-  async create(category: Omit<Category, 'id' | 'createdAtMs' | 'updatedAtMs'>): Promise<Category> {
+  async create(
+    category: Omit<Category, 'id' | 'createdAtMs' | 'updatedAtMs' | 'sortIndex'> & { sortIndex?: number }
+  ): Promise<Category> {
     const id = uuidv4();
     const now = Date.now();
+
+    let sortIndex = category.sortIndex;
+    if (sortIndex === undefined) {
+      const row = await queryFirst<{ maxSortIndex: number }>(
+        `SELECT COALESCE(MAX(sortIndex), -1) AS maxSortIndex FROM ${TABLES.CATEGORIES} WHERE deletedAtMs IS NULL AND isSystem = ?`,
+        [category.isSystem ? 1 : 0]
+      );
+      sortIndex = (row?.maxSortIndex ?? -1) + 1;
+    }
 
     await run(
       `INSERT INTO ${TABLES.CATEGORIES} 
@@ -190,7 +224,7 @@ export const CategoryRepository = {
         id,
         category.name,
         category.emoji,
-        category.sortIndex,
+        sortIndex,
         category.monthlyBudgetCents ?? null,
         category.isSystem ? 1 : 0,
         now,
@@ -201,7 +235,8 @@ export const CategoryRepository = {
       ]
     );
 
-    return { ...category, id, createdAtMs: now, updatedAtMs: now };
+    GlobalEvents.emit(Events.categoriesChanged);
+    return { ...category, sortIndex, id, createdAtMs: now, updatedAtMs: now };
   },
 
   async update(id: string, updates: Partial<Omit<Category, 'id' | 'createdAtMs'>>): Promise<void> {
@@ -217,6 +252,7 @@ export const CategoryRepository = {
 
     values.push(id);
     await run(`UPDATE ${TABLES.CATEGORIES} SET ${fields.join(', ')} WHERE id = ?`, values);
+    GlobalEvents.emit(Events.categoriesChanged);
   },
 
   async delete(id: string): Promise<void> {
@@ -225,6 +261,22 @@ export const CategoryRepository = {
       `UPDATE ${TABLES.CATEGORIES} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
+    GlobalEvents.emit(Events.categoriesChanged);
+  },
+
+  async reorder(idsInOrder: string[]): Promise<void> {
+    const now = Date.now();
+
+    await withTransaction(async () => {
+      for (const [index, id] of idsInOrder.entries()) {
+        await run(
+          `UPDATE ${TABLES.CATEGORIES} SET sortIndex = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
+          [index, now, id]
+        );
+      }
+
+      GlobalEvents.emit(Events.categoriesChanged);
+    });
   },
 };
 
@@ -289,9 +341,7 @@ export const TransactionRepository = {
       params.push(options.offset);
     }
 
-    console.log('[TransactionRepository.getAll] Executing query:', sql);
     const rows = await queryAll<TransactionRow>(sql, params);
-    console.log('[TransactionRepository.getAll] Found', rows.length, 'transactions');
     return rows.map(rowToTransaction);
   },
 
@@ -316,8 +366,6 @@ export const TransactionRepository = {
   async create(tx: Omit<Transaction, 'id' | 'createdAtMs' | 'updatedAtMs'>): Promise<Transaction> {
     const id = uuidv4();
     const now = Date.now();
-
-    console.log('[TransactionRepository.create] Creating transaction:', { id, amountCents: tx.amountCents, type: tx.type });
 
     await run(
       `INSERT INTO ${TABLES.TRANSACTIONS} 
@@ -345,8 +393,7 @@ export const TransactionRepository = {
       ]
     );
 
-    console.log('[TransactionRepository.create] Transaction created successfully:', id);
-    GlobalEvents.emit('transactions_changed');
+    GlobalEvents.emit(Events.transactionsChanged);
 
     return { ...tx, id, createdAtMs: now, updatedAtMs: now };
   },
@@ -369,7 +416,7 @@ export const TransactionRepository = {
 
     values.push(id);
     await run(`UPDATE ${TABLES.TRANSACTIONS} SET ${fields.join(', ')} WHERE id = ?`, values);
-    GlobalEvents.emit('transactions_changed');
+    GlobalEvents.emit(Events.transactionsChanged);
   },
 
   async delete(id: string): Promise<void> {
@@ -378,7 +425,7 @@ export const TransactionRepository = {
       `UPDATE ${TABLES.TRANSACTIONS} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
-    GlobalEvents.emit('transactions_changed');
+    GlobalEvents.emit(Events.transactionsChanged);
   },
 };
 
@@ -390,6 +437,7 @@ interface TripRow {
   id: string;
   name: string;
   emoji: string;
+  sortIndex: number;
   isGroup: number;
   isArchived: number;
   startDate: number | null;
@@ -405,6 +453,7 @@ function rowToTrip(row: TripRow): Trip {
     id: row.id,
     name: row.name,
     emoji: row.emoji,
+    sortIndex: row.sortIndex,
     isGroup: row.isGroup === 1,
     isArchived: row.isArchived === 1,
     startDate: row.startDate ?? undefined,
@@ -422,7 +471,7 @@ export const TripRepository = {
     if (!includeArchived) {
       sql += ` AND isArchived = 0`;
     }
-    sql += ` ORDER BY createdAtMs DESC`;
+    sql += ` ORDER BY sortIndex, createdAtMs DESC`;
 
     const rows = await queryAll<TripRow>(sql);
     return rows.map(rowToTrip);
@@ -542,18 +591,26 @@ export const TripRepository = {
     };
   },
 
-  async create(trip: Omit<Trip, 'id' | 'createdAtMs' | 'updatedAtMs'>): Promise<Trip> {
+  async create(
+    trip: Omit<Trip, 'id' | 'createdAtMs' | 'updatedAtMs' | 'sortIndex'> & { sortIndex?: number }
+  ): Promise<Trip> {
     const id = uuidv4();
     const now = Date.now();
 
+    const row = await queryFirst<{ maxSortIndex: number }>(
+      `SELECT COALESCE(MAX(sortIndex), -1) AS maxSortIndex FROM ${TABLES.TRIPS} WHERE deletedAtMs IS NULL`
+    );
+    const sortIndex = trip.sortIndex ?? ((row?.maxSortIndex ?? -1) + 1);
+
     await run(
       `INSERT INTO ${TABLES.TRIPS} 
-       (id, name, emoji, isGroup, isArchived, startDate, endDate, budgetCents, createdAtMs, updatedAtMs) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, name, emoji, sortIndex, isGroup, isArchived, startDate, endDate, budgetCents, createdAtMs, updatedAtMs) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         trip.name,
         trip.emoji,
+        sortIndex,
         trip.isGroup ? 1 : 0,
         trip.isArchived ? 1 : 0,
         trip.startDate ?? null,
@@ -564,7 +621,8 @@ export const TripRepository = {
       ]
     );
 
-    return { ...trip, id, createdAtMs: now, updatedAtMs: now };
+    GlobalEvents.emit(Events.tripsChanged);
+    return { ...trip, sortIndex, id, createdAtMs: now, updatedAtMs: now };
   },
 
   async update(id: string, updates: Partial<Omit<Trip, 'id' | 'createdAtMs'>>): Promise<void> {
@@ -574,6 +632,7 @@ export const TripRepository = {
 
     if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name); }
     if (updates.emoji !== undefined) { fields.push('emoji = ?'); values.push(updates.emoji); }
+    if (updates.sortIndex !== undefined) { fields.push('sortIndex = ?'); values.push(updates.sortIndex); }
     if (updates.isGroup !== undefined) { fields.push('isGroup = ?'); values.push(updates.isGroup ? 1 : 0); }
     if (updates.isArchived !== undefined) { fields.push('isArchived = ?'); values.push(updates.isArchived ? 1 : 0); }
     if (updates.startDate !== undefined) { fields.push('startDate = ?'); values.push(updates.startDate); }
@@ -582,6 +641,7 @@ export const TripRepository = {
 
     values.push(id);
     await run(`UPDATE ${TABLES.TRIPS} SET ${fields.join(', ')} WHERE id = ?`, values);
+    GlobalEvents.emit(Events.tripsChanged);
   },
 
   async delete(id: string): Promise<void> {
@@ -590,6 +650,22 @@ export const TripRepository = {
       `UPDATE ${TABLES.TRIPS} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
+    GlobalEvents.emit(Events.tripsChanged);
+  },
+
+  async reorder(idsInOrder: string[]): Promise<void> {
+    const now = Date.now();
+
+    await withTransaction(async () => {
+      for (const [index, id] of idsInOrder.entries()) {
+        await run(
+          `UPDATE ${TABLES.TRIPS} SET sortIndex = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
+          [index, now, id]
+        );
+      }
+
+      GlobalEvents.emit(Events.tripsChanged);
+    });
   },
 };
 
@@ -657,6 +733,7 @@ export const TripParticipantRepository = {
       ]
     );
 
+    GlobalEvents.emit(Events.tripParticipantsChanged);
     return { ...participant, id, createdAtMs: now, updatedAtMs: now };
   },
 
@@ -671,6 +748,7 @@ export const TripParticipantRepository = {
 
     values.push(id);
     await run(`UPDATE ${TABLES.TRIP_PARTICIPANTS} SET ${fields.join(', ')} WHERE id = ?`, values);
+    GlobalEvents.emit(Events.tripParticipantsChanged);
   },
 
   async delete(id: string): Promise<void> {
@@ -679,6 +757,7 @@ export const TripParticipantRepository = {
       `UPDATE ${TABLES.TRIP_PARTICIPANTS} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
+    GlobalEvents.emit(Events.tripParticipantsChanged);
   },
 };
 
@@ -760,6 +839,7 @@ export const TripExpenseRepository = {
       ]
     );
 
+    GlobalEvents.emit(Events.tripExpensesChanged);
     return { ...expense, id, createdAtMs: now, updatedAtMs: now };
   },
 
@@ -775,6 +855,7 @@ export const TripExpenseRepository = {
 
     values.push(id);
     await run(`UPDATE ${TABLES.TRIP_EXPENSES} SET ${fields.join(', ')} WHERE id = ?`, values);
+    GlobalEvents.emit(Events.tripExpensesChanged);
   },
 
   async delete(id: string): Promise<void> {
@@ -783,6 +864,7 @@ export const TripExpenseRepository = {
       `UPDATE ${TABLES.TRIP_EXPENSES} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
+    GlobalEvents.emit(Events.tripExpensesChanged);
   },
 };
 
@@ -856,6 +938,7 @@ export const TripSettlementRepository = {
       ]
     );
 
+    GlobalEvents.emit(Events.tripSettlementsChanged);
     return { ...settlement, id, createdAtMs: now, updatedAtMs: now };
   },
 
@@ -865,6 +948,7 @@ export const TripSettlementRepository = {
       `UPDATE ${TABLES.TRIP_SETTLEMENTS} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
+    GlobalEvents.emit(Events.tripSettlementsChanged);
   },
 };
 
@@ -946,5 +1030,7 @@ export const UserSettingsRepository = {
 
       await run(`UPDATE ${TABLES.USER_SETTINGS} SET ${fields.join(', ')} WHERE id = 'local'`, values);
     }
+
+    GlobalEvents.emit(Events.userSettingsChanged);
   },
 };

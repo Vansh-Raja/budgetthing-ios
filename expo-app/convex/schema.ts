@@ -70,6 +70,7 @@ export default defineSchema({
     userId: v.string(),
     name: v.string(),
     emoji: v.string(),
+    sortIndex: v.optional(v.number()),
     isGroup: v.number(), // 0/1
     isArchived: v.number(), // 0/1
     startDate: v.optional(v.number()),

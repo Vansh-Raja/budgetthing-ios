@@ -5,7 +5,8 @@
  */
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Alert, Modal } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, StatusBar, Alert, Modal } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import PagerView from 'react-native-pager-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';

@@ -5,7 +5,8 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, ViewStyle } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 
@@ -20,11 +21,7 @@ interface TripCardProps {
 }
 
 export function TripCard({ trip, currencyCode = 'INR', style }: TripCardProps) {
-  // Calculate total spent (mock logic or real if expenses populated)
-  // In a real app, expenses would be joined. Here we assume we have a summary or compute it.
-  // For now, we'll use a mocked property or 0 if not present.
-  // The Type definition in types.ts doesn't have totalSpentCents, so we might need to compute it 
-  // or extend the type. For UI dev, I'll assume trip has expenses attached or I'll mock it.
+  // Total spent is computed from hydrated trip expenses.
   const totalSpentCents = trip.expenses?.reduce((sum, e) => sum + (e.transaction?.amountCents || 0), 0) || 0;
   
   // Calculate participant count

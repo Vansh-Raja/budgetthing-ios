@@ -1,44 +1,49 @@
 /**
- * Guest Upgrade Dialog
+ * Delete Account Confirmation Dialog
  * 
- * Shown when a guest user signs in for the first time and has local data.
- * Asks whether to upload local data to sync across devices.
+ * Allows user to permanently delete their account and all cloud data.
+ * Required by Apple App Store guidelines for apps supporting account creation.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Modal,
     View,
-    Text,
     TouchableOpacity,
     StyleSheet,
     ActivityIndicator,
 } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
-interface GuestUpgradeDialogProps {
+interface DeleteAccountDialogProps {
     visible: boolean;
-    isLoading: boolean;
-    onConfirm: () => void;
-    onSkip: () => void;
+    onDismiss: () => void;
+    onDelete: () => Promise<void>;
 }
 
-export function GuestUpgradeDialog({
+export function DeleteAccountDialog({
     visible,
-    isLoading,
-    onConfirm,
-    onSkip,
-}: GuestUpgradeDialogProps) {
-    const handleConfirm = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onConfirm();
-    };
+    onDismiss,
+    onDelete,
+}: DeleteAccountDialogProps) {
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSkip = () => {
-        Haptics.selectionAsync();
-        onSkip();
+    const handleDelete = async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        setIsLoading(true);
+
+        try {
+            await onDelete();
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (error) {
+            console.error('[Auth] Delete account error:', error);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -46,46 +51,44 @@ export function GuestUpgradeDialog({
             visible={visible}
             transparent
             animationType="fade"
-            onRequestClose={onSkip}
+            onRequestClose={onDismiss}
         >
             <BlurView intensity={40} tint="dark" style={styles.backdrop}>
                 <View style={styles.dialog}>
+                    {/* Warning Icon */}
                     <View style={styles.iconContainer}>
-                        <Ionicons name="cloud-upload-outline" size={48} color="#FF9500" />
+                        <Ionicons name="warning" size={40} color="#FF3B30" />
                     </View>
 
-                    <Text style={styles.title}>Sync Your Data</Text>
+                    <Text style={styles.title}>Delete Account?</Text>
                     <Text style={styles.message}>
-                        You have existing data on this device. Would you like to upload it to sync across all your devices?
+                        This will permanently delete your account and all data from our servers.
+                        This action cannot be undone.
                     </Text>
 
                     <View style={styles.buttonContainer}>
                         <TouchableOpacity
-                            style={[styles.button, styles.primaryButton]}
-                            onPress={handleConfirm}
+                            style={[styles.button, styles.cancelButton]}
+                            onPress={onDismiss}
+                            disabled={isLoading}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.cancelButtonText}>Cancel</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.button, styles.deleteButton]}
+                            onPress={handleDelete}
                             disabled={isLoading}
                             activeOpacity={0.8}
                         >
                             {isLoading ? (
-                                <ActivityIndicator color="#000000" size="small" />
+                                <ActivityIndicator color="#FFFFFF" size="small" />
                             ) : (
-                                <Text style={styles.primaryButtonText}>Upload My Data</Text>
+                                <Text style={styles.deleteButtonText}>Delete My Account</Text>
                             )}
                         </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.button, styles.secondaryButton]}
-                            onPress={handleSkip}
-                            disabled={isLoading}
-                            activeOpacity={0.8}
-                        >
-                            <Text style={styles.secondaryButtonText}>Start Fresh</Text>
-                        </TouchableOpacity>
                     </View>
-
-                    <Text style={styles.hint}>
-                        Your local data will remain on this device either way.
-                    </Text>
                 </View>
             </BlurView>
         </Modal>
@@ -108,10 +111,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     iconContainer: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: 'rgba(255, 149, 0, 0.15)',
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(255, 59, 48, 0.15)',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 16,
@@ -119,7 +122,7 @@ const styles = StyleSheet.create({
     title: {
         fontFamily: 'AvenirNextCondensed-Heavy',
         fontSize: 24,
-        color: '#FFFFFF',
+        color: '#FF3B30',
         textAlign: 'center',
         marginBottom: 12,
     },
@@ -136,34 +139,29 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     button: {
-        height: 50,
+        width: '100%',
+        padding: 16,
         borderRadius: 12,
-        justifyContent: 'center',
         alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 52,
     },
-    primaryButton: {
-        backgroundColor: '#FF9500',
-    },
-    primaryButtonText: {
-        fontFamily: 'AvenirNextCondensed-DemiBold',
-        fontSize: 17,
-        color: '#000000',
-    },
-    secondaryButton: {
+    cancelButton: {
         backgroundColor: 'rgba(255, 255, 255, 0.12)',
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.15)',
     },
-    secondaryButtonText: {
+    cancelButtonText: {
         fontFamily: 'AvenirNextCondensed-DemiBold',
         fontSize: 17,
         color: '#FFFFFF',
     },
-    hint: {
-        fontFamily: 'AvenirNextCondensed-Medium',
-        fontSize: 13,
-        color: 'rgba(255, 255, 255, 0.4)',
-        textAlign: 'center',
-        marginTop: 16,
+    deleteButton: {
+        backgroundColor: '#FF3B30',
+    },
+    deleteButtonText: {
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+        fontSize: 17,
+        color: '#FFFFFF',
     },
 });

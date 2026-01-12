@@ -7,6 +7,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import { SCHEMA_VERSION, MIGRATIONS, TABLES } from './schema';
+import { Events, GlobalEvents } from '../events';
 
 const DATABASE_NAME = 'budgetthing.db';
 
@@ -51,19 +52,10 @@ async function initializeDatabase(): Promise<SQLite.SQLiteDatabase> {
   db = await SQLite.openDatabaseAsync(DATABASE_NAME);
   await runMigrations(db);
 
-  // IMPORTANT: Set isReady BEFORE seeding
-  // This prevents deadlock when seeding calls repository methods
-  // which call getDatabase() which waits for this promise
+  // Mark DB as ready after migrations complete.
   isReady = true;
 
-  // Seed default data if needed
-  try {
-    const { seedDatabaseIfNeeded } = await import('./seed');
-    await seedDatabaseIfNeeded();
-  } catch (e) {
-    console.error('[Database] Seeding error:', e);
-    // Don't fail init if seeding fails
-  }
+  // Seeding and sync bootstrap are handled by `SyncProvider`.
 
   return db;
 }
@@ -123,8 +115,6 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
       throw new Error(`Missing migration for version ${version}`);
     }
 
-    console.log(`Running migration to version ${version}...`);
-
     // Run all statements in a transaction
     await database.withTransactionAsync(async () => {
       for (const sql of statements) {
@@ -145,7 +135,6 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
       }
     });
 
-    console.log(`Migration to version ${version} complete`);
   }
 }
 
@@ -176,20 +165,37 @@ export async function resetDatabase(): Promise<void> {
 export async function clearAllData(): Promise<void> {
   const database = await getDatabase();
 
-  await database.withTransactionAsync(async () => {
-    // Delete all user data from each table
-    // Order matters for foreign key constraints (if we had them)
-    await database.execAsync(`DELETE FROM ${TABLES.TRIP_SETTLEMENTS}`);
-    await database.execAsync(`DELETE FROM ${TABLES.TRIP_EXPENSES}`);
-    await database.execAsync(`DELETE FROM ${TABLES.TRIP_PARTICIPANTS}`);
-    await database.execAsync(`DELETE FROM ${TABLES.TRIPS}`);
-    await database.execAsync(`DELETE FROM ${TABLES.TRANSACTIONS}`);
-    await database.execAsync(`DELETE FROM ${TABLES.CATEGORIES}`);
-    await database.execAsync(`DELETE FROM ${TABLES.ACCOUNTS}`);
-    await database.execAsync(`DELETE FROM ${TABLES.USER_SETTINGS}`);
-  });
+  // Batch GlobalEvents so subscribers only refresh after commit.
+  GlobalEvents.beginBatch();
+  try {
+    await database.withTransactionAsync(async () => {
+      // Delete all user data from each table
+      // Order matters for foreign key constraints (if we had them)
+      await database.execAsync(`DELETE FROM ${TABLES.TRIP_SETTLEMENTS}`);
+      await database.execAsync(`DELETE FROM ${TABLES.TRIP_EXPENSES}`);
+      await database.execAsync(`DELETE FROM ${TABLES.TRIP_PARTICIPANTS}`);
+      await database.execAsync(`DELETE FROM ${TABLES.TRIPS}`);
+      await database.execAsync(`DELETE FROM ${TABLES.TRANSACTIONS}`);
+      await database.execAsync(`DELETE FROM ${TABLES.CATEGORIES}`);
+      await database.execAsync(`DELETE FROM ${TABLES.ACCOUNTS}`);
+      await database.execAsync(`DELETE FROM ${TABLES.USER_SETTINGS}`);
+    });
 
-  console.log('[Database] All user data cleared');
+    // Emit changes for all affected entities.
+    GlobalEvents.emit(Events.tripSettlementsChanged);
+    GlobalEvents.emit(Events.tripExpensesChanged);
+    GlobalEvents.emit(Events.tripParticipantsChanged);
+    GlobalEvents.emit(Events.tripsChanged);
+    GlobalEvents.emit(Events.transactionsChanged);
+    GlobalEvents.emit(Events.categoriesChanged);
+    GlobalEvents.emit(Events.accountsChanged);
+    GlobalEvents.emit(Events.userSettingsChanged);
+
+    GlobalEvents.endBatch(true);
+  } catch (error) {
+    GlobalEvents.endBatch(false);
+    throw error;
+  }
 }
 
 /**
@@ -245,8 +251,19 @@ export async function withTransaction<T>(
 ): Promise<T> {
   const database = await getDatabase();
   let result: T;
-  await database.withTransactionAsync(async () => {
-    result = await fn();
-  });
-  return result!;
+
+  // Batch GlobalEvents until the transaction commits.
+  // This prevents subscribers from re-querying before changes are visible.
+  GlobalEvents.beginBatch();
+  try {
+    await database.withTransactionAsync(async () => {
+      result = await fn();
+    });
+
+    GlobalEvents.endBatch(true);
+    return result!;
+  } catch (error) {
+    GlobalEvents.endBatch(false);
+    throw error;
+  }
 }

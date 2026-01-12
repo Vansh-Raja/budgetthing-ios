@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,20 +8,31 @@
   <link rel="icon" type="image/png" href="BudgetThingLogo.png">
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
   <header class="wrap">
     <h1>Privacy Policy</h1>
   </header>
   <main class="wrap">
-    <p>BudgetThing is designed to work entirely offline. We do not collect, transmit, or share any personal data.</p>
+    <p>BudgetThing is designed to be privacy-first. You can use the app as a guest (local-only) or sign in to sync your
+      data across devices.</p>
+
     <h2>Data Storage</h2>
-    <p>All data you enter (such as transactions and categories) is stored locally on your iPhone using Apple&#8217;s on-device storage. The data never leaves your device unless you explicitly back it up with your own device backups.</p>
+    <p><strong>Guest Mode:</strong> If you do not sign in, all data is stored locally on your device. We do not have
+      access to it.</p>
+    <p><strong>Signed In:</strong> If you choose to sign in, your data (transactions, accounts, categories) is encrypted
+      and stored on our secure cloud servers (powered by Convex) to enable synchronization across your devices.</p>
+
+    <h2>Account Deletion</h2>
+    <p>You have full control over your data. You can delete your account and all associated cloud data at any time
+      directly from the app Settings page.</p>
+
     <h2>Analytics & Tracking</h2>
-    <p>BudgetThing does not include analytics, advertising, tracking SDKs, or third-party code that collects data.</p>
-    <h2>Accounts</h2>
-    <p>No account or login is required. We do not operate servers for this app.</p>
+    <p>BudgetThing does not include third-party advertising or tracking SDKs that sell your data.</p>
+
     <h2>Contact</h2>
-    <p>If you have questions about this policy, please contact us at <a href="mailto:dev.vanshraja@gmail.com">dev.vanshraja@gmail.com</a>.</p>
+    <p>If you have questions about this policy, please contact us at <a
+        href="mailto:dev.vanshraja@gmail.com">dev.vanshraja@gmail.com</a>.</p>
     <p>Last updated: <span id="updated"></span></p>
   </main>
   <footer class="wrap foot">
@@ -29,9 +41,8 @@
     <a href="support.html">Support</a>
   </footer>
   <script>
-    document.getElementById('updated').textContent = new Date().toISOString().slice(0,10);
+    document.getElementById('updated').textContent = new Date().toISOString().slice(0, 10);
   </script>
 </body>
+
 </html>
-
-

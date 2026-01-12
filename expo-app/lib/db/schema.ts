@@ -6,7 +6,7 @@
  */
 
 // Schema version - increment when adding new migrations
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * Initial schema creation - version 1
@@ -158,6 +158,28 @@ export const MIGRATIONS: Record<number, string[]> = {
     `CREATE INDEX IF NOT EXISTS idx_accounts_needsSync ON accounts(needsSync) WHERE needsSync = 1`,
     `CREATE INDEX IF NOT EXISTS idx_categories_needsSync ON categories(needsSync) WHERE needsSync = 1`,
     `CREATE INDEX IF NOT EXISTS idx_trips_needsSync ON trips(needsSync) WHERE needsSync = 1`,
+  ],
+  
+  2: [
+    // Trips: add sortIndex for user-defined ordering
+    `ALTER TABLE trips ADD COLUMN sortIndex INTEGER NOT NULL DEFAULT 0`,
+
+    // Initialize sortIndex based on the existing UI order (newest first) and mark rows for sync.
+    `WITH ordered AS (
+      SELECT
+        id,
+        (ROW_NUMBER() OVER (ORDER BY createdAtMs DESC) - 1) AS newSortIndex
+      FROM trips
+      WHERE deletedAtMs IS NULL
+    )
+    UPDATE trips
+    SET
+      sortIndex = (SELECT newSortIndex FROM ordered WHERE ordered.id = trips.id),
+      needsSync = 1,
+      syncVersion = syncVersion + 1
+    WHERE id IN (SELECT id FROM ordered)`,
+
+    `CREATE INDEX IF NOT EXISTS idx_trips_sortIndex ON trips(sortIndex)`,
   ],
 };
 

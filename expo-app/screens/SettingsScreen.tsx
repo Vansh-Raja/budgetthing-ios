@@ -8,7 +8,6 @@
 import React, { useState, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -16,7 +15,9 @@ import {
   Switch,
   Linking,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -26,11 +27,17 @@ import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
 import {
   AppleSignInButton,
   SignOutDialog,
-  GuestUpgradeDialog,
   UserProfileCard,
+  DeleteAccountDialog,
 } from '../components/auth';
-import { useAuthState, useGuestUpgrade, useHasLocalData } from '../lib/auth/useAuthHooks';
+import { useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { useAuth } from '@clerk/clerk-expo';
+import { useAuthState } from '../lib/auth/useAuthHooks';
 import { clearAllData } from '../lib/db/database';
+import { useUserSettings } from '../lib/hooks/useUserSettings';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
+import { clearSyncStateForUser } from '../lib/sync/syncEngine';
 
 // ============================================================================
 // Types & Props
@@ -110,19 +117,53 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
 
   // Auth state
   const { isSignedIn, isLoaded, user, signOut } = useAuthState();
-  const { showUpgradeDialog, isUpgrading, confirmUpgrade, skipUpgrade } = useGuestUpgrade();
-  useHasLocalData(); // Track local data for upgrade flow
+  const { userId: clerkUserId } = useAuth();
+  const { syncNow, isSyncing, lastSyncAtMs, lastSyncError, isBootstrapping } = useSyncStatus();
+
+  const { settings, updateSettings } = useUserSettings();
+
+  const hapticsEnabled = settings?.hapticsEnabled ?? true;
+  const currency = settings?.currencyCode ?? 'INR';
+
+  const isSyncBusy = isSyncing || isBootstrapping;
+  const lastSyncLabel = lastSyncAtMs ? new Date(lastSyncAtMs).toLocaleString() : '—';
+  const syncStatusLabel = !isSignedIn
+    ? 'Guest (local only)'
+    : isBootstrapping
+      ? 'Setting up…'
+      : isSyncing
+        ? 'Syncing…'
+        : lastSyncError
+          ? 'Sync error'
+          : 'Up to date';
 
   // UI State
-  const [hapticsEnabled, setHapticsEnabled] = useState(true);
-  const [currency, setCurrency] = useState('INR');
   const [showSignOutDialog, setShowSignOutDialog] = useState(false);
+  const [showDeleteAccountDialog, setShowDeleteAccountDialog] = useState(false);
+
+  // Convex mutation for deleting account
+  const deleteMyAccountMutation = useMutation(api.deleteMyAccount.deleteMyAccount);
 
   // Handlers
-  const toggleHaptics = (value: boolean) => {
-    setHapticsEnabled(value);
-    if (value) Haptics.selectionAsync();
-  };
+  const toggleHaptics = useCallback(async (value: boolean) => {
+    try {
+      if (value) Haptics.selectionAsync();
+      await updateSettings({ hapticsEnabled: value });
+    } catch (error) {
+      console.error('[Settings] Failed to update haptics:', error);
+      Alert.alert('Error', 'Failed to update setting.');
+    }
+  }, [updateSettings]);
+
+  const handleSyncNow = useCallback(() => {
+    if (isSyncBusy) return;
+    Haptics.selectionAsync();
+
+    syncNow('manual_settings').catch((error) => {
+      console.error('[Settings] Manual sync failed:', error);
+      Alert.alert('Sync Failed', 'Please try again.');
+    });
+  }, [isSyncBusy, syncNow]);
 
   const openLink = async (url: string) => {
     Haptics.selectionAsync();
@@ -137,6 +178,11 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
       if (removeData) {
         // Clear all local data
         await clearAllData();
+
+        // Reset per-user sync cursor so a reinstall doesn't miss remote history.
+        if (clerkUserId) {
+          await clearSyncStateForUser(clerkUserId);
+        }
       }
 
       // Sign out from Clerk
@@ -146,12 +192,34 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
       console.error('[Settings] Sign out error:', error);
       Alert.alert('Error', 'Failed to sign out. Please try again.');
     }
-  }, [signOut]);
+  }, [signOut, clerkUserId]);
 
   const handleSignInComplete = useCallback(() => {
-    // The useGuestUpgrade hook will handle showing the upgrade dialog
-    console.log('[Settings] Sign in complete');
+    // SyncProvider handles merge + background sync.
   }, []);
+
+  const handleDeleteAccount = useCallback(async () => {
+    try {
+      // Delete all user data from Convex
+      await deleteMyAccountMutation();
+
+      // Clear local data
+      await clearAllData();
+
+      // Clear sync state
+      if (clerkUserId) {
+        await clearSyncStateForUser(clerkUserId);
+      }
+
+      // Sign out from Clerk
+      await signOut();
+
+      setShowDeleteAccountDialog(false);
+    } catch (error) {
+      console.error('[Settings] Delete account error:', error);
+      Alert.alert('Error', 'Failed to delete account. Please try again.');
+    }
+  }, [deleteMyAccountMutation, signOut, clerkUserId]);
 
   return (
     <View style={styles.container}>
@@ -188,6 +256,48 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
               </View>
             )
           )}
+        </View>
+
+        {/* Sync Section */}
+        <View style={styles.section}>
+          <SectionHeader title="Sync" />
+
+          <SettingsItem
+            label="Status"
+            rightElement={
+              <View style={styles.syncStatusRight}>
+                {isSyncBusy && (
+                  <ActivityIndicator size="small" color="rgba(255, 255, 255, 0.9)" />
+                )}
+                <Text style={styles.syncStatusText}>{syncStatusLabel}</Text>
+              </View>
+            }
+          />
+
+          <SettingsItem
+            label="Last Sync"
+            rightElement={
+              <Text style={styles.syncValueText}>
+                {isSignedIn ? lastSyncLabel : '—'}
+              </Text>
+            }
+          />
+
+          <SettingsItem
+            label="Sync Now"
+            onPress={isSyncBusy ? undefined : handleSyncNow}
+            rightElement={
+              isSyncBusy ? (
+                <ActivityIndicator size="small" color="rgba(255, 255, 255, 0.9)" />
+              ) : (
+                <Ionicons name="refresh" size={16} color="rgba(255, 255, 255, 0.25)" />
+              )
+            }
+          />
+
+          {isSignedIn && lastSyncError ? (
+            <Text style={styles.syncErrorText}>Last sync failed. Try again later.</Text>
+          ) : null}
         </View>
 
         {/* Basics Section */}
@@ -279,6 +389,22 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
           <Text style={styles.versionText}>Version 1.0 (1)</Text>
         </View>
 
+        {/* Delete Account Section - Only shown when signed in */}
+        {isSignedIn && (
+          <View style={styles.deleteSection}>
+            <TouchableOpacity
+              style={styles.deleteAccountButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowDeleteAccountDialog(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.deleteAccountText}>Delete My Account</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
       </ScrollView>
 
       <FloatingTabSwitcher
@@ -293,13 +419,13 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
         onSignOut={handleSignOut}
       />
 
-      {/* Guest Upgrade Dialog */}
-      <GuestUpgradeDialog
-        visible={showUpgradeDialog}
-        isLoading={isUpgrading}
-        onConfirm={confirmUpgrade}
-        onSkip={skipUpgrade}
+      {/* Delete Account Dialog */}
+      <DeleteAccountDialog
+        visible={showDeleteAccountDialog}
+        onDismiss={() => setShowDeleteAccountDialog(false)}
+        onDelete={handleDeleteAccount}
       />
+
     </View>
   );
 }
@@ -342,6 +468,29 @@ const styles = StyleSheet.create({
     fontFamily: 'AvenirNextCondensed-DemiBold',
     fontSize: 18,
     color: '#FFFFFF',
+  },
+
+  // Sync
+  syncStatusRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncStatusText: {
+    fontFamily: 'AvenirNextCondensed-Medium',
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  syncValueText: {
+    fontFamily: 'AvenirNextCondensed-Medium',
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  syncErrorText: {
+    fontFamily: 'AvenirNextCondensed-Medium',
+    fontSize: 13,
+    color: 'rgba(255, 59, 48, 0.9)',
+    marginTop: 4,
   },
 
   // Sign In Section
@@ -396,5 +545,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.45)',
     marginTop: 4,
+  },
+
+  // Delete Account Section
+  deleteSection: {
+    marginTop: 32,
+    paddingTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 59, 48, 0.2)',
+  },
+  deleteAccountButton: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  deleteAccountText: {
+    fontFamily: 'AvenirNextCondensed-DemiBold',
+    fontSize: 16,
+    color: '#FF3B30',
   },
 });

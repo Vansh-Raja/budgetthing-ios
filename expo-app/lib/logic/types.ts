@@ -88,6 +88,7 @@ export interface Trip {
   id: string;
   name: string;
   emoji: string;
+  sortIndex: number;
   isGroup: boolean;
   isArchived: boolean;
   startDate?: number; // epoch ms

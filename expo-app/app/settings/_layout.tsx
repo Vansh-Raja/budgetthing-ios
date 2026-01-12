@@ -8,10 +8,12 @@ export default function SettingsLayout() {
     return (
         <Stack
             screenOptions={{
+                headerShown: true,
                 headerStyle: { backgroundColor: '#000000' },
                 headerTintColor: '#FFFFFF',
                 headerTitleStyle: {
                     fontFamily: 'AvenirNextCondensed-DemiBold',
+                    fontSize: 18,
                 },
             }}
         />

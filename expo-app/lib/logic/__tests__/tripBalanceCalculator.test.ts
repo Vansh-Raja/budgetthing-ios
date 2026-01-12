@@ -167,7 +167,7 @@ describe('TripBalanceCalculator', () => {
       expect(bobBalance?.netBalanceCents).toBe(-2000);
     });
 
-    test('Balances with settlements - settlement adds to paid and owed equally', () => {
+    test('Balances with settlements - settlement reduces net balances', () => {
       const alice = makeParticipant('Alice', true);
       const bob = makeParticipant('Bob');
       const participants = [alice, bob];
@@ -184,16 +184,16 @@ describe('TripBalanceCalculator', () => {
 
       const balances = calculateBalances(participants, [expense1], [settlement]);
 
-      // Alice: paid $100, owes $50 → net = +$50 (unchanged by settlement)
+      // After settlement: Alice gets back $20, Bob owes $20
       const aliceBalance = balances.find(b => b.participantId === alice.id);
-      expect(aliceBalance?.netBalanceCents).toBe(5000);
+      expect(aliceBalance?.totalPaidCents).toBe(7000);
+      expect(aliceBalance?.totalOwedCents).toBe(5000);
+      expect(aliceBalance?.netBalanceCents).toBe(2000);
 
-      // Bob: paid $0 + $30 (settlement) = $30, owes $50 + $30 (settlement) = $80
-      // Net = -$50 (unchanged by settlement)
       const bobBalance = balances.find(b => b.participantId === bob.id);
       expect(bobBalance?.totalPaidCents).toBe(3000);
-      expect(bobBalance?.totalOwedCents).toBe(8000);
-      expect(bobBalance?.netBalanceCents).toBe(-5000);
+      expect(bobBalance?.totalOwedCents).toBe(5000);
+      expect(bobBalance?.netBalanceCents).toBe(-2000);
     });
 
     test('Empty expenses returns zero balances', () => {
@@ -211,7 +211,7 @@ describe('TripBalanceCalculator', () => {
       }
     });
 
-    test('All settled - settlement tracking (net unchanged)', () => {
+    test('All settled - settlement clears balances', () => {
       const alice = makeParticipant('Alice');
       const bob = makeParticipant('Bob');
       const participants = [alice, bob];
@@ -228,12 +228,15 @@ describe('TripBalanceCalculator', () => {
 
       const balances = calculateBalances(participants, [expense1], [settlement]);
 
-      // Bob: paid $50 (settlement), owes $50 + $50 (settlement) = $100
-      // Net = -$50 (unchanged)
       const bobBalance = balances.find(b => b.participantId === bob.id);
       expect(bobBalance?.totalPaidCents).toBe(5000);
-      expect(bobBalance?.totalOwedCents).toBe(10000);
-      expect(bobBalance?.netBalanceCents).toBe(-5000);
+      expect(bobBalance?.totalOwedCents).toBe(5000);
+      expect(bobBalance?.netBalanceCents).toBe(0);
+
+      const aliceBalance = balances.find(b => b.participantId === alice.id);
+      expect(aliceBalance?.totalPaidCents).toBe(5000);
+      expect(aliceBalance?.totalOwedCents).toBe(5000);
+      expect(aliceBalance?.netBalanceCents).toBe(0);
     });
 
     test('Large group with many expenses', () => {

@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { CategoryDetailScreen } from '../../screens/CategoryDetailScreen';
 
 export default function CategoryDetailRoute() {
@@ -10,5 +10,10 @@ export default function CategoryDetailRoute() {
         return null;
     }
 
-    return <CategoryDetailScreen categoryId={id} onDismiss={() => router.back()} />;
+    return (
+        <>
+            <Stack.Screen options={{ headerShown: false }} />
+            <CategoryDetailScreen categoryId={id} onDismiss={() => router.back()} />
+        </>
+    );
 }

@@ -4,26 +4,28 @@
  * Pixel-perfect port of AccountsView.swift
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   StatusBar,
   Alert,
+  RefreshControl,
 } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { format } from 'date-fns';
 
 import { Colors } from '../constants/theme';
 import { formatCents } from '../lib/logic/currencyUtils';
-import { Account, Transaction, AccountKind } from '../lib/logic/types';
+import { computeAccountTileValueCents, getTransactionsForAccount } from '../lib/logic/accountBalance';
+import { Account } from '../lib/logic/types';
 import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
 import { useAccounts, useTransactions } from '../lib/hooks/useData';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 
 // ============================================================================
 // Types & Props
@@ -74,28 +76,30 @@ function billingCycleEnd(reference: Date, day: number): Date {
 export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { data: accounts } = useAccounts();
-  const { data: transactions } = useTransactions();
+  const { data: accounts, refresh: refreshAccounts } = useAccounts();
+  const { data: transactions, refresh: refreshTransactions } = useTransactions();
+  const { syncNow } = useSyncStatus();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    syncNow('manual_refresh')
+      .then(() => Promise.all([refreshAccounts(), refreshTransactions()]))
+      .catch((error) => {
+        console.error('[Accounts] Refresh failed:', error);
+      })
+      .finally(() => {
+        setIsRefreshing(false);
+      });
+  }, [syncNow, refreshAccounts, refreshTransactions]);
 
   // Logic to calculate balances
   const getAccountDisplay = useCallback((acc: Account) => {
-    // Filter transactions for this account
-    // Logic: 
-    // 1. Account is primary (expense/income)
-    // 2. Transfer FROM this account (treated as expense)
-    // 3. Transfer TO this account (treated as income)
+    const accountTxs = getTransactionsForAccount(transactions, acc.id);
+    const displayValueCents = computeAccountTileValueCents(acc, accountTxs);
 
-    const accountTxs = transactions.filter(tx =>
-      tx.accountId === acc.id ||
-      tx.transferFromAccountId === acc.id ||
-      tx.transferToAccountId === acc.id
-    );
-
-    // Calculate total incomes and expenses
-    let expensesAll = 0;
-    let incomesAll = 0;
     let spentThisWindow = 0;
-
     const now = new Date();
 
     // Determine window
@@ -112,62 +116,22 @@ export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenP
     }
 
     for (const tx of accountTxs) {
-      const isTransfer = tx.systemType === 'transfer';
-      const isFrom = tx.accountId === acc.id || tx.transferFromAccountId === acc.id;
-      const isTo = tx.transferToAccountId === acc.id; // Only for transfers
-
-      const amount = Math.abs(tx.amountCents); // Assuming stored as negative for expense? 
-      // Wait, types.ts says amountCents. Swift uses Decimal. 
-      // In Swift mock: 
-      // Expense: negative. Income: positive.
-      // Transfer: Amount is usually positive in Swift if simple transfer?
-      // Let's assume signed.
-
-      let val = tx.amountCents;
-      let isExpense = false;
-      let isIncome = false;
-
-      if (isTransfer) {
-        // If systemType='transfer', logic is specific
-        if (tx.transferFromAccountId === acc.id) isExpense = true;
-        if (tx.transferToAccountId === acc.id) isIncome = true;
-        val = Math.abs(val); // Transfer amount is magnitude
-      } else {
-        if (tx.type === 'income') {
-          isIncome = true;
-          val = Math.abs(val);
-        } else {
-          isExpense = true;
-          val = Math.abs(val);
-        }
-      }
-
-      if (isExpense) expensesAll += val;
-      if (isIncome) incomesAll += val;
-
-      // Window calculation
       const txDate = new Date(tx.date);
-      if (txDate >= windowStart && txDate < windowEnd) {
-        if (isExpense) spentThisWindow += val;
-        // Credit card: refunds (income) reduce spent? Swift: 
-        // "Spent ... this month" usually refers to outflows.
-        // Swift code: 
-        // let spentThisMonth = txs.filter { ... && inWindow($0) && (type != income || isTransfer) }.reduce...
-        // So it sums expenses/transfers-out.
+      if (txDate < windowStart || txDate >= windowEnd) continue;
+
+      if (tx.systemType === 'transfer') {
+        if (tx.transferFromAccountId === acc.id) {
+          spentThisWindow += Math.abs(tx.amountCents);
+        }
+        continue;
+      }
+
+      if (tx.accountId === acc.id && tx.type !== 'income') {
+        spentThisWindow += Math.abs(tx.amountCents);
       }
     }
 
-    let balance = 0;
-    if (acc.kind === 'card') {
-      // Available = limit - expenses + incomes
-      // Assuming limit is positive cents
-      balance = (acc.limitAmountCents || 0) - expensesAll + incomesAll;
-    } else {
-      // Balance = opening + incomes - expenses
-      balance = (acc.openingBalanceCents || 0) + incomesAll - expensesAll;
-    }
-
-    return { balance, spentThisWindow };
+    return { displayValueCents, spentThisWindow };
   }, [transactions]);
 
   return (
@@ -201,11 +165,20 @@ export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenP
             </TouchableOpacity>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor="#FFFFFF"
+              />
+            }
+          >
             {accounts.map(acc => {
-              const { balance, spentThisWindow } = getAccountDisplay(acc);
+              const { displayValueCents, spentThisWindow } = getAccountDisplay(acc);
               const isCredit = acc.kind === 'card';
-              const windowLabel = isCredit && acc.billingCycleDay
+              const windowLabel = isCredit && acc.billingCycleDay && acc.billingCycleDay >= 1 && acc.billingCycleDay <= 28
                 ? 'this billing cycle'
                 : 'this month';
 
@@ -225,12 +198,14 @@ export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenP
                     </View>
                     <Text style={styles.cardTitle}>{acc.name}</Text>
                     <View style={{ flex: 1 }} />
-                    <Text style={[
-                      styles.balanceText,
-                      balance < 0 ? { color: '#FF3B30' } : null
-                    ]}>
-                      {formatCents(balance)}
-                    </Text>
+                    {displayValueCents !== null && (
+                      <Text style={[
+                        styles.balanceText,
+                        displayValueCents < 0 ? { color: '#FF3B30' } : null
+                      ]}>
+                        {formatCents(displayValueCents)}
+                      </Text>
+                    )}
                   </View>
 
                   <Text style={styles.spentText}>

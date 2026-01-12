@@ -5,15 +5,14 @@
 import React, { useState, useEffect } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     TouchableOpacity,
-    TextInput,
     ScrollView,
     Alert,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
+import { Text, TextInput } from '@/components/ui/LockedText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -87,10 +86,7 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
             if (categoryId) {
                 await CategoryRepository.update(categoryId, data);
             } else {
-                await CategoryRepository.create({
-                    ...data,
-                    sortIndex: 999,
-                });
+                await CategoryRepository.create(data);
             }
 
             if (onSave) onSave();
@@ -136,18 +132,18 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
 
     return (
         <View style={styles.container}>
-            {/* Only show Stack header when NOT used as a modal */}
-            <Stack.Screen options={{
-                title: categoryId ? "Edit Category" : "New Category",
-                headerStyle: { backgroundColor: '#000000' },
-                headerTintColor: '#FFFFFF',
-                headerShown: !onDismiss, // Hide when used as modal
-                headerRight: () => (
-                    <TouchableOpacity onPress={handleSave} disabled={isSaving}>
-                        <Text style={[styles.headerButton, isSaving && { opacity: 0.5 }]}>Save</Text>
-                    </TouchableOpacity>
-                ),
-            }} />
+            {!onDismiss && (
+                <Stack.Screen options={{
+                    title: categoryId ? "Edit Category" : "New Category",
+                    headerStyle: { backgroundColor: '#000000' },
+                    headerTintColor: '#FFFFFF',
+                    headerRight: () => (
+                        <TouchableOpacity onPress={handleSave} disabled={isSaving}>
+                            <Text style={[styles.headerButton, isSaving && { opacity: 0.5 }]}>Save</Text>
+                        </TouchableOpacity>
+                    ),
+                }} />
+            )}
 
             {onDismiss && (
                 <View style={[styles.header, { paddingTop: insets.top + 10 }]}>

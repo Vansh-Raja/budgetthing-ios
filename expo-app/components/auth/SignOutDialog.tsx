@@ -8,11 +8,11 @@ import React, { useState } from 'react';
 import {
     Modal,
     View,
-    Text,
     TouchableOpacity,
     StyleSheet,
     ActivityIndicator,
 } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 

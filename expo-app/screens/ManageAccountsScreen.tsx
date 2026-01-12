@@ -4,39 +4,65 @@
  * Lists all accounts and allows adding/editing.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     TouchableOpacity,
-    ScrollView,
     Modal,
-    StatusBar,
 } from 'react-native';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import { Text } from '@/components/ui/LockedText';
 import { Stack, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { Colors } from '../constants/theme';
 import { Account } from '../lib/logic/types';
-import { useAccounts } from '../lib/hooks/useData';
+import { useAccounts, useTransactions } from '../lib/hooks/useData';
+import { useUserSettings } from '../lib/hooks/useUserSettings';
+import { computeAccountAvailableCents, computeAccountBalanceCents, getTransactionsForAccount } from '../lib/logic/accountBalance';
 import { formatCents } from '../lib/logic/currencyUtils';
+import { AccountRepository } from '../lib/db/repositories';
 import { EditAccountScreen } from './EditAccountScreen';
 
 export function ManageAccountsScreen() {
-    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { data: accounts, refresh } = useAccounts();
+    const { data: transactions } = useTransactions();
+    const { settings } = useUserSettings();
 
     const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
     const [showEditor, setShowEditor] = useState(false);
+    const [orderedAccounts, setOrderedAccounts] = useState<Account[]>([]);
 
-    // Derived state
-    const cashAccounts = accounts.filter(a => a.kind === 'cash').sort((a, b) => a.sortIndex - b.sortIndex);
-    const cardAccounts = accounts.filter(a => a.kind === 'card').sort((a, b) => a.sortIndex - b.sortIndex);
-    const savingsAccounts = accounts.filter(a => a.kind === 'savings').sort((a, b) => a.sortIndex - b.sortIndex);
+    useEffect(() => {
+        setOrderedAccounts(accounts);
+    }, [accounts]);
+
+    const totalsByAccountId = useMemo(() => {
+        const totals = new Map<string, { balanceCents: number; availableCents: number | null }>();
+
+        for (const account of orderedAccounts) {
+            const txs = getTransactionsForAccount(transactions, account.id);
+            totals.set(account.id, {
+                balanceCents: computeAccountBalanceCents(account, txs),
+                availableCents: computeAccountAvailableCents(account, txs),
+            });
+        }
+
+        return totals;
+    }, [orderedAccounts, transactions]);
+
+    const handleReorder = async ({ data }: { data: Account[] }) => {
+        setOrderedAccounts(data);
+        try {
+            await AccountRepository.reorder(data.map(a => a.id));
+        } catch (e) {
+            console.error('[ManageAccounts] Failed to reorder accounts:', e);
+            refresh();
+        }
+    };
 
     const handleEdit = (id: string) => {
         Haptics.selectionAsync();
@@ -60,28 +86,70 @@ export function ManageAccountsScreen() {
         handleEditorDismiss();
     };
 
-    const AccountRow = ({ account }: { account: Account }) => (
-        <TouchableOpacity
-            style={styles.row}
-            onPress={() => handleEdit(account.id)}
-            activeOpacity={0.7}
-        >
-            <View style={styles.emojiContainer}>
-                <Text style={styles.emoji}>{account.emoji}</Text>
-            </View>
+    const renderItem = ({ item: account, drag, isActive, getIndex }: RenderItemParams<Account>) => {
+        const index = getIndex?.() ?? -1;
+        const showDivider = index >= 0 && index < orderedAccounts.length - 1;
+        const isDefault = settings?.defaultAccountId === account.id;
 
-            <View style={styles.textContainer}>
-                <Text style={styles.name}>{account.name}</Text>
-                {account.kind === 'card' && account.limitAmountCents ? (
-                    <Text style={styles.subtitle}>Limit: {formatCents(account.limitAmountCents)}</Text>
-                ) : (
-                    <Text style={styles.subtitle}>Open: {formatCents(account.openingBalanceCents || 0)}</Text>
-                )}
-            </View>
+        return (
+            <View>
+                <View style={[styles.rowContainer, isActive && styles.rowActive]}>
+                    <TouchableOpacity
+                        style={styles.row}
+                        onPress={() => handleEdit(account.id)}
+                        activeOpacity={0.7}
+                        disabled={isActive}
+                    >
+                        <View style={styles.emojiContainer}>
+                            <Text style={styles.emoji}>{account.emoji}</Text>
+                        </View>
 
-            <Ionicons name="chevron-forward" size={20} color="rgba(255, 255, 255, 0.3)" />
-        </TouchableOpacity>
-    );
+                        <View style={styles.textContainer}>
+                            <Text style={styles.name}>{account.name}</Text>
+                            {(() => {
+                                const totals = totalsByAccountId.get(account.id);
+                                const balanceCents = totals?.balanceCents ?? (account.openingBalanceCents ?? 0);
+                                const availableCents = totals?.availableCents ?? null;
+
+                                if (account.kind === 'card') {
+                                    if (availableCents === null) {
+                                        return <Text style={styles.subtitle}>Unlimited credit</Text>;
+                                    }
+                                    return <Text style={styles.subtitle}>Available: {formatCents(availableCents)}</Text>;
+                                }
+
+                                return <Text style={styles.subtitle}>Balance: {formatCents(balanceCents)}</Text>;
+                            })()}
+                        </View>
+ 
+                        {isDefault && (
+                            <View style={styles.defaultBadge}>
+                                <Text style={styles.defaultBadgeText}>Default</Text>
+                            </View>
+                        )}
+
+                        <Ionicons name="chevron-forward" size={20} color="rgba(255, 255, 255, 0.3)" style={styles.chevron} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.dragHandle}
+                        onLongPress={() => {
+                            Haptics.selectionAsync();
+                            drag();
+                        }}
+                        delayLongPress={150}
+                        activeOpacity={0.7}
+                        disabled={isActive}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                        <Ionicons name="reorder-three" size={24} color="rgba(255, 255, 255, 0.35)" />
+                    </TouchableOpacity>
+                </View>
+
+                {showDivider && <View style={styles.divider} />}
+            </View>
+        );
+    };
 
     return (
         <View style={styles.container}>
@@ -102,52 +170,16 @@ export function ManageAccountsScreen() {
                 ),
             }} />
 
-            <ScrollView contentContainerStyle={styles.content}>
-                {/* Cash */}
-                {cashAccounts.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionHeader}>Cash & Checking</Text>
-                        <View style={styles.card}>
-                            {cashAccounts.map((account, i) => (
-                                <View key={account.id}>
-                                    <AccountRow account={account} />
-                                    {i < cashAccounts.length - 1 && <View style={styles.divider} />}
-                                </View>
-                            ))}
-                        </View>
-                    </View>
-                )}
-
-                {/* Cards */}
-                {cardAccounts.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionHeader}>Credit Cards</Text>
-                        <View style={styles.card}>
-                            {cardAccounts.map((account, i) => (
-                                <View key={account.id}>
-                                    <AccountRow account={account} />
-                                    {i < cardAccounts.length - 1 && <View style={styles.divider} />}
-                                </View>
-                            ))}
-                        </View>
-                    </View>
-                )}
-
-                {/* Savings */}
-                {savingsAccounts.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionHeader}>Savings & Investments</Text>
-                        <View style={styles.card}>
-                            {savingsAccounts.map((account, i) => (
-                                <View key={account.id}>
-                                    <AccountRow account={account} />
-                                    {i < savingsAccounts.length - 1 && <View style={styles.divider} />}
-                                </View>
-                            ))}
-                        </View>
-                    </View>
-                )}
-            </ScrollView>
+            <View style={styles.content}>
+                <DraggableFlatList
+                    data={orderedAccounts}
+                    keyExtractor={(item) => item.id}
+                    onDragEnd={handleReorder}
+                    renderItem={renderItem}
+                    style={styles.card}
+                    contentContainerStyle={styles.cardContent}
+                />
+            </View>
 
             {/* Internal Modal for Editing */}
             <Modal
@@ -172,29 +204,40 @@ const styles = StyleSheet.create({
         backgroundColor: '#000000',
     },
     content: {
+        flex: 1,
         padding: 20,
-        gap: 24,
     },
-    section: {
-        gap: 8,
-    },
-    sectionHeader: {
-        fontFamily: 'AvenirNextCondensed-DemiBold',
-        fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.5)',
-        marginLeft: 16,
-        textTransform: 'uppercase',
+    cardContent: {
+        paddingBottom: 8,
     },
     card: {
         backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderRadius: 16,
         overflow: 'hidden',
     },
+    rowContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+    },
     row: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         padding: 16,
         gap: 16,
+    },
+    rowActive: {
+        backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    },
+    chevron: {
+        marginRight: 6,
+    },
+    dragHandle: {
+        paddingRight: 14,
+        paddingVertical: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     emojiContainer: {
         width: 40,
@@ -220,6 +263,19 @@ const styles = StyleSheet.create({
         fontFamily: 'System',
         fontSize: 13,
         color: 'rgba(255, 255, 255, 0.5)',
+    },
+    defaultBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 9999,
+        backgroundColor: 'rgba(255, 255, 255, 0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+    },
+    defaultBadgeText: {
+        fontFamily: 'AvenirNextCondensed-DemiBold',
+        fontSize: 14,
+        color: '#FFFFFF',
     },
     divider: {
         height: 1,

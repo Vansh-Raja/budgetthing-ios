@@ -7,11 +7,9 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Pressable,
-  TextInput,
   ScrollView,
   Dimensions,
   Platform,
@@ -19,14 +17,17 @@ import {
   Modal,
   Alert,
 } from 'react-native';
+import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Colors, Sizes, BorderRadius } from '../constants/theme';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { SplitEditorScreen } from './SplitEditorScreen';
 import { SplitType } from '../lib/logic/types';
 import { useCategories, useAccounts } from '../lib/hooks/useData';
+import { useUserSettings } from '../lib/hooks/useUserSettings';
 import { useTrips } from '../lib/hooks/useTrips';
 import { TransactionRepository, TripExpenseRepository, TripRepository } from '../lib/db/repositories';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
@@ -336,10 +337,13 @@ interface CalculatorScreenProps {
     note: string | null;
     tripId: string | null;
   }) => void;
+  onRequestAddTrip?: () => void;
 }
 
-export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProps) {
+export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: CalculatorScreenProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { settings } = useUserSettings();
   const { width, height } = Dimensions.get('window');
 
   // Calculator state
@@ -352,40 +356,64 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);
-  const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(initialTripId || null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [showSplitEditor, setShowSplitEditor] = useState(false);
   const [pendingTransaction, setPendingTransaction] = useState<any>(null);
   const [selectedPayerId, setSelectedPayerId] = useState<string | null>(null);
-  const noteInputRef = useRef<TextInput>(null);
+  const noteInputRef = useRef<React.ElementRef<typeof TextInput>>(null);
 
   // Data Hooks
   const { data: categoriesData } = useCategories();
   const { data: accountsData } = useAccounts();
   const { trips } = useTrips();
 
-  const currencyCode = 'INR'; // TODO: Get from UserSettings
+  useEffect(() => {
+    if (accountsData.length === 0) return;
+
+    const selectionIsValid = selectedAccountId !== null && accountsData.some((a) => a.id === selectedAccountId);
+    if (selectionIsValid) return;
+
+    const preferred = settings?.defaultAccountId;
+    const nextSelected = preferred && accountsData.some((a) => a.id === preferred)
+      ? preferred
+      : accountsData[0].id;
+
+    setSelectedAccountId(nextSelected);
+
+    // NOTE: Swift also persists a per-session "last used" account. We can add that later if needed.
+  }, [accountsData, selectedAccountId, settings?.defaultAccountId]);
+
+  const currencyCode = settings?.currencyCode ?? 'INR';
 
   // Prepare data for UI
-  const categories = useMemo(() => categoriesData.filter(c => !c.isSystem).map(c => c.emoji), [categoriesData]);
-  const categoryMap = useMemo(() => {
-    const map = new Map<string, string>(); // emoji -> id
-    categoriesData.forEach(c => map.set(c.emoji, c.id));
-    return map;
-  }, [categoriesData]);
+  const categoryItems = useMemo(
+    () => categoriesData.filter(c => !c.isSystem).map(c => ({ id: c.id, emoji: c.emoji })),
+    [categoriesData]
+  );
 
-  const accounts = accountsData.length > 0 ? accountsData : [{ id: '1', name: 'Cash', emoji: '💵' }];
+  const accounts = accountsData;
 
   const openTrips = useMemo(() => trips.filter(t => !t.isArchived), [trips]);
 
+  const isCompactHeight = height < 820;
+  const isVeryCompactHeight = height < 700;
+
   // Layout matching Swift GeometryReader logic
   // topHeight = proxy.size.height * 0.42
-  const topHeight = height * 0.42;
+  const topHeight = height * (isVeryCompactHeight ? 0.34 : 0.42);
   // amountFontSize = min(proxy.size.width * 0.22, 120)
-  const amountFontSize = Math.min(width * 0.22, 120);
+  const amountFontSize = Math.min(width * 0.22, isCompactHeight ? 108 : 120);
   // keyHeight = max(56, proxy.size.height * 0.064)
-  const keyHeight = Math.max(56, height * 0.064);
+  const minKeyHeight = isCompactHeight ? 44 : 56;
+  const keyHeight = Math.max(minKeyHeight, height * 0.064);
+  const keyFontSize = isCompactHeight ? 24 : 28;
+
+  const keypadPaddingBottom = Math.max(isVeryCompactHeight ? 16 : 28, insets.bottom);
+  const noteButtonMarginBottom = isCompactHeight ? 8 : 12;
+  const keypadGridMarginTop = isCompactHeight ? 8 : 12;
+  const keyButtonMarginBottom = isCompactHeight ? 10 : 16;
 
   const formattedAmount = useMemo(() => {
     const prefix = calculator.amountString.startsWith('-') ? '-' : '';
@@ -396,6 +424,7 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
   }, [calculator.amountString, currencyCode]);
 
   const currentAccount = useMemo(() => {
+    if (accounts.length === 0) return null;
     return accounts.find(a => a.id === selectedAccountId) || accounts[0];
   }, [accounts, selectedAccountId]);
 
@@ -413,8 +442,16 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
     const amountCents = Math.round(amountDecimal * 100) * (mode === 'expense' ? -1 : 1);
 
     // Resolve IDs
-    const categoryId = mode === 'income' ? null : (selectedEmoji ? categoryMap.get(selectedEmoji) ?? null : null);
-    const accountId = selectedAccountId || accounts[0].id;
+    const categoryId = mode === 'income' ? null : (selectedCategoryId || null);
+
+    if (!currentAccount) {
+      setErrorToast('Create an account to save.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setTimeout(() => setErrorToast(null), 1400);
+      return;
+    }
+
+    const accountId = currentAccount.id;
 
     const data = {
       amountCents,
@@ -452,16 +489,18 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
         accountId: accountId ?? undefined,
       });
 
-      // Link to trip if selected (Solo)
+      // Link to trip if selected (solo trip)
       if (trip && mode === 'expense') {
-        await TripExpenseRepository.create({
+        const me = trip.participants?.find(p => p.isCurrentUser);
+
+        const tripExpense = await TripExpenseRepository.create({
           tripId: trip.id,
           transactionId: tx.id,
-          splitType: 'equal', // Solo is implicitly equal (1 person)
-          // paidByParticipantId? We need to find "me" participant.
-          // Or just leave empty if not strictly needed for solo?
-          // Swift logic creates TripExpense.
+          splitType: 'equal',
+          paidByParticipantId: me?.id,
         });
+
+        await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
       }
 
       calculator.clearAll();
@@ -476,7 +515,7 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
       Alert.alert('Error', `Save failed: ${e}`);
       setErrorToast('Failed to save');
     }
-  }, [calculator, mode, selectedEmoji, selectedAccountId, noteText, selectedTripId, onSave, categoryMap, accounts, openTrips]);
+  }, [calculator, mode, selectedCategoryId, selectedAccountId, noteText, selectedTripId, onSave, accounts, openTrips]);
 
   const toggleNoteField = useCallback(() => {
     const newValue = !showNoteField;
@@ -583,7 +622,7 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
     return (
       <TouchableOpacity
         key={label}
-        style={[styles.keyButton, { height: keyHeight }]}
+        style={[styles.keyButton, { height: keyHeight, marginBottom: keyButtonMarginBottom }]}
         onPress={() => onKeyPress(key)}
         activeOpacity={0.7}
         accessibilityLabel={label}
@@ -591,7 +630,12 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
         {isIcon ? (
           <Ionicons name="backspace-outline" size={28} color={color} />
         ) : (
-          <Text style={[styles.keyText, { color, fontFamily }, isOperator && styles.keyTextOperator]}>
+          <Text
+            style={[styles.keyText, { color, fontFamily, fontSize: keyFontSize }, isOperator && styles.keyTextOperator]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
             {label}
           </Text>
         )}
@@ -600,10 +644,11 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
   };
 
   const renderEmojiRow = (
-    items: string[],
+    items: Array<{ id: string; emoji: string }>,
     selectedId: string | null,
-    onSelect: (id: string) => void,
-    maxVisible = 7
+    onSelect: (id: string | null) => void,
+    maxVisible = 7,
+    onAdd?: () => void
   ) => {
     const count = items.length;
     const baseItem = 36;
@@ -616,21 +661,21 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
 
     const content = (
       <View style={[styles.emojiRowContent, { gap: baseSpacing * scale }]}>
-        {items.map((emoji) => (
+        {items.map((item) => (
           <TouchableOpacity
-            key={emoji}
+            key={item.id}
             style={[styles.emojiButton, { width: baseItem * scale, height: baseItem * scale }]}
             onPress={() => {
-              onSelect(selectedId === emoji ? '' : emoji);
+              onSelect(selectedId === item.id ? null : item.id);
               Haptics.selectionAsync();
             }}
             activeOpacity={0.7}
             disabled={mode === 'income'}
           >
             <Text style={[styles.emojiText, { fontSize: 24 * scale }]}>
-              {emoji}
+              {item.emoji}
             </Text>
-            {selectedId === emoji && (
+            {selectedId === item.id && (
               <View style={[styles.emojiIndicator, { width: 16 * scale, height: 2 * scale }]} />
             )}
           </TouchableOpacity>
@@ -639,8 +684,10 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
           style={[styles.emojiButton, { width: baseItem * scale, height: baseItem * scale }]}
           onPress={() => {
             Haptics.selectionAsync();
+            onAdd?.();
           }}
           activeOpacity={0.7}
+          disabled={mode === 'income'}
         >
           <Text style={[styles.emojiAddText, { fontSize: 24 * scale }]}>⊕</Text>
         </TouchableOpacity>
@@ -713,23 +760,30 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
           <TouchableOpacity
             style={styles.accountPill}
             onPress={() => {
+              if (accounts.length === 0) {
+                Haptics.selectionAsync();
+                router.push('/settings/accounts');
+                return;
+              }
+
               if (accounts.length > 1) {
                 setShowAccountDropdown(!showAccountDropdown);
                 Haptics.selectionAsync();
               }
             }}
-            activeOpacity={accounts.length > 1 ? 0.7 : 1}
+            activeOpacity={accounts.length === 0 || accounts.length > 1 ? 0.7 : 1}
           >
             <Text style={styles.accountPillText}>
-              {currentAccount.emoji} {currentAccount.name}
+              {currentAccount ? `${currentAccount.emoji} ${currentAccount.name}` : 'No accounts'}
             </Text>
           </TouchableOpacity>
-
+ 
           {/* Save Button */}
           <TouchableOpacity
-            style={styles.saveButton}
+            style={[styles.saveButton, !currentAccount && { opacity: 0.4 }]}
             onPress={handleSave}
-            activeOpacity={0.7}
+            activeOpacity={currentAccount ? 0.7 : 1}
+            disabled={!currentAccount}
           >
             <Ionicons name="checkmark" size={16} color={Colors.textPrimary} />
           </TouchableOpacity>
@@ -776,7 +830,7 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
       </View>
 
       {/* Amount Display - Top Half */}
-      <View style={[styles.amountContainer, { height: topHeight }]}>
+      <View style={[styles.amountContainer, { height: topHeight, paddingTop: isVeryCompactHeight ? 90 : 110 }]}>
         {renderEquationText()}
         <View style={styles.amountWrapper}>
           {/* Shadow layer */}
@@ -803,9 +857,9 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
       </View>
 
       {/* Keypad Area - Bottom Half */}
-      <View style={styles.keypadContainer}>
+      <View style={[styles.keypadContainer, { paddingBottom: keypadPaddingBottom }]}>
         {/* Note Button */}
-        <View style={styles.noteButtonContainer}>
+        <View style={[styles.noteButtonContainer, { marginBottom: noteButtonMarginBottom }]}>
           <TouchableOpacity
             style={[
               styles.noteButton,
@@ -862,11 +916,12 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
         {openTrips.length > 0 && mode !== 'income' && (
           <View style={[styles.emojiRowWrapper, { marginBottom: 4 }]}>
             {renderEmojiRow(
-              openTrips.map(t => t.emoji),
-              selectedTripId ? openTrips.find(t => t.id === selectedTripId)?.emoji ?? null : null,
-              (emoji) => {
-                const trip = openTrips.find(t => t.emoji === emoji);
-                setSelectedTripId(prev => prev === trip?.id ? null : trip?.id ?? null);
+              openTrips.map(t => ({ id: t.id, emoji: t.emoji })),
+              selectedTripId,
+              setSelectedTripId,
+              7,
+              () => {
+                onRequestAddTrip?.();
               }
             )}
           </View>
@@ -880,14 +935,18 @@ export function CalculatorScreen({ initialTripId, onSave }: CalculatorScreenProp
           { marginBottom: 4 }
         ]}>
           {renderEmojiRow(
-            categories,
-            selectedEmoji,
-            setSelectedEmoji
+            categoryItems,
+            selectedCategoryId,
+            setSelectedCategoryId,
+            7,
+            () => {
+              router.push('/settings/categories');
+            }
           )}
         </View>
 
         {/* Keypad Grid - matching spacing: 12 and columns: 4 */}
-        <View style={styles.keypadGrid}>
+        <View style={[styles.keypadGrid, { marginTop: keypadGridMarginTop }]}>
           {/* Row 1 */}
           {renderKey({ type: 'clear' }, 'C')}
           {renderKey({ type: 'percent' }, '%')}

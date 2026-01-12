@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { useFocusEffect } from 'expo-router';
 import { UserSettings } from '../logic/types';
 import { UserSettingsRepository } from '../db/repositories';
 import { waitForDatabase } from '../db/database';
+import { Events, GlobalEvents } from '../events';
 
 interface UserSettingsContextType {
     settings: UserSettings | null;
@@ -26,7 +26,6 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
             const s = await UserSettingsRepository.get();
             setSettings(s);
         } catch (e) {
-            console.log('Settings fetch pending:', e);
             setError(e as Error);
         } finally {
             setLoading(false);
@@ -35,10 +34,8 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
 
     const updateSettings = useCallback(async (updates: Partial<UserSettings>) => {
         try {
-            // Optimistic update?
-            // For now, wait for DB.
             await UserSettingsRepository.update(updates);
-            await fetchSettings(); // Refresh
+            await fetchSettings();
         } catch (e) {
             console.error("Failed to update settings:", e);
             throw e;
@@ -48,6 +45,11 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
     // Initial load
     useEffect(() => {
         fetchSettings();
+    }, [fetchSettings]);
+
+    // Keep settings in sync across the app
+    useEffect(() => {
+        return GlobalEvents.on(Events.userSettingsChanged, fetchSettings);
     }, [fetchSettings]);
 
     const value = {

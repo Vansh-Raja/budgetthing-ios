@@ -68,7 +68,7 @@ export function AddExpenseScreen({ tripId, onDismiss }: AddExpenseScreenProps) {
           // Find "me" participant for solo trips
           const me = trip.participants?.find(p => p.isCurrentUser);
 
-          await TripExpenseRepository.create({
+          const tripExpense = await TripExpenseRepository.create({
             tripId: trip.id,
             transactionId: tx.id,
             splitType: 'equal', // Solo is implicitly equal (1 person)
@@ -77,7 +77,7 @@ export function AddExpenseScreen({ tripId, onDismiss }: AddExpenseScreenProps) {
 
           // Link back
           await TransactionRepository.update(tx.id, {
-            tripExpenseId: tx.id // Simplified: just link to itself or the expense ID
+            tripExpenseId: tripExpense.id
           });
         }
 

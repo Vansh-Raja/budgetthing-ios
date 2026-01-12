@@ -7,16 +7,15 @@
 import React, { useState, useMemo } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     TouchableOpacity,
-    TextInput,
     ScrollView,
     KeyboardAvoidingView,
     Platform,
     Alert,
     Modal,
 } from 'react-native';
+import { Text, TextInput } from '@/components/ui/LockedText';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';

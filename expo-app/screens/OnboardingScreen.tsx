@@ -7,13 +7,13 @@
 import React, { useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Dimensions,
   Image,
   StatusBar,
 } from 'react-native';
+import { Text } from '@/components/ui/LockedText';
 import PagerView from 'react-native-pager-view';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
