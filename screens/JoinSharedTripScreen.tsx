@@ -22,7 +22,7 @@ export function JoinSharedTripScreen({ onDismiss, onJoined }: JoinSharedTripScre
   const { syncNow, isSyncing } = useSyncStatus();
   const { user } = useAuthState();
 
-  const joinByCode = useMutation((api as any).sharedTripInvites.joinByCode);
+  const joinByCode = useMutation(api.sharedTripInvites.joinByCode);
 
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -54,7 +54,7 @@ export function JoinSharedTripScreen({ onDismiss, onJoined }: JoinSharedTripScre
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      onJoined?.((result as any).tripId);
+      onJoined?.(result.tripId);
       onDismiss();
     } catch (e: any) {
       console.error('[JoinSharedTrip] join failed', e);

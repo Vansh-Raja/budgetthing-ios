@@ -26,8 +26,8 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
   const { syncNow } = useSyncStatus();
   const { user } = useAuthState();
 
-  const createTrip = useMutation((api as any).sharedTrips.create);
-  const rotateInvite = useMutation((api as any).sharedTripInvites.rotate);
+  const createTrip = useMutation(api.sharedTrips.create);
+  const rotateInvite = useMutation(api.sharedTripInvites.rotate);
 
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('✈️');
@@ -63,11 +63,11 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
         participantName: getDefaultTripNickname(user),
       });
 
-      const tripId = (result as any).tripId as string;
+      const tripId = result.tripId;
 
       // Generate an initial join code immediately.
       const invite = await rotateInvite({ tripId });
-      const code = (invite as any).code as string | undefined;
+      const code = invite.code;
 
       await syncNow('create_shared_trip');
 

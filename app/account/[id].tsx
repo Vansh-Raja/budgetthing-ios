@@ -5,7 +5,7 @@
  * Shows account balance and transaction history grouped by month.
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
     View,
     StyleSheet,
@@ -27,6 +27,8 @@ import { Transaction } from '../../lib/logic/types';
 import { useAccounts, useTransactions, useCategories } from '../../lib/hooks/useData';
 import { TransactionDetailScreen } from '../../screens/TransactionDetailScreen';
 import { EditAccountScreen } from '../../screens/EditAccountScreen';
+import { SharedTripRepository } from '../../lib/db/sharedTripRepositories';
+import { TripExpenseRepository } from '../../lib/db/repositories';
 
 // ============================================================================
 // Helpers
@@ -61,6 +63,22 @@ export default function AccountDetailScreen() {
     const [editingTx, setEditingTx] = useState<Transaction | null>(null);
     const [showEditor, setShowEditor] = useState(false);
 
+    const [sharedExpenseMeta, setSharedExpenseMeta] = useState<Record<string, {
+        tripId: string;
+        tripEmoji: string;
+        categoryEmoji: string | null;
+        categoryName: string | null;
+        amountCents: number;
+    }>>({});
+
+    const [localExpenseMeta, setLocalExpenseMeta] = useState<Record<string, {
+        tripId: string;
+        tripEmoji: string;
+        categoryEmoji: string | null;
+        categoryName: string | null;
+        amountCents: number;
+    }>>({});
+
     const account = accounts.find(a => a.id === id);
 
     // Filter transactions for this account
@@ -72,6 +90,36 @@ export default function AccountDetailScreen() {
             t.transferToAccountId === id
         ).sort((a, b) => b.date - a.date);
     }, [id, allTransactions]);
+
+    // For derived cashflow rows, fetch shared trip expense meta so we can render a meaningful emoji.
+    useEffect(() => {
+        const expenseIds = accountTxs
+            .filter((t) => t.systemType === 'trip_cashflow' && t.sourceTripExpenseId)
+            .map((t) => t.sourceTripExpenseId!)
+            .filter(Boolean);
+
+        let cancelled = false;
+
+        SharedTripRepository.getExpenseMetaByIds(expenseIds)
+            .then((map) => {
+                if (!cancelled) setSharedExpenseMeta(map);
+            })
+            .catch(() => {
+                if (!cancelled) setSharedExpenseMeta({});
+            });
+
+        TripExpenseRepository.getExpenseMetaByIds(expenseIds)
+            .then((map) => {
+                if (!cancelled) setLocalExpenseMeta(map);
+            })
+            .catch(() => {
+                if (!cancelled) setLocalExpenseMeta({});
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [accountTxs]);
 
     // Calculate stats
     const stats = useMemo(() => {
@@ -281,12 +329,20 @@ export default function AccountDetailScreen() {
 
                                     // Determine display
                                     let displayEmoji = category?.emoji || '📝';
+
+                                    if (tx.systemType === 'trip_cashflow' && tx.sourceTripExpenseId) {
+                                        const meta = sharedExpenseMeta[tx.sourceTripExpenseId] ?? localExpenseMeta[tx.sourceTripExpenseId];
+                                        displayEmoji = meta?.categoryEmoji ?? meta?.tripEmoji ?? '🧾';
+                                    }
                                     if (isTransfer) {
                                         displayEmoji = ''; // We'll use icon instead
                                     }
 
                                     const showGreen = isIncome || isTransferIn;
                                     const txDate = new Date(tx.date);
+                                    const cashflowMeta = (tx.systemType === 'trip_cashflow' && tx.sourceTripExpenseId)
+                                        ? (sharedExpenseMeta[tx.sourceTripExpenseId] ?? localExpenseMeta[tx.sourceTripExpenseId])
+                                        : undefined;
 
                                     return (
                                         <TouchableOpacity
@@ -317,7 +373,7 @@ export default function AccountDetailScreen() {
                                                     {showGreen ? '+' : ''}{formatCents(Math.abs(tx.amountCents))}
                                                 </Text>
                                                 <Text style={styles.txDate}>
-                                                    {format(txDate, 'd MMMM yyyy')}
+                                                    {format(txDate, 'd MMMM yyyy')}{cashflowMeta?.tripEmoji ? ` · ${cashflowMeta.tripEmoji}` : ''}
                                                 </Text>
                                             </View>
 

@@ -18,6 +18,9 @@ This file provides essential context for AI agents working on this codebase. It 
 - Add new decisions or changes to the plan as they arise
 - Update this file (`AGENTS.md`) if project structure or key concepts change
 
+Additional:
+- Correctness rules live in `rules.md` and are enforced by CI tests.
+
 ---
 
 ## Project Overview
@@ -32,41 +35,20 @@ This file provides essential context for AI agents working on this codebase. It 
 
 ---
 
-## Repository Structure
+## Repository Structure (Current)
 
 ```
-/BudgetThing/                    # Swift iOS app source code
-  /AppIntents/                   # Siri/Shortcuts integration (dropped in Expo version)
-  *.swift                        # SwiftUI views and models
-  
-/BudgetThingWidgets/             # iOS widgets (dropped in Expo version)
-
-/BudgetThingTests/               # Swift unit tests (to be ported to TypeScript)
-
-/Website/                        # Static marketing/support website
-
-/plan.md                         # Detailed migration plan (Expo + Convex)
-
-/.gitignore
-/BudgetThing.xcodeproj/          # Xcode project
-```
-
-### After Migration (planned structure)
-
-```
-/expo-app/                       # New Expo React Native app
-  /app/                          # Expo Router file-based routes
-  /components/                   # Shared UI components
-  /lib/
-    /db/                         # SQLite wrapper, migrations
-    /sync/                       # Sync engine (outbox, pull, conflict)
-    /logic/                      # Business logic (calculators, formatters)
-    /hooks/                      # Custom React hooks
-  /convex/                       # Convex backend code
-    schema.ts
-    auth.config.ts
-    sync.ts
-    ...
+/app/                            # Expo Router routes
+/screens/                        # Screen components used by routes
+/components/                     # Shared UI components
+/lib/
+  /db/                           # SQLite wrapper, migrations, repositories
+  /sync/                         # Sync engine + reconcile logic
+  /logic/                        # Business logic (calculators, formatters)
+  /hooks/                         # Data hooks
+/convex/                         # Convex backend (schema + functions)
+/legacySwiftApp/                 # Legacy Swift app reference code
+/plan.md                         # Migration + build plan
 ```
 
 ---
@@ -190,6 +172,35 @@ Using **Clerk** with Convex integration:
 
 ---
 
+## Convex Deployments & Commands (Important)
+
+This repo uses two Convex deployments:
+
+### Dev
+
+- Deployment: `dev:adjoining-gnat-886`
+- URL: `https://adjoining-gnat-886.convex.cloud`
+- Push schema/functions to dev (one-shot):
+  - `CONVEX_DEPLOYMENT=dev:adjoining-gnat-886 npx convex dev --once`
+
+### Production
+
+- Deployment: `prod:ceaseless-mandrill-733`
+- URL: `https://ceaseless-mandrill-733.convex.cloud`
+- Deploy to production (release-time only):
+  - `CONVEX_DEPLOYMENT=prod:ceaseless-mandrill-733 npx convex deploy --yes`
+
+### Critical Warning
+
+- `npx convex deploy` targets production by default. Do NOT use it when you mean dev.
+- For dev pushes, use `convex dev --once` with `CONVEX_DEPLOYMENT=dev:...`.
+
+### Expo Note
+
+- Some features require a native dev build/TestFlight build (e.g. `react-native-emoji-popup`). Expo Go will not include those native modules.
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -248,6 +259,7 @@ See `plan.md` for detailed breakdown:
 3. **Trip delete keeps transactions**: TripExpense is deleted but Transaction remains (unlinked)
 4. **"Current user" participant**: In group trips, one participant is marked `isCurrentUser=true` for "You owe/get back" calculations
 5. **Soft deletes for sync**: `deletedAtMs` is set instead of hard delete; UI filters these out
+6. **Shared trips accounting**: `trip_share` is a ledger (owed share) and does not affect personal accounts. Personal accounts change only for real money movement: when you paid an expense (`trip_cashflow`, payer-only) or when a settlement occurs (`trip_settlement`).
 
 ---
 

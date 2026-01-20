@@ -2,6 +2,38 @@ import { queryAll, run, withTransaction } from './database';
 import { TABLES } from './schema';
 import { Events, GlobalEvents } from '../events';
 
+function normalizeOptionalFields(table: string, data: any) {
+  if (!data || typeof data !== 'object') return data;
+
+  const optionalByTable: Record<string, string[]> = {
+    [TABLES.ACCOUNTS]: ['openingBalanceCents', 'limitAmountCents', 'billingCycleDay', 'deletedAtMs'],
+    [TABLES.CATEGORIES]: ['monthlyBudgetCents', 'deletedAtMs'],
+    [TABLES.TRANSACTIONS]: [
+      'note',
+      'systemType',
+      'accountId',
+      'categoryId',
+      'transferFromAccountId',
+      'transferToAccountId',
+      'tripExpenseId',
+      'deletedAtMs',
+    ],
+    [TABLES.TRIPS]: ['startDate', 'endDate', 'budgetCents', 'deletedAtMs'],
+    [TABLES.TRIP_PARTICIPANTS]: ['colorHex', 'deletedAtMs'],
+    [TABLES.TRIP_EXPENSES]: ['paidByParticipantId', 'splitDataJson', 'computedSplitsJson', 'deletedAtMs'],
+    [TABLES.TRIP_SETTLEMENTS]: ['note', 'deletedAtMs'],
+    [TABLES.USER_SETTINGS]: ['defaultAccountId'],
+  };
+
+  const optionalCols = optionalByTable[table] ?? [];
+  const out: any = { ...data };
+  for (const col of optionalCols) {
+    if (!(col in out)) out[col] = null;
+    if (out[col] === undefined) out[col] = null;
+  }
+  return out;
+}
+
 export interface PendingChanges {
   accounts: any[];
   categories: any[];
@@ -39,10 +71,24 @@ export const syncRepository = {
    */
   async markAsSynced(changes: PendingChanges) {
     await withTransaction(async () => {
+      const chunk = <T,>(input: T[], size: number): T[][] => {
+        const out: T[][] = [];
+        for (let i = 0; i < input.length; i += size) {
+          out.push(input.slice(i, i + size));
+        }
+        return out;
+      };
+
       const markTable = async (table: string, records: any[]) => {
-        if (records.length === 0) return;
-        const ids = records.map(r => `'${r.id}'`).join(',');
-        await run(`UPDATE ${table} SET needsSync = 0 WHERE id IN (${ids})`);
+        if (!records || records.length === 0) return;
+        const ids = records.map((r: any) => r?.id).filter(Boolean) as string[];
+        if (ids.length === 0) return;
+
+        // Avoid SQL injection / quoting issues and keep statement size reasonable.
+        for (const batch of chunk(ids, 400)) {
+          const placeholders = batch.map(() => '?').join(',');
+          await run(`UPDATE ${table} SET needsSync = 0 WHERE id IN (${placeholders})`, batch);
+        }
       };
 
       await markTable(TABLES.ACCOUNTS, changes.accounts);
@@ -66,7 +112,8 @@ export const syncRepository = {
 
         for (const record of records) {
           // Remove Convex fields
-          const { _id, _creationTime, userId, ...data } = record;
+          const { _id, _creationTime, userId, ...rawData } = record;
+          const data = normalizeOptionalFields(table, rawData);
           
           // Check if local record exists and is newer (conflict resolution)
           // We must query inside the transaction logic, but `queryAll` creates a new connection instance?
@@ -154,9 +201,13 @@ export const syncRepository = {
       await upsertTable(TABLES.USER_SETTINGS, userSettings);
 
       if (tripIdsMissingSortIndex.length) {
-        const ids = tripIdsMissingSortIndex.map(id => `'${id}'`).join(',');
+        const now = Date.now();
+        const placeholders = tripIdsMissingSortIndex.map(() => '?').join(',');
         await run(
-          `UPDATE ${TABLES.TRIPS} SET needsSync = 1, syncVersion = syncVersion + 1 WHERE id IN (${ids})`
+          `UPDATE ${TABLES.TRIPS}
+           SET needsSync = 1, syncVersion = syncVersion + 1, updatedAtMs = ?
+           WHERE id IN (${placeholders})`,
+          [now, ...tripIdsMissingSortIndex]
         );
       }
 

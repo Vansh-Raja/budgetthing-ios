@@ -1,10 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-/**
- * Helper: Get the last sequence number for a user's changelog
- */
-async function getLastSeq(ctx: any, userId: string): Promise<number> {
+async function getLastSeqFromChangeLog(ctx: any, userId: string): Promise<number> {
   const lastEntry = await ctx.db
     .query("changeLog")
     .withIndex("by_user_seq", (q: any) => q.eq("userId", userId))
@@ -13,18 +10,77 @@ async function getLastSeq(ctx: any, userId: string): Promise<number> {
   return lastEntry?.seq ?? 0;
 }
 
+async function getOrCreateUserSyncState(ctx: any, userId: string) {
+  // Always pick the oldest state doc if duplicates exist.
+  const existing = await ctx.db
+    .query("userSyncState")
+    .withIndex("by_client_id", (q: any) => q.eq("id", userId))
+    .order("asc")
+    .first();
+  if (existing) return existing;
+
+  const lastSeq = await getLastSeqFromChangeLog(ctx, userId);
+  await ctx.db.insert("userSyncState", { id: userId, userId, lastSeq });
+
+  return ctx.db
+    .query("userSyncState")
+    .withIndex("by_client_id", (q: any) => q.eq("id", userId))
+    .order("asc")
+    .first();
+}
+
+async function allocateUserSeq(ctx: any, userId: string): Promise<number> {
+  const state = await getOrCreateUserSyncState(ctx, userId);
+  const nextSeq = ((state?.lastSeq as number | undefined) ?? 0) + 1;
+  await ctx.db.patch(state._id, { lastSeq: nextSeq });
+  return nextSeq;
+}
+
+const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
+  accounts: new Set(["openingBalanceCents", "limitAmountCents", "billingCycleDay", "deletedAtMs"]),
+  categories: new Set(["monthlyBudgetCents", "deletedAtMs"]),
+  transactions: new Set([
+    "note",
+    "systemType",
+    "accountId",
+    "categoryId",
+    "transferFromAccountId",
+    "transferToAccountId",
+    "tripExpenseId",
+    "deletedAtMs",
+  ]),
+  trips: new Set(["startDate", "endDate", "budgetCents", "deletedAtMs"]),
+  tripParticipants: new Set(["colorHex", "deletedAtMs"]),
+  tripExpenses: new Set(["paidByParticipantId", "splitDataJson", "computedSplitsJson", "deletedAtMs"]),
+  tripSettlements: new Set(["note", "deletedAtMs"]),
+  userSettings: new Set(["defaultAccountId"]),
+};
+
 /**
- * Helper: Sanitize incoming SQLite records for Convex
- * Removes nulls (Convex expects undefined) and local-only fields
+ * Helper: Sanitize incoming SQLite records for Convex.
+ * - Removes local-only fields.
+ * - Interprets NULL for certain optional fields as "unset".
  */
-function sanitizeRecord(input: Record<string, unknown>) {
+function sanitizeRecord(tableName: string, input: Record<string, unknown>) {
   const { needsSync: _needsSync, ...rest } = input as any;
   const output: Record<string, unknown> = {};
+  const unsetKeys: string[] = [];
+  const nullClears = NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE[tableName] ?? new Set<string>();
+
   for (const [key, value] of Object.entries(rest)) {
-    if (value === null || value === undefined) continue;
+    if (value === undefined) continue;
+
+    if (value === null) {
+      if (nullClears.has(key)) {
+        unsetKeys.push(key);
+      }
+      continue;
+    }
+
     output[key] = value;
   }
-  return output;
+
+  return { data: output, unsetKeys };
 }
 
 /**
@@ -57,8 +113,9 @@ export const push = mutation({
         const { id, ...raw } = record as any;
         if (!id) continue;
 
-        const data = sanitizeRecord(raw);
+        const { data, unsetKeys } = sanitizeRecord(tableName, raw);
         const incomingUpdatedAtMs = (data.updatedAtMs as number | undefined) ?? 0;
+        const incomingSyncVersion = (data.syncVersion as number | undefined) ?? 0;
 
         const existing = await ctx.db
           .query(tableName as any)
@@ -69,9 +126,18 @@ export const push = mutation({
         let didChange = false;
 
         if (existing) {
-          // Last-write-wins: only apply if incoming timestamp >= existing
-          if (incomingUpdatedAtMs >= (existing.updatedAtMs as number)) {
-            await ctx.db.patch(existing._id, { ...data, userId });
+          const existingUpdatedAtMs = (existing.updatedAtMs as number) ?? 0;
+          const existingSyncVersion = (existing.syncVersion as number) ?? 0;
+
+          // Last-write-wins with a tie-breaker on syncVersion.
+          const shouldApply =
+            incomingUpdatedAtMs > existingUpdatedAtMs ||
+            (incomingUpdatedAtMs === existingUpdatedAtMs && incomingSyncVersion > existingSyncVersion);
+
+          if (shouldApply) {
+            const patch: any = { ...data, userId };
+            for (const key of unsetKeys) patch[key] = undefined;
+            await ctx.db.patch(existing._id, patch);
             didChange = true;
           }
         } else {
@@ -81,7 +147,7 @@ export const push = mutation({
 
         // Record in changeLog if we made a change
         if (didChange) {
-          const lastSeq = await getLastSeq(ctx, userId);
+          const seq = await allocateUserSeq(ctx, userId);
           const isDelete = data.deletedAtMs !== undefined && data.deletedAtMs !== null;
 
           await ctx.db.insert("changeLog", {
@@ -90,7 +156,7 @@ export const push = mutation({
             entityId: id,
             action: isDelete ? "delete" : "upsert",
             updatedAtMs: incomingUpdatedAtMs,
-            seq: lastSeq + 1,
+            seq,
           });
         }
       }
@@ -197,7 +263,15 @@ export const latestSeq = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
     const userId = identity.subject;
-    return await getLastSeq(ctx, userId);
+
+    const state = await ctx.db
+      .query("userSyncState")
+      .withIndex("by_client_id", (q: any) => q.eq("id", userId))
+      .order("asc")
+      .first();
+    if (state) return state.lastSeq ?? 0;
+
+    return await getLastSeqFromChangeLog(ctx, userId);
   },
 });
 

@@ -45,6 +45,35 @@ function normalizeSharedTripOptionalFields(table: string, data: any) {
 }
 
 export const sharedTripSyncRepository = {
+  async getPendingTripIds(): Promise<string[]> {
+    const ids = new Set<string>();
+
+    // Trip id is stored as `id` on sharedTrips and as `tripId` on child tables.
+    const tripRows = await queryAll<{ tripId: string }>(
+      `SELECT DISTINCT id as tripId FROM ${TABLES.SHARED_TRIPS} WHERE needsSync = 1`
+    );
+    for (const r of tripRows) {
+      if (r?.tripId) ids.add(r.tripId);
+    }
+
+    const childTables = [
+      TABLES.SHARED_TRIP_PARTICIPANTS,
+      TABLES.SHARED_TRIP_EXPENSES,
+      TABLES.SHARED_TRIP_SETTLEMENTS,
+    ];
+
+    for (const table of childTables) {
+      const rows = await queryAll<{ tripId: string }>(
+        `SELECT DISTINCT tripId FROM ${table} WHERE needsSync = 1 AND tripId IS NOT NULL`
+      );
+      for (const r of rows) {
+        if (r?.tripId) ids.add(r.tripId);
+      }
+    }
+
+    return Array.from(ids);
+  },
+
   async applyRemoteMembershipRows(rows: any[]) {
     if (!rows || rows.length === 0) return;
 

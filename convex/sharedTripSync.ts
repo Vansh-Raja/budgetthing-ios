@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { recordTripChange } from "./sharedTripSeq";
 
 async function requireUserId(ctx: any): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
@@ -18,15 +19,6 @@ async function requireTripMember(ctx: any, tripId: string, userId: string) {
   }
 
   return member;
-}
-
-async function getLastTripSeq(ctx: any, tripId: string): Promise<number> {
-  const lastEntry = await ctx.db
-    .query("sharedTripChangeLog")
-    .withIndex("by_trip_seq", (q: any) => q.eq("tripId", tripId))
-    .order("desc")
-    .first();
-  return lastEntry?.seq ?? 0;
 }
 
 const NULL_CLEARS_OPTIONAL_FIELDS = new Set<string>([
@@ -80,24 +72,7 @@ type SharedTripTableName =
   | "sharedTripExpenses"
   | "sharedTripSettlements";
 
-async function recordTripChange(
-  ctx: any,
-  tripId: string,
-  entityType: string,
-  entityId: string,
-  updatedAtMs: number,
-  action: "upsert" | "delete"
-) {
-  const lastSeq = await getLastTripSeq(ctx, tripId);
-  await ctx.db.insert("sharedTripChangeLog", {
-    tripId,
-    entityType,
-    entityId,
-    action,
-    updatedAtMs,
-    seq: lastSeq + 1,
-  });
-}
+// recordTripChange imported
 
 export const push = mutation({
   args: {
@@ -244,6 +219,19 @@ export const latestSeq = query({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     await requireTripMember(ctx, args.tripId, userId);
-    return await getLastTripSeq(ctx, args.tripId);
+
+    const state = await ctx.db
+      .query('sharedTripSyncState')
+      .withIndex('by_client_id', (q: any) => q.eq('id', args.tripId))
+      .order('asc')
+      .first();
+    if (state) return state.lastSeq ?? 0;
+
+    const lastEntry = await ctx.db
+      .query('sharedTripChangeLog')
+      .withIndex('by_trip_seq', (q: any) => q.eq('tripId', args.tripId))
+      .order('desc')
+      .first();
+    return lastEntry?.seq ?? 0;
   },
 });

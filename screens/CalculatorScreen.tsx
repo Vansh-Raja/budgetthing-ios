@@ -898,26 +898,28 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
           </View>
 
           {/* Account Pill (centered) */}
-          <TouchableOpacity
-            style={styles.accountPill}
-            onPress={() => {
-              if (accounts.length === 0) {
-                Haptics.selectionAsync();
-                router.push('/settings/accounts');
-                return;
-              }
+          <View style={styles.accountPillWrapper} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.accountPill}
+              onPress={() => {
+                if (accounts.length === 0) {
+                  Haptics.selectionAsync();
+                  router.push('/settings/accounts');
+                  return;
+                }
 
-              if (accounts.length > 1) {
-                setShowAccountDropdown(!showAccountDropdown);
-                Haptics.selectionAsync();
-              }
-            }}
-            activeOpacity={accounts.length === 0 || accounts.length > 1 ? 0.7 : 1}
-          >
-            <Text style={styles.accountPillText}>
-              {currentAccount ? `${currentAccount.emoji} ${currentAccount.name}` : 'No accounts'}
-            </Text>
-          </TouchableOpacity>
+                if (accounts.length > 1) {
+                  setShowAccountDropdown(!showAccountDropdown);
+                  Haptics.selectionAsync();
+                }
+              }}
+              activeOpacity={accounts.length === 0 || accounts.length > 1 ? 0.7 : 1}
+            >
+              <Text style={styles.accountPillText} numberOfLines={1} ellipsizeMode="tail">
+                {currentAccount ? `${currentAccount.emoji} ${currentAccount.name}` : 'No accounts'}
+              </Text>
+            </TouchableOpacity>
+          </View>
  
           {/* Save Button */}
           <TouchableOpacity
@@ -932,28 +934,30 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
         {/* Account Dropdown */}
         {showAccountDropdown && (
-          <View style={styles.accountDropdown}>
-            {accounts.map((account, index) => (
-              <React.Fragment key={account.id}>
-                <TouchableOpacity
-                  style={styles.accountDropdownItem}
-                  onPress={() => {
-                    setSelectedAccountId(account.id);
-                    setShowAccountDropdown(false);
-                    Haptics.selectionAsync();
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.accountDropdownEmoji}>{account.emoji}</Text>
-                  <Text style={styles.accountDropdownName}>{account.name}</Text>
-                  <View style={{ flex: 1 }} />
-                  {(selectedAccountId === account.id || (!selectedAccountId && index === 0)) && (
-                    <View style={styles.accountSelectedIndicator} />
-                  )}
-                </TouchableOpacity>
-                {index < accounts.length - 1 && <View style={styles.accountDropdownDivider} />}
-              </React.Fragment>
-            ))}
+          <View style={styles.accountDropdownWrapper} pointerEvents="box-none">
+            <View style={styles.accountDropdown}>
+              {accounts.map((account, index) => (
+                <React.Fragment key={account.id}>
+                  <TouchableOpacity
+                    style={styles.accountDropdownItem}
+                    onPress={() => {
+                      setSelectedAccountId(account.id);
+                      setShowAccountDropdown(false);
+                      Haptics.selectionAsync();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.accountDropdownEmoji}>{account.emoji}</Text>
+                    <Text style={styles.accountDropdownName}>{account.name}</Text>
+                    <View style={{ flex: 1 }} />
+                    {(selectedAccountId === account.id || (!selectedAccountId && index === 0)) && (
+                      <View style={styles.accountSelectedIndicator} />
+                    )}
+                  </TouchableOpacity>
+                  {index < accounts.length - 1 && <View style={styles.accountDropdownDivider} />}
+                </React.Fragment>
+              ))}
+            </View>
           </View>
         )}
 
@@ -1178,6 +1182,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 36,
   },
+  accountPillWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modeToggle: {
     flexDirection: 'row',
     paddingHorizontal: 8,
@@ -1200,9 +1213,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
   },
   accountPill: {
-    position: 'absolute',
-    left: '50%',
-    transform: [{ translateX: -60 }], // Approximation, assumes width ~120
     paddingHorizontal: 12,
     height: 36,
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
@@ -1212,6 +1222,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     minWidth: 120,
+    maxWidth: 220,
   },
   accountPillText: {
     fontFamily: 'AvenirNextCondensed-DemiBold',
@@ -1230,18 +1241,21 @@ const styles = StyleSheet.create({
   },
 
   // Account Dropdown
-  accountDropdown: {
+  accountDropdownWrapper: {
     position: 'absolute',
     top: 36 + 2 + 16, // height + padding + top offset
-    left: '50%',
-    transform: [{ translateX: -80 }],
-    width: 160,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 101,
+  },
+  accountDropdown: {
+    width: 200,
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     overflow: 'hidden',
-    zIndex: 101,
   },
   accountDropdownItem: {
     flexDirection: 'row',

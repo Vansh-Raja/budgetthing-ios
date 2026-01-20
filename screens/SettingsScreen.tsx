@@ -37,6 +37,7 @@ import { clearAllData } from '../lib/db/database';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { clearSyncStateForUser } from '../lib/sync/syncEngine';
+import { setLocalDbOwner } from '../lib/sync/localDbOwner';
 
 // ============================================================================
 // Types & Props
@@ -178,6 +179,9 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
         // Clear all local data
         await clearAllData();
 
+        // Mark device as guest-owned after wipe.
+        await setLocalDbOwner('guest');
+
         // Reset per-user sync cursor so a reinstall doesn't miss remote history.
         if (clerkUserId) {
           await clearSyncStateForUser(clerkUserId);
@@ -204,6 +208,9 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
 
       // Clear local data
       await clearAllData();
+
+      // Mark device as guest-owned after wipe.
+      await setLocalDbOwner('guest');
 
       // Clear sync state
       if (clerkUserId) {

@@ -152,6 +152,16 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_client_id", ["id"]),
 
+  // Monotonic sequence state for user-scoped changeLog.
+  // Used to allocate unique seq values under concurrent pushes.
+  userSyncState: defineTable({
+    id: v.string(), // == userId
+    userId: v.string(),
+    lastSeq: v.number(),
+  })
+    .index("by_client_id", ["id"])
+    .index("by_user", ["userId"]),
+
   // For efficient sync: track all changes per user with monotonic sequence
   changeLog: defineTable({
     userId: v.string(),
@@ -265,6 +275,16 @@ export default defineSchema({
   })
     .index("by_client_id", ["id"])
     .index("by_code", ["code"])
+    .index("by_trip", ["tripId"]),
+
+  // Monotonic sequence state for shared trip changelog.
+  // Used to allocate unique seq values under concurrent writes.
+  sharedTripSyncState: defineTable({
+    id: v.string(), // == tripId
+    tripId: v.string(),
+    lastSeq: v.number(),
+  })
+    .index("by_client_id", ["id"])
     .index("by_trip", ["tripId"]),
 
   // Trip-scoped changelog for shared trip sync

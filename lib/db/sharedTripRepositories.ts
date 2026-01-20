@@ -130,35 +130,76 @@ export const SharedTripRepository = {
     tripEmoji: string;
     categoryEmoji: string | null;
     categoryName: string | null;
+    amountCents: number;
   }>> {
     if (expenseIds.length === 0) return {};
 
     const uniqueIds = Array.from(new Set(expenseIds));
     const placeholders = uniqueIds.map(() => '?').join(',');
 
-    const rows = await queryAll<{ expenseId: string; tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null }>(
+    const rows = await queryAll<{ expenseId: string; tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null; amountCents: number }>(
       `SELECT
          e.id AS expenseId,
          e.tripId AS tripId,
          t.emoji AS tripEmoji,
          e.categoryEmoji AS categoryEmoji,
-         e.categoryName AS categoryName
+         e.categoryName AS categoryName,
+         e.amountCents AS amountCents
        FROM ${TABLES.SHARED_TRIP_EXPENSES} e
        JOIN ${TABLES.SHARED_TRIPS} t ON t.id = e.tripId
        WHERE e.id IN (${placeholders})`,
       uniqueIds
     );
 
-    const map: Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null }> = {};
+    const map: Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null; amountCents: number }> = {};
     for (const r of rows) {
       map[r.expenseId] = {
         tripId: r.tripId,
         tripEmoji: r.tripEmoji,
         categoryEmoji: r.categoryEmoji,
         categoryName: r.categoryName,
+        amountCents: r.amountCents ?? 0,
       };
     }
 
+    return map;
+  },
+
+  async getTripIdForSettlement(settlementId: string): Promise<string | null> {
+    const row = await queryFirst<{ tripId: string }>(
+      `SELECT tripId FROM ${TABLES.SHARED_TRIP_SETTLEMENTS} WHERE id = ?`,
+      [settlementId]
+    );
+    return row?.tripId ?? null;
+  },
+
+  async getSettlementMetaByIds(settlementIds: string[]): Promise<Record<string, {
+    tripId: string;
+    tripEmoji: string;
+  }>> {
+    if (settlementIds.length === 0) return {};
+
+    const uniqueIds = Array.from(new Set(settlementIds));
+    const placeholders = uniqueIds.map(() => '?').join(',');
+
+    const rows = await queryAll<{ settlementId: string; tripId: string; tripEmoji: string }>(
+      `SELECT
+         s.id AS settlementId,
+         s.tripId AS tripId,
+         t.emoji AS tripEmoji
+       FROM ${TABLES.SHARED_TRIP_SETTLEMENTS} s
+       JOIN ${TABLES.SHARED_TRIPS} t ON t.id = s.tripId
+       WHERE s.id IN (${placeholders})`,
+      uniqueIds
+    );
+
+    const map: Record<string, { tripId: string; tripEmoji: string }> = {};
+    for (const r of rows) {
+      map[r.settlementId] = {
+        tripId: r.tripId,
+        tripEmoji: r.tripEmoji,
+      };
+    }
     return map;
   },
 

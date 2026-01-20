@@ -1,9 +1,8 @@
 import { queryAll } from '../db/database';
 import { TABLES } from '../db/schema';
 import { AccountRepository, TransactionRepository, UserSettingsRepository } from '../db/repositories';
-import { TripSplitCalculator } from '../logic/tripSplitCalculator';
-import type { SplitType, TripParticipant, TransactionType, SystemType } from '../logic/types';
-import { derivedTripCashflowId, derivedTripSettlementId, derivedTripShareId } from './sharedTripDerivedIds';
+import type { TripParticipant, TransactionType, SystemType } from '../logic/types';
+import { computeTripDerivedRowsForUser } from '../logic/tripAccounting/computeDerivedRows';
 
 interface SharedTripMemberRow {
   tripId: string;
@@ -143,132 +142,78 @@ export async function reconcileSharedTripDerivedTransactionsForUser(userId: stri
       continue;
     }
 
-    const calcParticipants: TripParticipant[] = participants.map((p) => ({
+    const tripLabel = trip ? `${trip.emoji} ${trip.name}` : null;
+
+    const computeParticipants: TripParticipant[] = participants.map((p) => ({
       id: p.id,
       tripId: p.tripId,
       name: p.name,
-      isCurrentUser: false,
+      isCurrentUser: p.id === myParticipantId,
       colorHex: p.colorHex ?? undefined,
       createdAtMs: p.createdAtMs,
       updatedAtMs: p.updatedAtMs,
       deletedAtMs: undefined,
     }));
 
-    for (const expense of expenses) {
-      if (expense.deletedAtMs !== null) continue;
-
-      const payer = expense.paidByParticipantId
-        ? participants.find((p) => p.id === expense.paidByParticipantId)
-        : undefined;
-
-      if (payer?.linkedUserId === userId && defaultAccountId) {
-        const parts: string[] = [];
-        if (trip) parts.push(`${trip.emoji} ${trip.name}`);
-        if (expense.categoryEmoji && expense.categoryName) {
-          parts.push(`${expense.categoryEmoji} ${expense.categoryName}`);
-        }
-        if (expense.note) parts.push(expense.note);
-
-        derivedUpserts.push({
-          id: derivedTripCashflowId(userId, expense.id),
-          amountCents: expense.amountCents,
-          date: expense.dateMs,
-          note: parts.length ? parts.join(' · ') : undefined,
-          type: 'expense',
-          systemType: 'trip_cashflow',
-          accountId: defaultAccountId,
-          sourceTripExpenseId: expense.id,
-        });
-      }
-
-      let splits: Record<string, number> | undefined;
-      if (expense.computedSplitsJson) {
-        try {
-          splits = JSON.parse(expense.computedSplitsJson);
-        } catch {
-          splits = undefined;
-        }
-      }
-
-      if (!splits) {
-        let splitData: Record<string, number> | undefined;
-        if (expense.splitDataJson) {
+    const computeExpenses = expenses
+      .filter((e) => e.deletedAtMs === null)
+      .map((e) => {
+        let splitData: Record<string, number> | null = null;
+        if (e.splitDataJson) {
           try {
-            splitData = JSON.parse(expense.splitDataJson);
+            splitData = JSON.parse(e.splitDataJson);
           } catch {
-            splitData = undefined;
+            splitData = null;
           }
         }
 
-        splits = TripSplitCalculator.calculateSplits(
-          expense.amountCents,
-          expense.splitType as SplitType,
-          calcParticipants,
-          splitData
-        );
-      }
+        let computedSplits: Record<string, number> | null = null;
+        if (e.computedSplitsJson) {
+          try {
+            computedSplits = JSON.parse(e.computedSplitsJson);
+          } catch {
+            computedSplits = null;
+          }
+        }
 
-      const myShare = splits?.[myParticipantId] ?? 0;
-      if (myShare <= 0) continue;
-
-      const parts: string[] = [];
-      if (expense.categoryEmoji && expense.categoryName) {
-        parts.push(`${expense.categoryEmoji} ${expense.categoryName}`);
-      }
-      if (expense.note) {
-        parts.push(expense.note);
-      }
-
-      derivedUpserts.push({
-        id: derivedTripShareId(userId, expense.id),
-        amountCents: myShare,
-        date: expense.dateMs,
-        note: parts.length ? parts.join(' · ') : undefined,
-        type: 'expense',
-        systemType: 'trip_share',
-        sourceTripExpenseId: expense.id,
+        return {
+          id: e.id,
+          tripId: e.tripId,
+          amountCents: e.amountCents,
+          dateMs: e.dateMs,
+          note: e.note,
+          paidByParticipantId: e.paidByParticipantId,
+          splitType: e.splitType,
+          splitData,
+          computedSplits,
+          categoryEmoji: e.categoryEmoji,
+          categoryName: e.categoryName,
+        };
       });
-    }
 
-    for (const settlement of settlements) {
-      if (settlement.deletedAtMs !== null) continue;
+    const computeSettlements = settlements
+      .filter((s) => s.deletedAtMs === null)
+      .map((s) => ({
+        id: s.id,
+        tripId: s.tripId,
+        fromParticipantId: s.fromParticipantId,
+        toParticipantId: s.toParticipantId,
+        amountCents: s.amountCents,
+        dateMs: s.dateMs,
+        note: s.note,
+      }));
 
-      const from = participants.find((p) => p.id === settlement.fromParticipantId);
-      const to = participants.find((p) => p.id === settlement.toParticipantId);
+    const computed = computeTripDerivedRowsForUser({
+      derivedKey: userId,
+      defaultAccountId,
+      tripLabel,
+      participants: computeParticipants,
+      meParticipantId: myParticipantId,
+      expenses: computeExpenses,
+      settlements: computeSettlements,
+    });
 
-      const baseParts: string[] = [];
-      if (trip) baseParts.push(`${trip.emoji} ${trip.name}`);
-      if (from && to) baseParts.push(`Settle · ${from.name} → ${to.name}`);
-      if (settlement.note) baseParts.push(settlement.note);
-
-      const note = baseParts.length ? baseParts.join(' · ') : undefined;
-
-      if (to?.linkedUserId === userId && defaultAccountId) {
-        derivedUpserts.push({
-          id: derivedTripSettlementId(userId, settlement.id, 'in'),
-          amountCents: settlement.amountCents,
-          date: settlement.dateMs,
-          note,
-          type: 'income',
-          systemType: 'trip_settlement',
-          accountId: defaultAccountId,
-          sourceTripSettlementId: settlement.id,
-        });
-      }
-
-      if (from?.linkedUserId === userId && defaultAccountId) {
-        derivedUpserts.push({
-          id: derivedTripSettlementId(userId, settlement.id, 'out'),
-          amountCents: settlement.amountCents,
-          date: settlement.dateMs,
-          note,
-          type: 'expense',
-          systemType: 'trip_settlement',
-          accountId: defaultAccountId,
-          sourceTripSettlementId: settlement.id,
-        });
-      }
-    }
+    derivedUpserts.push(...(computed as any));
   }
 
   const desiredIds = new Set(derivedUpserts.map((r) => r.id));
@@ -390,11 +335,62 @@ export async function reconcileSharedTripDerivedTransactionsForExpense(userId: s
     defaultAccountId = accounts[0]?.id;
   }
 
-  const payer = expense.paidByParticipantId
-    ? participants.find((p) => p.id === expense.paidByParticipantId)
-    : undefined;
+  const tripLabel = trip ? `${trip.emoji} ${trip.name}` : null;
 
-  const derivedUpserts: Array<{
+  const computeParticipants: TripParticipant[] = participants.map((p) => ({
+    id: p.id,
+    tripId: p.tripId,
+    name: p.name,
+    isCurrentUser: p.id === myParticipantId,
+    colorHex: p.colorHex ?? undefined,
+    createdAtMs: p.createdAtMs,
+    updatedAtMs: p.updatedAtMs,
+    deletedAtMs: undefined,
+  }));
+
+  let splitData: Record<string, number> | null = null;
+  if (expense.splitDataJson) {
+    try {
+      splitData = JSON.parse(expense.splitDataJson);
+    } catch {
+      splitData = null;
+    }
+  }
+
+  let computedSplits: Record<string, number> | null = null;
+  if (expense.computedSplitsJson) {
+    try {
+      computedSplits = JSON.parse(expense.computedSplitsJson);
+    } catch {
+      computedSplits = null;
+    }
+  }
+
+  const computed = computeTripDerivedRowsForUser({
+    derivedKey: userId,
+    defaultAccountId,
+    tripLabel,
+    participants: computeParticipants,
+    meParticipantId: myParticipantId,
+    expenses: [
+      {
+        id: expense.id,
+        tripId: expense.tripId,
+        amountCents: expense.amountCents,
+        dateMs: expense.dateMs,
+        note: expense.note,
+        paidByParticipantId: expense.paidByParticipantId,
+        splitType: expense.splitType,
+        splitData,
+        computedSplits,
+        categoryEmoji: expense.categoryEmoji,
+        categoryName: expense.categoryName,
+      },
+    ],
+    settlements: [],
+  });
+
+  const derivedUpserts = computed as any as Array<{
     id: string;
     amountCents: number;
     date: number;
@@ -403,86 +399,7 @@ export async function reconcileSharedTripDerivedTransactionsForExpense(userId: s
     systemType: SystemType;
     accountId?: string;
     sourceTripExpenseId?: string;
-  }> = [];
-
-  // trip_cashflow: payer's personal cash movement (only for the payer user)
-  if (payer?.linkedUserId === userId && defaultAccountId) {
-    const parts: string[] = [];
-    parts.push(`${trip.emoji} ${trip.name}`);
-    if (expense.categoryEmoji && expense.categoryName) {
-      parts.push(`${expense.categoryEmoji} ${expense.categoryName}`);
-    }
-    if (expense.note) parts.push(expense.note);
-
-    derivedUpserts.push({
-      id: derivedTripCashflowId(userId, expense.id),
-      amountCents: expense.amountCents,
-      date: expense.dateMs,
-      note: parts.length ? parts.join(' · ') : undefined,
-      type: 'expense',
-      systemType: 'trip_cashflow',
-      accountId: defaultAccountId,
-      sourceTripExpenseId: expense.id,
-    });
-  }
-
-  // trip_share: my owed share (only if myShare > 0)
-  let splits: Record<string, number> | undefined;
-  if (expense.computedSplitsJson) {
-    try {
-      splits = JSON.parse(expense.computedSplitsJson);
-    } catch {
-      splits = undefined;
-    }
-  }
-
-  if (!splits) {
-    let splitData: Record<string, number> | undefined;
-    if (expense.splitDataJson) {
-      try {
-        splitData = JSON.parse(expense.splitDataJson);
-      } catch {
-        splitData = undefined;
-      }
-    }
-
-    const calcParticipants: TripParticipant[] = participants.map((p) => ({
-      id: p.id,
-      tripId: p.tripId,
-      name: p.name,
-      isCurrentUser: false,
-      colorHex: p.colorHex ?? undefined,
-      createdAtMs: p.createdAtMs,
-      updatedAtMs: p.updatedAtMs,
-      deletedAtMs: undefined,
-    }));
-
-    splits = TripSplitCalculator.calculateSplits(
-      expense.amountCents,
-      expense.splitType as SplitType,
-      calcParticipants,
-      splitData
-    );
-  }
-
-  const myShare = splits?.[myParticipantId] ?? 0;
-  if (myShare > 0) {
-    const parts: string[] = [];
-    if (expense.categoryEmoji && expense.categoryName) {
-      parts.push(`${expense.categoryEmoji} ${expense.categoryName}`);
-    }
-    if (expense.note) parts.push(expense.note);
-
-    derivedUpserts.push({
-      id: derivedTripShareId(userId, expense.id),
-      amountCents: myShare,
-      date: expense.dateMs,
-      note: parts.length ? parts.join(' · ') : undefined,
-      type: 'expense',
-      systemType: 'trip_share',
-      sourceTripExpenseId: expense.id,
-    });
-  }
+  }>;
 
   const desiredIds = new Set(derivedUpserts.map((r) => r.id));
 

@@ -34,6 +34,7 @@ import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
 import { reconcileSharedTripDerivedTransactionsForExpense } from '../lib/sync/sharedTripReconcile';
+import { derivedTripCashflowId } from '../lib/sync/sharedTripDerivedIds';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { useCategories, useAccounts } from '../lib/hooks/useData';
 import { useTrips } from '../lib/hooks/useTrips';
@@ -108,6 +109,14 @@ export function TransactionDetailScreen({
     const [showSplitEditor, setShowSplitEditor] = useState(false);
     const [showPayerPicker, setShowPayerPicker] = useState(false);
 
+    // When selecting an account for a derived row (cashflow/settlement), this holds the tx id to update.
+    const [derivedAccountTargetTxId, setDerivedAccountTargetTxId] = useState<string | null>(null);
+
+    // For trip_share detail views where the current user is the payer, we expose the linked cashflow tx.
+    const [tripShareCashflowTx, setTripShareCashflowTx] = useState<Transaction | null>(null);
+
+    // `tripShareCashflowAccount` is derived from `tripShareCashflowTx` (defined above).
+
     const effectiveTransactionId = sharedTripExpense?.expenseId ?? transactionId;
     const isSharedExpense = !!sharedTripExpense;
  
@@ -122,6 +131,10 @@ export function TransactionDetailScreen({
 
         try {
             if (isMountedRef.current && shouldShowLoading) setLoading(true);
+
+            // Reset per-transaction derived helpers to avoid stale UI.
+            setTripShareCashflowTx(null);
+            setDerivedAccountTargetTxId(null);
 
             if (!effectiveTransactionId) {
                 Alert.alert("Error", "Missing transaction id");
@@ -166,6 +179,15 @@ export function TransactionDetailScreen({
                 nextTripExpense = exp;
                 nextRelatedTrip = hydrated;
                 nextIsSharedTripContext = true;
+
+                // If I'm the payer, expose the linked personal cashflow tx so I can edit "Paid from"
+                // even from the trip expense detail view.
+                const payer = hydrated?.participants?.find((p: any) => p.id === exp.paidByParticipantId);
+                if (payer?.linkedUserId === userId) {
+                    const cashflowId = derivedTripCashflowId(userId, exp.id);
+                    const cashflowTx = await TransactionRepository.getById(cashflowId);
+                    setTripShareCashflowTx(cashflowTx);
+                }
             } else {
                 tx = await TransactionRepository.getById(effectiveTransactionId);
                 if (!tx) {
@@ -177,6 +199,7 @@ export function TransactionDetailScreen({
                 const personalTx = tx;
  
                 const isSharedTripShareTx = personalTx.systemType === 'trip_share' && !!personalTx.sourceTripExpenseId;
+                const isSharedTripCashflowTx = personalTx.systemType === 'trip_cashflow' && !!personalTx.sourceTripExpenseId;
 
 
                 // 2) Local trip expense relation (non-shared-trip)
@@ -214,8 +237,36 @@ export function TransactionDetailScreen({
                             nextTripExpense = sharedExpense;
                             nextRelatedTrip = sharedTrip;
                             nextIsSharedTripContext = true;
+
+                            // If the current user is the payer, expose the linked cashflow tx so
+                            // the account can be edited from this (trip_share) view.
+                            const payer = sharedTrip.participants?.find((p: any) => p.id === sharedExpense.paidByParticipantId);
+                            if (payer?.linkedUserId === userId) {
+                                const cashflowId = derivedTripCashflowId(userId, sharedExpense.id);
+                                const cashflowTx = await TransactionRepository.getById(cashflowId);
+                                setTripShareCashflowTx(cashflowTx);
+                            } else {
+                                setTripShareCashflowTx(null);
+                            }
                         }
                     }
+                }
+
+                // 4) Shared trip "trip_cashflow" transactions (payer personal outflow).
+                // Hydrate shared trip context so the detail screen can show the same trip/split info.
+                if (isSharedTripCashflowTx && personalTx.sourceTripExpenseId && userId) {
+                    const sharedTripId = await SharedTripRepository.getTripIdForExpense(personalTx.sourceTripExpenseId);
+                    if (sharedTripId) {
+                        const sharedTrip = await SharedTripRepository.getHydratedTripForUser(userId, sharedTripId);
+                        const sharedExpense = sharedTrip?.expenses?.find(e => e.id === personalTx.sourceTripExpenseId) ?? null;
+                        if (sharedTrip && sharedExpense) {
+                            nextTripExpense = sharedExpense;
+                            nextRelatedTrip = sharedTrip;
+                            nextIsSharedTripContext = true;
+                        }
+                    }
+                    // Not a trip_share view.
+                    setTripShareCashflowTx(null);
                 }
             }
 
@@ -296,7 +347,14 @@ export function TransactionDetailScreen({
     const isIncome = transaction?.type === 'income';
 
     const isTripShare = transaction?.systemType === 'trip_share' && !!transaction?.sourceTripExpenseId;
-    const isReadOnly = !!readOnly || isTripShare;
+    const isDerivedSettlement = transaction?.systemType === 'trip_settlement' && !!transaction?.sourceTripSettlementId;
+    const isDerivedCashflow = transaction?.systemType === 'trip_cashflow' && !!transaction?.sourceTripExpenseId;
+
+    // Derived rows are local-only views and should not be fully editable.
+    // Trip-share rows are always read-only.
+    // Trip-settlement and trip-cashflow rows should allow changing only the account used.
+    const isReadOnly = !!readOnly || isTripShare || isDerivedSettlement || isDerivedCashflow;
+    const canChangeDerivedAccount = isDerivedSettlement || isDerivedCashflow;
 
     const displayNote = (isTripShare || isSharedExpense)
         ? (tripExpense?.transaction?.note ?? transaction?.note)
@@ -309,6 +367,28 @@ export function TransactionDetailScreen({
     const displayCategoryName = (isTripShare || isSharedExpense)
         ? (tripExpense?.categoryName ?? category?.name)
         : category?.name;
+
+    const tripShareTotalCents = useMemo(() => {
+        if (!transaction || !isTripShare) return null;
+        const totalCents = Math.abs(tripExpense?.transaction?.amountCents ?? 0);
+        if (!totalCents) return null;
+        return totalCents;
+    }, [transaction, isTripShare, tripExpense]);
+
+    const sharedExpenseMyShareCents = useMemo(() => {
+        if (!isSharedExpense || !userId || !relatedTrip || !tripExpense || !relatedTrip.isGroup) return null;
+        const participants: any[] = relatedTrip.participants ?? [];
+        const me = participants.find((p: any) => p?.linkedUserId === userId || p?.isCurrentUser);
+        if (!me?.id) return null;
+        const share = (tripExpense.computedSplits as any)?.[me.id];
+        if (!share || share <= 0) return null;
+        return share as number;
+    }, [isSharedExpense, userId, relatedTrip, tripExpense]);
+
+    const tripShareCashflowAccount = useMemo(() => {
+        if (!tripShareCashflowTx?.accountId) return null;
+        return accounts.find((a) => a.id === tripShareCashflowTx.accountId) ?? null;
+    }, [accounts, tripShareCashflowTx]);
 
     const splitTotalAmountCents = (isTripShare || isSharedExpense)
         ? Math.abs(tripExpense?.transaction?.amountCents ?? 0)
@@ -686,8 +766,26 @@ export function TransactionDetailScreen({
                         </Text>
                     )}
 
-                    {!isEditing && isTripShare && (
-                        <Text style={styles.tripShareLabel}>Your share</Text>
+                    {!isEditing && isTripShare && tripShareTotalCents && (
+                        <View style={styles.tripShareMetaRow}>
+                            <Text style={styles.tripShareMetaText}>
+                                Total{' '}
+                                <Text style={styles.tripShareMetaTotal}>
+                                    {formatCents(tripShareTotalCents, "INR")}
+                                </Text>
+                            </Text>
+                        </View>
+                    )}
+
+                    {!isEditing && isSharedExpense && sharedExpenseMyShareCents && (
+                        <View style={styles.tripShareMetaRow}>
+                            <Text style={styles.tripShareMetaText}>
+                                Your share{' '}
+                                <Text style={styles.tripShareMetaTotal}>
+                                    {formatCents(sharedExpenseMyShareCents, "INR")}
+                                </Text>
+                            </Text>
+                        </View>
                     )}
 
                     {/* View Mode Meta */}
@@ -702,7 +800,7 @@ export function TransactionDetailScreen({
                                 </Text>
                             )}
 
-                            {(isTripShare || isSharedExpense) && !!relatedTrip && (
+                            {(isSharedTripContext || isTripShare || isSharedExpense || isDerivedCashflow || isDerivedSettlement) && !!relatedTrip && (
                                 <Text>
                                     <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
                                     {relatedTrip.emoji} {relatedTrip.name}
@@ -742,12 +840,37 @@ export function TransactionDetailScreen({
                                 {/* Account */}
                                 <View style={styles.fieldGroup}>
                                     <Text style={styles.label}>Account</Text>
-                                    <TouchableOpacity onPress={() => setShowAccountPicker(true)} style={[styles.pill, { alignSelf: 'flex-start' }]}>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            setDerivedAccountTargetTxId(null);
+                                            setShowAccountPicker(true);
+                                        }}
+                                        style={[styles.pill, { alignSelf: 'flex-start' }]}
+                                    >
                                         <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || "🏦"}</Text>
                                         <Text style={styles.pillText}>{account?.name || "Select Account"}</Text>
                                     </TouchableOpacity>
                                 </View>
                             </>
+                        )}
+
+                        {/* Shared expense payer-only: allow changing where the payment was made from */}
+                        {isSharedExpense && !!tripShareCashflowTx && (
+                            <View style={styles.fieldGroup}>
+                                <Text style={styles.label}>Paid from</Text>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        Haptics.selectionAsync();
+                                        setDerivedAccountTargetTxId(tripShareCashflowTx.id);
+                                        setShowAccountPicker(true);
+                                    }}
+                                    style={[styles.pill, { alignSelf: 'flex-start' }]}
+                                    activeOpacity={0.75}
+                                >
+                                    <Text style={{ fontSize: 16, marginRight: 6 }}>{tripShareCashflowAccount?.emoji ?? '🏦'}</Text>
+                                    <Text style={styles.pillText}>{tripShareCashflowAccount?.name ?? 'Select Account'}</Text>
+                                </TouchableOpacity>
+                            </View>
                         )}
 
                         {/* Category Quick Picker */}
@@ -923,10 +1046,50 @@ export function TransactionDetailScreen({
                 ) : (
                     /* VIEW MODE LAYOUT */
                     <View style={styles.dataSection}>
+                        {/* Settlement-derived rows: allow changing account only */}
+                        {canChangeDerivedAccount && (
+                            <View style={styles.fieldGroup}>
+                                <Text style={styles.sectionLabel}>Account</Text>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        Haptics.selectionAsync();
+                                        setDerivedAccountTargetTxId(transaction?.id ?? null);
+                                        setShowAccountPicker(true);
+                                    }}
+                                    style={[styles.pill, { alignSelf: 'flex-start' }]}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || '🏦'}</Text>
+                                    <Text style={styles.pillText}>{account?.name || 'Select Account'}</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
                         {/* Note (Only if exists) */}
                         {!!displayNote && (
                             <View style={styles.viewNoteContainer}>
                                 <Text style={styles.viewNoteText}>{displayNote}</Text>
+                            </View>
+                        )}
+
+                        {/* Trip-share payer-only: allow changing where the payment was made from */}
+                        {(isTripShare || isSharedExpense) && !!tripShareCashflowTx && (
+                            <View style={styles.fieldGroup}>
+                                <Text style={styles.sectionLabel}>Paid from</Text>
+                                <TouchableOpacity
+                                    style={[styles.pill, { alignSelf: 'flex-start' }]}
+                                    activeOpacity={0.75}
+                                    onPress={() => {
+                                        Haptics.selectionAsync();
+                                        setDerivedAccountTargetTxId(tripShareCashflowTx.id);
+                                        setShowAccountPicker(true);
+                                    }}
+                                >
+                                    <Text style={{ fontSize: 16, marginRight: 6 }}>{tripShareCashflowAccount?.emoji ?? '🏦'}</Text>
+                                    <Text style={styles.pillText}>{tripShareCashflowAccount?.name ?? 'Select Account'}</Text>
+                                    <View style={{ width: 6 }} />
+                                    <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.35)" />
+                                </TouchableOpacity>
                             </View>
                         )}
 
@@ -1109,9 +1272,20 @@ export function TransactionDetailScreen({
                             <TouchableOpacity
                                 key={a.id}
                                 style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}
-                                onPress={() => {
-                                    setEditAccountId(a.id);
-                                    setShowAccountPicker(false);
+                                onPress={async () => {
+                                    Haptics.selectionAsync();
+                                    try {
+                                        const targetTxId = derivedAccountTargetTxId ?? (canChangeDerivedAccount && transaction ? transaction.id : null);
+                                        if (targetTxId) {
+                                            await TransactionRepository.updateDerivedAccountId(targetTxId, a.id);
+                                            await loadData();
+                                        } else {
+                                            setEditAccountId(a.id);
+                                        }
+                                    } finally {
+                                        setShowAccountPicker(false);
+                                        setDerivedAccountTargetTxId(null);
+                                    }
                                 }}
                             >
                                 <Text style={{ fontSize: 24, marginRight: 15 }}>{a.emoji}</Text>
@@ -1299,10 +1473,18 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.6)',
         fontFamily: 'System',
     },
-    tripShareLabel: {
+    tripShareMetaRow: {
         marginTop: 6,
-        fontSize: 14,
-        color: 'rgba(255,255,255,0.5)',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    tripShareMetaText: {
+        fontSize: 16,
+        color: 'rgba(255,255,255,0.70)',
+        fontFamily: 'System',
+    },
+    tripShareMetaTotal: {
+        color: '#0A84FF',
         fontFamily: 'System',
     },
     syncingRow: {

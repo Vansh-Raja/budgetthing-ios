@@ -23,6 +23,7 @@ import {
   AccountKind,
 } from '../logic/types';
 import { Events, GlobalEvents } from '../events';
+import { pickSingleCurrentUserParticipantId } from '../logic/tripAccounting/currentUserParticipant';
 
 // =============================================================================
 // Account Repository
@@ -434,6 +435,23 @@ export const TransactionRepository = {
     GlobalEvents.emit(Events.transactionsChanged);
   },
 
+  /**
+   * Update accountId for a derived (local-only) transaction.
+   *
+   * Derived rows are created by reconcile logic and should never sync to Convex.
+   * This helper keeps `needsSync = 0` and does not bump `syncVersion`.
+   */
+  async updateDerivedAccountId(id: string, accountId: string | null): Promise<void> {
+    const now = Date.now();
+    await run(
+      `UPDATE ${TABLES.TRANSACTIONS}
+       SET accountId = ?, updatedAtMs = ?
+       WHERE id = ? AND needsSync = 0`,
+      [accountId, now, id]
+    );
+    GlobalEvents.emit(Events.transactionsChanged);
+  },
+
   async delete(id: string): Promise<void> {
     const now = Date.now();
     await run(
@@ -554,6 +572,32 @@ export const TransactionRepository = {
 
     GlobalEvents.emit(Events.transactionsChanged);
   },
+
+  async getDerivedBySourceTripExpenseIds(sourceIds: string[]): Promise<Transaction[]> {
+    if (sourceIds.length === 0) return [];
+    const placeholders = sourceIds.map(() => '?').join(',');
+    const rows = await queryAll<TransactionRow>(
+      `SELECT * FROM ${TABLES.TRANSACTIONS}
+       WHERE deletedAtMs IS NULL
+         AND sourceTripExpenseId IN (${placeholders})
+         AND systemType IN ('trip_share', 'trip_cashflow')`,
+      sourceIds
+    );
+    return rows.map(rowToTransaction);
+  },
+
+  async getDerivedBySourceTripSettlementIds(sourceIds: string[]): Promise<Transaction[]> {
+    if (sourceIds.length === 0) return [];
+    const placeholders = sourceIds.map(() => '?').join(',');
+    const rows = await queryAll<TransactionRow>(
+      `SELECT * FROM ${TABLES.TRANSACTIONS}
+       WHERE deletedAtMs IS NULL
+         AND sourceTripSettlementId IN (${placeholders})
+         AND systemType = 'trip_settlement'`,
+      sourceIds
+    );
+    return rows.map(rowToTransaction);
+  },
 };
 
 // =============================================================================
@@ -607,6 +651,13 @@ export const TripRepository = {
   async getAllHydrated(includeArchived = false): Promise<Trip[]> {
     const trips = await this.getAll(includeArchived);
     if (trips.length === 0) return [];
+
+     // Silent repair: ensure exactly one current user participant for group trips.
+     // This fixes legacy invalid states before we build the hydrated view.
+     for (const t of trips) {
+       if (!t.isGroup) continue;
+       await TripParticipantRepository.ensureExactlyOneCurrentUser(t.id);
+     }
 
     // Fetch all related data in bulk (optimization: could filter by trip IDs)
     const tripIds = trips.map(t => `'${t.id}'`).join(',');
@@ -679,6 +730,9 @@ export const TripRepository = {
     if (!trip) return null;
 
     // Fetch participants
+    if (trip.isGroup) {
+      await TripParticipantRepository.ensureExactlyOneCurrentUser(id);
+    }
     const participants = await TripParticipantRepository.getByTripId(id);
 
     // Fetch expenses
@@ -876,15 +930,69 @@ export const TripParticipantRepository = {
     values.push(id);
     await run(`UPDATE ${TABLES.TRIP_PARTICIPANTS} SET ${fields.join(', ')} WHERE id = ?`, values);
     GlobalEvents.emit(Events.tripParticipantsChanged);
+
+    if (updates.isCurrentUser !== undefined) {
+      const participant = await this.getById(id);
+      if (participant) {
+        await this.ensureExactlyOneCurrentUser(participant.tripId);
+      }
+    }
   },
 
   async delete(id: string): Promise<void> {
+    const existing = await this.getById(id);
+    if (!existing) return;
+
+    // Avoid deleting the last current-user participant.
+    if (existing.isCurrentUser) {
+      const participants = await this.getByTripId(existing.tripId);
+      const others = participants.filter((p) => p.id !== existing.id);
+      if (others.length === 0) {
+        // Refuse deletion; a group trip must always have a current user.
+        return;
+      }
+
+      // Promote someone else before deleting.
+      await this.update(others[0].id, { isCurrentUser: true });
+    }
+
     const now = Date.now();
     await run(
       `UPDATE ${TABLES.TRIP_PARTICIPANTS} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
     GlobalEvents.emit(Events.tripParticipantsChanged);
+
+    await this.ensureExactlyOneCurrentUser(existing.tripId);
+  },
+
+  /**
+   * Ensure group trips always have exactly one current user participant.
+   * Silently repairs invalid states by selecting one participant as current user.
+   */
+  async ensureExactlyOneCurrentUser(tripId: string): Promise<void> {
+    const participants = await this.getByTripId(tripId);
+    const current = participants.filter((p) => p.isCurrentUser);
+
+    // If there are no participants at all, create a default "You" participant.
+    if (participants.length === 0) {
+      await this.create({ tripId, name: 'You', isCurrentUser: true });
+      return;
+    }
+
+    // Exactly one is ideal.
+    if (current.length === 1) return;
+
+    const chosenId = pickSingleCurrentUserParticipantId(participants);
+    const chosen = chosenId ? participants.find((p) => p.id === chosenId) ?? participants[0] : participants[0];
+
+    // Repair: set chosen as current user, all others as not current user.
+    for (const p of participants) {
+      const desired = p.id === chosen.id;
+      if (p.isCurrentUser !== desired) {
+        await this.update(p.id, { isCurrentUser: desired });
+      }
+    }
   },
 };
 
@@ -993,6 +1101,57 @@ export const TripExpenseRepository = {
     );
     GlobalEvents.emit(Events.tripExpensesChanged);
   },
+
+  async getExpenseMetaByIds(expenseIds: string[]): Promise<Record<string, {
+    tripId: string;
+    tripEmoji: string;
+    categoryEmoji: string | null;
+    categoryName: string | null;
+    amountCents: number;
+    transactionId: string;
+  }>> {
+    if (expenseIds.length === 0) return {};
+    const uniqueIds = Array.from(new Set(expenseIds));
+    const placeholders = uniqueIds.map(() => '?').join(',');
+
+    const rows = await queryAll<{
+      expenseId: string;
+      tripId: string;
+      tripEmoji: string;
+      categoryEmoji: string | null;
+      categoryName: string | null;
+      amountCents: number;
+      transactionId: string;
+    }>(
+      `SELECT
+         e.id AS expenseId,
+         e.tripId AS tripId,
+         t.emoji AS tripEmoji,
+         c.emoji AS categoryEmoji,
+         c.name AS categoryName,
+         ABS(tx.amountCents) AS amountCents,
+         e.transactionId AS transactionId
+       FROM ${TABLES.TRIP_EXPENSES} e
+       JOIN ${TABLES.TRIPS} t ON t.id = e.tripId
+       JOIN ${TABLES.TRANSACTIONS} tx ON tx.id = e.transactionId
+       LEFT JOIN ${TABLES.CATEGORIES} c ON c.id = tx.categoryId
+       WHERE e.id IN (${placeholders}) AND e.deletedAtMs IS NULL`,
+      uniqueIds
+    );
+
+    const map: Record<string, any> = {};
+    for (const r of rows) {
+      map[r.expenseId] = {
+        tripId: r.tripId,
+        tripEmoji: r.tripEmoji,
+        categoryEmoji: r.categoryEmoji,
+        categoryName: r.categoryName,
+        amountCents: r.amountCents ?? 0,
+        transactionId: r.transactionId,
+      };
+    }
+    return map;
+  },
 };
 
 // =============================================================================
@@ -1076,6 +1235,28 @@ export const TripSettlementRepository = {
       [now, now, id]
     );
     GlobalEvents.emit(Events.tripSettlementsChanged);
+  },
+
+  async getSettlementMetaByIds(settlementIds: string[]): Promise<Record<string, { tripId: string; tripEmoji: string }>> {
+    if (settlementIds.length === 0) return {};
+    const uniqueIds = Array.from(new Set(settlementIds));
+    const placeholders = uniqueIds.map(() => '?').join(',');
+    const rows = await queryAll<{ settlementId: string; tripId: string; tripEmoji: string }>(
+      `SELECT
+         s.id AS settlementId,
+         s.tripId AS tripId,
+         t.emoji AS tripEmoji
+       FROM ${TABLES.TRIP_SETTLEMENTS} s
+       JOIN ${TABLES.TRIPS} t ON t.id = s.tripId
+       WHERE s.id IN (${placeholders}) AND s.deletedAtMs IS NULL`,
+      uniqueIds
+    );
+
+    const map: Record<string, { tripId: string; tripEmoji: string }> = {};
+    for (const r of rows) {
+      map[r.settlementId] = { tripId: r.tripId, tripEmoji: r.tripEmoji };
+    }
+    return map;
   },
 };
 

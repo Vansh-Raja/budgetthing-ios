@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { recordTripChange } from "./sharedTripSeq";
 
 async function requireUserId(ctx: any): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
@@ -20,33 +21,7 @@ async function requireTripMember(ctx: any, tripId: string, userId: string) {
   return member;
 }
 
-async function getLastTripSeq(ctx: any, tripId: string): Promise<number> {
-  const lastEntry = await ctx.db
-    .query("sharedTripChangeLog")
-    .withIndex("by_trip_seq", (q: any) => q.eq("tripId", tripId))
-    .order("desc")
-    .first();
-  return lastEntry?.seq ?? 0;
-}
-
-async function recordTripChange(
-  ctx: any,
-  tripId: string,
-  entityType: string,
-  entityId: string,
-  updatedAtMs: number,
-  action: "upsert" | "delete"
-) {
-  const lastSeq = await getLastTripSeq(ctx, tripId);
-  await ctx.db.insert("sharedTripChangeLog", {
-    tripId,
-    entityType,
-    entityId,
-    action,
-    updatedAtMs,
-    seq: lastSeq + 1,
-  });
-}
+// recordTripChange imported
 
 function nowMs() {
   return Date.now();

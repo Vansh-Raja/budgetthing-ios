@@ -1,14 +1,16 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Alert } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { useAuth } from '@clerk/clerk-expo';
 import { useQuery } from 'convex/react';
 
-import { waitForDatabase } from '../db/database';
+import { clearAllData, waitForDatabase } from '../db/database';
 import { seedDatabaseIfNeeded } from '../db/seed';
 import { Events, GlobalEvents } from '../events';
 import { dedupeSeededDefaults, getLocalCounts } from './bootstrap';
 import { clearSyncStateForUser, getLastPullSeq, resetLastPullSeq, useSync } from './syncEngine';
+import { getLocalDbOwner, isOwnerCompatibleWithUser, setLocalDbOwner } from './localDbOwner';
+import { reconcileLocalTripDerivedTransactionsForAllGroupTrips } from './localTripReconcile';
 
 interface SyncContextValue {
   syncNow: (reason?: string) => Promise<void>;
@@ -103,7 +105,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         clearPushDebounce();
 
         try {
+          const owner = await getLocalDbOwner();
+          if (!owner) {
+            await setLocalDbOwner('guest');
+          }
           await seedDatabaseIfNeeded();
+          await reconcileLocalTripDerivedTransactionsForAllGroupTrips();
         } catch (e) {
           console.warn('[SyncProvider] Guest seed failed:', e);
         }
@@ -122,6 +129,29 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       setIsBootstrapping(true);
 
       try {
+        // If local data belongs to a different signed-in account, wipe it before syncing
+        // to prevent cross-user leakage and accidental upload under the wrong user.
+        const owner = await getLocalDbOwner();
+        if (owner && !isOwnerCompatibleWithUser(owner, userId)) {
+          allowPushRef.current = false;
+          clearPushDebounce();
+
+          try {
+            await clearAllData();
+          } catch (e) {
+            console.error('[SyncProvider] Failed to wipe data on user switch:', e);
+          }
+
+          // Reset cursor for this user so we always pull from scratch on a wiped DB.
+          await resetLastPullSeq(userId);
+          await setLocalDbOwner(userId);
+
+          Alert.alert(
+            'Data Cleared',
+            'This device had data from a different account. For privacy, local data was cleared before signing in.'
+          );
+        }
+
         // If SecureStore survived uninstall/reinstall, lastSeq may be >0 while DB is empty.
         // In that case, reset to 0 to force a full pull.
         const before = await getLocalCounts();
@@ -148,6 +178,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         // Now enable push and do a full sync to upload any local-only data and reconcile.
         allowPushRef.current = true;
         await sync({ mode: 'full', reason: 'bootstrap_full', allowPush: true });
+
+        // Ensure local group trips produce derived rows (ledger/cashflow parity).
+        await reconcileLocalTripDerivedTransactionsForAllGroupTrips();
+
+        // Mark that the local DB now belongs to this signed-in user.
+        await setLocalDbOwner(userId);
       } catch (e) {
         console.error('[SyncProvider] Bootstrap failed:', e);
         // If something went wrong, keep push disabled to avoid accidental duplicates.

@@ -18,6 +18,7 @@ import {
     TripParticipant
 } from './types';
 import { withTransaction } from '../db/database';
+import { reconcileLocalTripDerivedTransactionsForTrip } from '../sync/localTripReconcile';
 
 export const Actions = {
     /**
@@ -40,13 +41,29 @@ export const Actions = {
 
             // 2. Create Participants
             const participants: TripParticipant[] = [];
-            for (const p of participantsData) {
+            let finalParticipantsData = participantsData;
+            if (tripData.isGroup) {
+                // Enforce that group trips always have exactly one "current user" participant.
+                // If caller didn't provide any participants, or none are marked current user,
+                // auto-add "You".
+                if (finalParticipantsData.length === 0) {
+                    finalParticipantsData = [{ name: 'You', isCurrentUser: true }];
+                } else if (!finalParticipantsData.some((p) => p.isCurrentUser)) {
+                    finalParticipantsData = [{ name: 'You', isCurrentUser: true }, ...finalParticipantsData];
+                }
+            }
+
+            for (const p of finalParticipantsData) {
                 const participant = await TripParticipantRepository.create({
                     tripId: trip.id,
                     name: p.name,
                     isCurrentUser: p.isCurrentUser,
                 });
                 participants.push(participant);
+            }
+
+            if (tripData.isGroup) {
+                await TripParticipantRepository.ensureExactlyOneCurrentUser(trip.id);
             }
 
             return {
@@ -67,8 +84,16 @@ export const Actions = {
         }
     ): Promise<void> {
         await withTransaction(async () => {
+            // Local group trips follow the same model as shared trips:
+            // the base trip expense is a ledger entry and should not affect personal accounts.
+            // Real personal account movement is represented by derived rows.
+            const ledgerTransactionData = {
+                ...transactionData,
+                accountId: undefined,
+            };
+
             // 1. Create the base transaction (without tripExpenseId initially)
-            const transaction = await TransactionRepository.create(transactionData);
+            const transaction = await TransactionRepository.create(ledgerTransactionData);
 
             // 2. Create the TripExpense record linked to it
             const tripExpense = await TripExpenseRepository.create({
@@ -85,6 +110,12 @@ export const Actions = {
                 tripExpenseId: tripExpense.id
             });
         });
+
+        // Update derived rows after write transaction commits.
+        const hydrated = await TripRepository.getHydrated(tripId);
+        if (hydrated) {
+            await reconcileLocalTripDerivedTransactionsForTrip(hydrated);
+        }
     },
 
     /**

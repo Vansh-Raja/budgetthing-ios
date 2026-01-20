@@ -33,7 +33,14 @@ import { TransactionRepository } from '../lib/db/repositories';
 import { TransactionDetailScreen } from './TransactionDetailScreen';
 import { useTrips } from '../lib/hooks/useTrips';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
+import { TripExpenseRepository, TripSettlementRepository } from '../lib/db/repositories';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import {
+  formatTripShareAmountInline,
+  isSelectableInBulkMode,
+  shouldCountInMonthlySpentTotals,
+  shouldRenderInTransactions,
+} from '../lib/ui/transactionRules';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { useAuth } from '@clerk/clerk-expo';
 import { Tabs } from '../constants/theme';
@@ -157,7 +164,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
 
   // Map to find trip expense info for a transaction
   const tripExpenseMap = useMemo(() => {
-    const map = new Map<string, { tripId: string; tripName: string; tripEmoji: string; paidByParticipantId?: string; splitType: string; computedSplits?: Record<string, number>; participants: any[] }>();
+    const map = new Map<string, { tripId: string; tripName: string; tripEmoji: string; isGroup: boolean; paidByParticipantId?: string; splitType: string; computedSplits?: Record<string, number>; participants: any[] }>();
     trips.forEach(trip => {
       trip.expenses?.forEach(exp => {
         if (exp.transactionId) {
@@ -165,6 +172,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
             tripId: trip.id,
             tripName: trip.name,
             tripEmoji: trip.emoji,
+            isGroup: trip.isGroup,
             paidByParticipantId: exp.paidByParticipantId,
             splitType: exp.splitType,
             computedSplits: exp.computedSplits,
@@ -190,6 +198,10 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
 
     // Check if this is a trip expense
     const tripInfo = tripExpenseMap.get(tx.id);
+    if (tripInfo?.isGroup) {
+      // Local group trip expense rows are ledger-only; derived rows handle display.
+      return { amount: 0, isIncome: false, shouldHide: true };
+    }
     if (!tripInfo) {
       // Regular expense: show full amount
       return { amount: Math.abs(tx.amountCents), isIncome: false, shouldHide: false };
@@ -292,7 +304,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         const totalCents = txs.reduce((sum, tx) => {
           // Use effective amount (user's share for trip expenses)
           const info = getEffectiveDisplayInfo(tx);
-          if (info.shouldHide || info.isIncome || tx.systemType === 'transfer' || tx.systemType === 'trip_cashflow') return sum;
+          if (info.shouldHide || info.isIncome || !shouldCountInMonthlySpentTotals(tx)) return sum;
           return sum + info.amount;
         }, 0);
 
@@ -370,7 +382,10 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   const [tripShareEditTarget, setTripShareEditTarget] = useState<{ tripId: string; expenseId: string } | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
-  const [sharedExpenseMeta, setSharedExpenseMeta] = useState<Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null }>>({});
+  const [sharedExpenseMeta, setSharedExpenseMeta] = useState<Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null; amountCents: number }>>({});
+  const [sharedSettlementMeta, setSharedSettlementMeta] = useState<Record<string, { tripId: string; tripEmoji: string }>>({});
+  const [localExpenseMeta, setLocalExpenseMeta] = useState<Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null; amountCents: number }>>({});
+  const [localSettlementMeta, setLocalSettlementMeta] = useState<Record<string, { tripId: string; tripEmoji: string }>>({});
 
   const handleChangeCategory = useCallback(() => {
     Haptics.selectionAsync();
@@ -387,6 +402,11 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
       .map((t) => t.sourceTripExpenseId!)
       .filter(Boolean);
 
+    const settlementIds = transactions
+      .filter((t) => t.systemType === 'trip_settlement' && t.sourceTripSettlementId)
+      .map((t) => t.sourceTripSettlementId!)
+      .filter(Boolean);
+
     let cancelled = false;
 
     SharedTripRepository.getExpenseMetaByIds(expenseIds)
@@ -395,6 +415,30 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
       })
       .catch(() => {
         if (!cancelled) setSharedExpenseMeta({});
+      });
+
+    SharedTripRepository.getSettlementMetaByIds(settlementIds)
+      .then((map: Record<string, { tripId: string; tripEmoji: string }>) => {
+        if (!cancelled) setSharedSettlementMeta(map);
+      })
+      .catch(() => {
+        if (!cancelled) setSharedSettlementMeta({});
+      });
+
+    TripExpenseRepository.getExpenseMetaByIds(expenseIds)
+      .then((map) => {
+        if (!cancelled) setLocalExpenseMeta(map);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalExpenseMeta({});
+      });
+
+    TripSettlementRepository.getSettlementMetaByIds(settlementIds)
+      .then((map) => {
+        if (!cancelled) setLocalSettlementMeta(map);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalSettlementMeta({});
       });
 
     return () => {
@@ -406,8 +450,8 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
     const category = item.categoryId ? categoryMap[item.categoryId] : null;
     const displayInfo = getEffectiveDisplayInfo(item);
 
-    // Hide derived payer cashflow rows (shown in Accounts, not Transactions)
-    if (item.systemType === 'trip_cashflow') return null;
+    // Hide rows not intended for the Transactions tab (e.g. payer cashflow).
+    if (!shouldRenderInTransactions(item)) return null;
 
     // Hide transactions not relevant to current user
     if (displayInfo.shouldHide) return null;
@@ -422,26 +466,34 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
     // Check if this is a local trip expense
     const tripInfo = tripExpenseMap.get(item.id);
     const sharedMeta = item.systemType === 'trip_share' && item.sourceTripExpenseId
-      ? sharedExpenseMeta[item.sourceTripExpenseId]
+      ? (sharedExpenseMeta[item.sourceTripExpenseId] ?? localExpenseMeta[item.sourceTripExpenseId])
+      : undefined;
+
+    const settlementMeta = item.systemType === 'trip_settlement' && item.sourceTripSettlementId
+      ? (sharedSettlementMeta[item.sourceTripSettlementId] ?? localSettlementMeta[item.sourceTripSettlementId])
       : undefined;
 
     return (
       <TouchableOpacity
         onPress={() => {
-           if (isSelecting) {
-             toggleItemSelection(item.id);
-           } else {
-             Haptics.selectionAsync();
+          if (isSelecting) {
+            // Derived rows are local-only views; skip bulk actions on them.
+            if (!isSelectableInBulkMode(item)) {
+              Haptics.selectionAsync();
+              return;
+            }
+            toggleItemSelection(item.id);
+            return;
+          }
 
-              if (item.systemType === 'trip_share') {
-                setTripShareTxId(item.id);
-                return;
-              }
+          Haptics.selectionAsync();
 
-              setEditingTx(item);
+          if (item.systemType === 'trip_share') {
+            setTripShareTxId(item.id);
+            return;
+          }
 
-           }
-
+          setEditingTx(item);
         }}
         activeOpacity={0.7}
       >
@@ -467,6 +519,8 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
                 <Text style={{ fontSize: 24, color: '#FFFFFF' }}>🛠</Text>
               ) : item.systemType === 'trip_share' ? (
                 <Text style={{ fontSize: 24 }}>{sharedMeta?.categoryEmoji ?? '🧾'}</Text>
+              ) : item.systemType === 'trip_settlement' ? (
+                <Ionicons name="swap-horizontal" size={22} color="rgba(255,255,255,0.75)" />
               ) : isIncome ? (
                 <Ionicons name="arrow-down-circle" size={24} color={iconColor} />
               ) : category ? (
@@ -481,10 +535,24 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
               {/* Amount as Main Title - show effective amount for trip expenses */}
               <Text style={[styles.amountTitle, isIncome && styles.incomeText]}>
                 {isIncome ? '+' : ''}{formatCents(displayInfo.amount)}
+                {item.systemType === 'trip_share' && sharedMeta?.amountCents ? (
+                  (() => {
+                    const fmt = formatTripShareAmountInline({
+                      shareText: formatCents(displayInfo.amount),
+                      totalText: formatCents(Math.abs(sharedMeta.amountCents)),
+                    });
+                    return (
+                      <>
+                        <Text style={styles.tripShareDot}>{fmt.dotText}</Text>
+                        <Text style={styles.tripShareTotalInline}>{fmt.secondaryText}</Text>
+                      </>
+                    );
+                  })()
+                ) : null}
               </Text>
               {/* Date as Subtitle */}
               <Text style={styles.dateSubtitle}>
-                {dateStr}{tripInfo ? ` · ${tripInfo.tripEmoji}` : (sharedMeta?.tripEmoji ? ` · ${sharedMeta.tripEmoji}` : '')}
+                {dateStr}{tripInfo ? ` · ${tripInfo.tripEmoji}` : (sharedMeta?.tripEmoji ? ` · ${sharedMeta.tripEmoji}` : (settlementMeta?.tripEmoji ? ` · ${settlementMeta.tripEmoji}` : ''))}
               </Text>
             </View>
 
@@ -859,6 +927,16 @@ const styles = StyleSheet.create({
     fontSize: 19, // Compact size
     fontFamily: 'AvenirNextCondensed-DemiBold',
     marginBottom: 0,
+  },
+  tripShareTotalInline: {
+    fontSize: 17,
+    color: 'rgba(10, 132, 255, 0.55)',
+    fontFamily: 'AvenirNextCondensed-Medium',
+  },
+  tripShareDot: {
+    fontSize: 17,
+    color: 'rgba(255,255,255,0.35)',
+    fontFamily: 'AvenirNextCondensed-Medium',
   },
   incomeText: {
     color: '#34C759',

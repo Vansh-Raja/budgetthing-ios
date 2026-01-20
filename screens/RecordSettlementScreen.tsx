@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/theme';
 import { Trip, TripParticipant } from '../lib/logic/types';
 import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { TripSettlementRepository } from '../lib/db/repositories';
+import { TripRepository, TripSettlementRepository } from '../lib/db/repositories';
+import { reconcileLocalTripDerivedTransactionsForTrip } from '../lib/sync/localTripReconcile';
 import * as Haptics from 'expo-haptics';
 
 interface RecordSettlementScreenProps {
@@ -55,6 +56,12 @@ export function RecordSettlementScreen({
                 date: date.getTime(),
                 note: "Payment",
             });
+
+            // Keep derived personal rows up-to-date locally.
+            const hydrated = await TripRepository.getHydrated(trip.id);
+            if (hydrated) {
+                await reconcileLocalTripDerivedTransactionsForTrip(hydrated);
+            }
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             onRecorded();

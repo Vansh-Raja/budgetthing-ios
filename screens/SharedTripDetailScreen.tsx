@@ -43,9 +43,9 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
   const { userId } = useAuth();
   const { syncNow } = useSyncStatus();
 
-  const deleteTripMutation = useMutation((api as any).sharedTrips.deleteTrip);
-  const rotateInviteMutation = useMutation((api as any).sharedTripInvites.rotate);
-  const activeInvite = useQuery((api as any).sharedTripInvites.getActiveForTrip, userId ? { tripId } : undefined);
+  const deleteTripMutation = useMutation(api.sharedTrips.deleteTrip);
+  const rotateInviteMutation = useMutation(api.sharedTripInvites.rotate);
+  const activeInvite = useQuery(api.sharedTripInvites.getActiveForTrip, userId ? { tripId } : "skip");
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [selectedTab, setSelectedTab] = useState<TabType>('expenses');
@@ -97,7 +97,7 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
   const handleMenu = useCallback(() => {
     Haptics.selectionAsync();
 
-    const code = (activeInvite as any)?.code as string | undefined;
+    const code = activeInvite?.code;
 
     const actions: Array<any> = [];
 
@@ -128,9 +128,9 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
       text: code ? 'Regenerate Join Code' : 'Generate Join Code',
       onPress: async () => {
         try {
-          const next = await rotateInviteMutation({ tripId });
-          const newCode = (next as any)?.code;
-          Alert.alert('Join Code', String(newCode));
+           const next = await rotateInviteMutation({ tripId });
+           const newCode = next?.code;
+           Alert.alert('Join Code', String(newCode));
         } catch (e: any) {
           Alert.alert('Error', e?.message ?? 'Failed to generate join code');
         }

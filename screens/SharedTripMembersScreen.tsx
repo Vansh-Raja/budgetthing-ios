@@ -20,7 +20,7 @@ interface SharedTripMembersScreenProps {
 
 export function SharedTripMembersScreen({ trip, participants, onDismiss, onChanged }: SharedTripMembersScreenProps) {
   const { syncNow } = useSyncStatus();
-  const removeMemberMutation = useMutation((api as any).sharedTrips.removeMember);
+  const removeMemberMutation = useMutation(api.sharedTrips.removeMember);
 
   const [editModal, setEditModal] = useState<{
     visible: boolean;
