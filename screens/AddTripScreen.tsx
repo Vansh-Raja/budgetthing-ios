@@ -14,7 +14,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Modal,
 } from 'react-native';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +26,8 @@ import { Colors } from '../constants/theme';
 import { Trip, TripParticipant } from '../lib/logic/types';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { Actions } from '../lib/logic/actions';
+import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
 
 interface AddTripScreenProps {
   onDismiss: () => void;
@@ -56,12 +57,6 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
 
   const canSave = name.trim().length > 0;
   const currencyCode = 'INR';
-
-  const EMOJI_OPTIONS = [
-    '✈️', '🏝️', '🏔️', '🏙️', '🏰', '🗽', '🗼', '⛩️',
-    '🚗', '🚂', '🚢', '⛺', '🎢', '🏟️', '🏖️', '🏜️',
-    '🗺️', '📸', '🎒', '🕶️', '🍷', '🍻', '🍕', '🍱'
-  ];
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -340,43 +335,14 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
         />
       )}
 
-      {/* Emoji Picker Sheet */}
-      <Modal
+      <EmojiPickerModal
         visible={showEmojiPicker}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowEmojiPicker(false)}
-      >
-        <TouchableOpacity
-          style={styles.emojiSheetContainer}
-          activeOpacity={1}
-          onPress={() => setShowEmojiPicker(false)}
-        >
-          <View style={styles.emojiSheetContent}>
-            <View style={styles.emojiSheetHeader}>
-              <Text style={styles.emojiSheetTitle}>Choose Icon</Text>
-              <TouchableOpacity onPress={() => setShowEmojiPicker(false)}>
-                <Ionicons name="close-circle" size={28} color="rgba(255,255,255,0.3)" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView contentContainerStyle={styles.emojiGrid}>
-              {EMOJI_OPTIONS.map(e => (
-                <TouchableOpacity
-                  key={e}
-                  style={[styles.emojiOption, emoji === e && styles.emojiOptionSelected]}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setEmoji(e);
-                    setShowEmojiPicker(false);
-                  }}
-                >
-                  <Text style={styles.emojiOptionText}>{e}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+        title="Choose Icon"
+        value={emoji}
+        recommendedEmojis={RECOMMENDED_TRIP_EMOJIS}
+        onSelect={setEmoji}
+        onClose={() => setShowEmojiPicker(false)}
+      />
     </View>
   );
 }
@@ -566,53 +532,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     flex: 1,
     padding: 0,
-  },
-
-  // Emoji Sheet
-  emojiSheetContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'flex-end',
-  },
-  emojiSheetContent: {
-    backgroundColor: '#1C1C1E',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 24,
-    gap: 20,
-    maxHeight: '60%',
-  },
-  emojiSheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  emojiSheetTitle: {
-    fontFamily: 'AvenirNextCondensed-Bold',
-    fontSize: 20,
-    color: '#FFFFFF',
-  },
-  emojiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    justifyContent: 'center',
-  },
-  emojiOption: {
-    width: 60,
-    height: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  emojiOptionSelected: {
-    backgroundColor: 'rgba(255, 149, 0, 0.3)',
-    borderWidth: 2,
-    borderColor: Colors.accent,
-  },
-  emojiOptionText: {
-    fontSize: 32,
   },
 });

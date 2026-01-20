@@ -20,6 +20,8 @@ import type { Trip } from '../lib/logic/types';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { SharedTripLocalRepository } from '../lib/db/sharedTripLocalRepository';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
+import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
 
 interface EditSharedTripScreenProps {
   trip: Trip;
@@ -33,6 +35,7 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
 
   const [name, setName] = useState(trip.name);
   const [emoji, setEmoji] = useState(trip.emoji);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const [startDate, setStartDate] = useState(new Date(trip.startDate ?? Date.now()));
   const [endDate, setEndDate] = useState(new Date(trip.endDate ?? Date.now() + 7 * 86400000));
@@ -116,7 +119,14 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.formSection}>
           <View style={styles.row}>
-            <TouchableOpacity style={styles.emojiButton} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.emojiButton}
+              activeOpacity={0.7}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setShowEmojiPicker(true);
+              }}
+            >
               <Text style={styles.emoji}>{emoji}</Text>
             </TouchableOpacity>
             <TextInput
@@ -225,6 +235,15 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
           onChange={(e, d) => onDateChange(e, d, 'end')}
         />
       )}
+
+      <EmojiPickerModal
+        visible={showEmojiPicker}
+        title="Choose Icon"
+        value={emoji}
+        recommendedEmojis={RECOMMENDED_TRIP_EMOJIS}
+        onSelect={setEmoji}
+        onClose={() => setShowEmojiPicker(false)}
+      />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

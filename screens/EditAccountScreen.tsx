@@ -27,6 +27,8 @@ import { AccountRepository, CategoryRepository, TransactionRepository } from '..
 import { getCurrencySymbol, parseToCents } from '../lib/logic/currencyUtils';
 import { computeAccountBalanceCents } from '../lib/logic/accountBalance';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
+import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { RECOMMENDED_ACCOUNT_EMOJIS_BY_KIND } from '../lib/emoji/recommendedEmojis';
 
 interface EditAccountScreenProps {
     accountId?: string; // If present, edit mode
@@ -49,6 +51,7 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
     const [name, setName] = useState('');
     const [emoji, setEmoji] = useState('💵');
     const [kind, setKind] = useState<AccountKind>('cash');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
     // For create: starting balance (cash/savings only)
     const [startingBalanceStr, setStartingBalanceStr] = useState('');
@@ -341,7 +344,14 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
                 <View style={styles.formSection}>
                     {/* Identity */}
                     <View style={styles.row}>
-                        <TouchableOpacity style={styles.emojiButton}>
+                        <TouchableOpacity
+                            style={styles.emojiButton}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                setShowEmojiPicker(true);
+                            }}
+                            activeOpacity={0.7}
+                        >
                             <Text style={styles.emoji}>{emoji}</Text>
                         </TouchableOpacity>
                         <TextInput
@@ -506,6 +516,15 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
                     </>
                 )}
             </ScrollView>
+
+            <EmojiPickerModal
+                visible={showEmojiPicker}
+                title="Choose Icon"
+                value={emoji}
+                recommendedEmojis={RECOMMENDED_ACCOUNT_EMOJIS_BY_KIND[kind]}
+                onSelect={setEmoji}
+                onClose={() => setShowEmojiPicker(false)}
+            />
 
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={100} />
         </View>

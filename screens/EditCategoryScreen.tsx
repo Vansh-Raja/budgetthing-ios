@@ -22,14 +22,14 @@ import { Colors } from '../constants/theme';
 import { Category } from '../lib/logic/types';
 import { CategoryRepository } from '../lib/db/repositories';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
+import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { RECOMMENDED_CATEGORY_EMOJIS } from '../lib/emoji/recommendedEmojis';
 
 interface EditCategoryScreenProps {
     categoryId?: string;
     onDismiss?: () => void;
     onSave?: () => void;
 }
-
-const EMOJI_OPTIONS = ['🍔', '🛒', '🚕', '🏠', '🎉', '💊', '👕', '📱', '✈️', '🎬', '📚', '💼', '🏋️', '☕'];
 
 export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCategoryScreenProps) {
     const insets = useSafeAreaInsets();
@@ -38,6 +38,7 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
     const [name, setName] = useState('');
     const [emoji, setEmoji] = useState('🍔');
     const [budgetStr, setBudgetStr] = useState('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
     const [loading, setLoading] = useState(!!categoryId);
     const [isSaving, setIsSaving] = useState(false);
@@ -160,7 +161,14 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
             <ScrollView contentContainerStyle={styles.content}>
                 <View style={styles.formSection}>
                     <View style={styles.row}>
-                        <TouchableOpacity style={styles.emojiButton}>
+                        <TouchableOpacity
+                            style={styles.emojiButton}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                setShowEmojiPicker(true);
+                            }}
+                            activeOpacity={0.7}
+                        >
                             <Text style={styles.emoji}>{emoji}</Text>
                         </TouchableOpacity>
                         <TextInput
@@ -173,21 +181,6 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
                         />
                     </View>
 
-                    {/* Emoji Picker */}
-                    <View style={styles.emojiGrid}>
-                        {EMOJI_OPTIONS.map(e => (
-                            <TouchableOpacity
-                                key={e}
-                                style={[styles.emojiOption, emoji === e && styles.emojiOptionSelected]}
-                                onPress={() => {
-                                    Haptics.selectionAsync();
-                                    setEmoji(e);
-                                }}
-                            >
-                                <Text style={styles.emojiText}>{e}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
                 </View>
 
                 <View style={styles.formSection}>
@@ -213,6 +206,15 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
                     </TouchableOpacity>
                 )}
             </ScrollView>
+
+            <EmojiPickerModal
+                visible={showEmojiPicker}
+                title="Choose Icon"
+                value={emoji}
+                recommendedEmojis={RECOMMENDED_CATEGORY_EMOJIS}
+                onSelect={setEmoji}
+                onClose={() => setShowEmojiPicker(false)}
+            />
 
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={100} />
         </View>
@@ -279,27 +281,6 @@ const styles = StyleSheet.create({
         fontFamily: 'AvenirNextCondensed-DemiBold',
         fontSize: 24,
         color: '#FFFFFF',
-    },
-    emojiGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 8,
-    },
-    emojiOption: {
-        width: 44,
-        height: 44,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderRadius: 12,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    },
-    emojiOptionSelected: {
-        backgroundColor: 'rgba(255, 149, 0, 0.3)',
-        borderWidth: 2,
-        borderColor: Colors.accent,
-    },
-    emojiText: {
-        fontSize: 24,
     },
     inputRow: {
         flexDirection: 'row',

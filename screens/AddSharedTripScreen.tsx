@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Platform, Switch } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, Switch } from 'react-native';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +14,8 @@ import { Colors } from '../constants/theme';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { useAuthState } from '../lib/auth/useAuthHooks';
 import { getDefaultTripNickname } from '../lib/auth/displayName';
+import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
 
 interface AddSharedTripScreenProps {
   onDismiss: () => void;
@@ -40,12 +42,6 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
   const [budgetString, setBudgetString] = useState('');
 
   const canSave = name.trim().length > 0;
-
-  const EMOJI_OPTIONS = [
-    '✈️', '🏝️', '🏔️', '🏙️', '🏰', '🗽', '🗼', '⛩️',
-    '🚗', '🚂', '🚢', '⛺', '🎢', '🏟️', '🏖️', '🏜️',
-    '🗺️', '📸', '🎒', '🕶️', '🍷', '🍻', '🍕', '🍱'
-  ];
 
   const handleSave = useCallback(async () => {
     if (!canSave) return;
@@ -252,36 +248,14 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
          />
        )}
 
-       <Modal
-         visible={showEmojiPicker}
-         transparent
-         animationType="fade"
-         onRequestClose={() => setShowEmojiPicker(false)}
-       >
-        <View style={styles.emojiModalBackdrop}>
-          <View style={styles.emojiModal}>
-            <Text style={styles.emojiModalTitle}>Choose Emoji</Text>
-            <View style={styles.emojiGrid}>
-              {EMOJI_OPTIONS.map((e) => (
-                <TouchableOpacity
-                  key={e}
-                  style={styles.emojiCell}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setEmoji(e);
-                    setShowEmojiPicker(false);
-                  }}
-                >
-                  <Text style={{ fontSize: 28 }}>{e}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity onPress={() => setShowEmojiPicker(false)} style={styles.emojiClose}>
-              <Text style={styles.emojiCloseText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        <EmojiPickerModal
+          visible={showEmojiPicker}
+          title="Choose Icon"
+          value={emoji}
+          recommendedEmojis={RECOMMENDED_TRIP_EMOJIS}
+          onSelect={setEmoji}
+          onClose={() => setShowEmojiPicker(false)}
+        />
     </View>
   );
 }
@@ -356,55 +330,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: 'rgba(255, 255, 255, 0.6)',
-  },
-
-  emojiModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emojiModal: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 20,
-    backgroundColor: '#1C1C1E',
-    padding: 16,
-  },
-  emojiModalTitle: {
-    fontFamily: 'AvenirNextCondensed-Heavy',
-    fontSize: 20,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  emojiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  emojiCell: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiClose: {
-    marginTop: 14,
-    alignSelf: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  emojiCloseText: {
-    fontFamily: 'AvenirNextCondensed-DemiBold',
-    fontSize: 16,
-    color: Colors.accent,
   },
 
   sectionCard: {

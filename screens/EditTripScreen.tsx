@@ -24,6 +24,8 @@ import { Colors } from '../constants/theme';
 import { Trip } from '../lib/logic/types';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { TripRepository } from '../lib/db/repositories';
+import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
 
 interface EditTripScreenProps {
     trip: Trip;
@@ -43,6 +45,8 @@ export function EditTripScreen({ trip, onDismiss, onSave }: EditTripScreenProps)
     const [hasBudget, setHasBudget] = useState(!!trip.budgetCents);
     const [budgetString, setBudgetString] = useState(trip.budgetCents ? (trip.budgetCents / 100).toFixed(2) : '');
     const [isSaving, setIsSaving] = useState(false);
+
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
     // Date Picker State
     const [showStartPicker, setShowStartPicker] = useState(false);
@@ -114,7 +118,14 @@ export function EditTripScreen({ trip, onDismiss, onSave }: EditTripScreenProps)
             <ScrollView contentContainerStyle={styles.content}>
                 <View style={styles.formSection}>
                     <View style={styles.row}>
-                        <TouchableOpacity style={styles.emojiButton}>
+                        <TouchableOpacity
+                            style={styles.emojiButton}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                setShowEmojiPicker(true);
+                            }}
+                            activeOpacity={0.7}
+                        >
                             <Text style={styles.emoji}>{emoji}</Text>
                         </TouchableOpacity>
                         <TextInput
@@ -237,6 +248,15 @@ export function EditTripScreen({ trip, onDismiss, onSave }: EditTripScreenProps)
                     onChange={(e, d) => onDateChange(e, d, 'end')}
                 />
             )}
+
+            <EmojiPickerModal
+                visible={showEmojiPicker}
+                title="Choose Icon"
+                value={emoji}
+                recommendedEmojis={RECOMMENDED_TRIP_EMOJIS}
+                onSelect={setEmoji}
+                onClose={() => setShowEmojiPicker(false)}
+            />
 
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={100} />
         </View>
