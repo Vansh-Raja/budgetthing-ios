@@ -2,7 +2,7 @@
   "expo": {
     "name": "BudgetThing",
     "slug": "budgetthing",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-1024.png",
     "scheme": "budgetthing",
@@ -16,11 +16,12 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.Vansh.BudgetThing",
-      "buildNumber": "200",
+      "buildNumber": "201",
       "icon": "./assets/images/app-icon-1024.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "appleTeamId": "97VK67FV54"
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +37,8 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

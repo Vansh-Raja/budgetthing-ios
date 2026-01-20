@@ -46,6 +46,179 @@ This section reflects what’s actually present in the repo today (not just the 
 
 ---
 
+## Pre-TestFlight: Emoji Picker System
+
+Goal: Replace all hardcoded/predefined emoji-only selectors with a shared emoji picker experience that:
+- shows curated “Recommended” emojis per context (Category / Trip / Account-kind)
+- supports full customization via a system emoji picker (“More…”)
+- reuses shared code across the app (no per-screen `EMOJI_OPTIONS` duplication)
+- iOS-first (ignore Android for v1/TestFlight)
+
+Note: Some older sections of this plan still reference an `expo-app/` subfolder. The current Expo app lives at repo root (e.g. `app/`, `screens/`, `lib/`, `components/`, `convex/`). This emoji plan uses current paths.
+
+### UX Decisions (Locked)
+
+- Categories: recommended grid + “More…” (no big grouped catalog)
+- Trips (local + shared): compact recommended list + “More…”
+- Accounts: recommended list depends on account kind (`cash` | `card` | `savings`)
+- “More…” uses `react-native-emoji-popup` (system emoji picker UI). The system picker may present as a popup/sheet; that is acceptable.
+- Running in Expo Go will not support the system picker (native module). In Expo Go, “More…” is disabled and we rely on recommended emojis.
+- The *recommended emoji selector screen* must be full-screen.
+- Selecting an emoji auto-dismisses the selector.
+- No “Recently used” row for this build.
+- Changing account kind never mutates emoji automatically.
+
+### Audit: Where Emojis Are Edited / Missing Today (Expo)
+
+- Categories
+  - `screens/EditCategoryScreen.tsx` (currently inline grid via `EMOJI_OPTIONS`)
+  - `screens/CategoryDetailScreen.tsx` opens EditCategoryScreen in a pageSheet
+  - `screens/ManageCategoriesScreen.tsx` via `app/settings/categories/index.tsx`
+- Accounts
+  - `screens/EditAccountScreen.tsx` (emoji exists, but no picker wired)
+  - `screens/ManageAccountsScreen.tsx` via `app/settings/accounts/index.tsx`
+- Local Trips
+  - `screens/AddTripScreen.tsx` (custom modal + `EMOJI_OPTIONS`)
+  - `screens/EditTripScreen.tsx` (no emoji picker wired)
+- Shared Trips
+  - `screens/AddSharedTripScreen.tsx` (custom modal + `EMOJI_OPTIONS`)
+  - `screens/EditSharedTripScreen.tsx` (no emoji picker wired)
+
+### Curated Emoji Sets (Final Lists)
+
+Accounts (by `AccountKind`, ~10 each; based on legacy Swift catalog):
+- cash: 💵 🪙 👛 👜 🎒 🧾 💴 💶 💷 🧰
+- card: 💳 🔒 ✅ 🔁 💸 🏷️ ✨ 📝 📇 📬
+- savings: 🏦 🏛️ 💱 📈 📉 🔐 🏧 🪪 📊 🗂️
+
+Trips (local + shared, ~24; reuse existing add-trip lists):
+- ✈️ 🏝️ 🏔️ 🏙️ 🏰 🗽 🗼 ⛩️
+- 🚗 🚂 🚢 ⛺ 🎢 🏟️ 🏖️ 🏜️
+- 🗺️ 📸 🎒 🕶️ 🍷 🍻 🍕 🍱
+
+Categories (~24; high-signal/common personal finance categories + matches seeds):
+- 🍔 🛒 🍽️ ☕
+- 🚕 🚗 ⛽ 🅿️
+- 🏠 💡 🌐 📱
+- 💳 🧾 💵 🏦
+- 🎉 🎬 🎁 ✈️
+- 💊 🏋️ 📚 ❓
+
+### Execution Checklist (Ordered)
+
+#### 1) Dependency + iOS Sanity Check
+
+- [x] Add dependency: `react-native-emoji-popup`
+- [ ] Verify iOS behavior from inside existing modal flows (pageSheet)
+- [ ] Confirm selected emoji returns correctly (including multi-codepoint emojis like ✈️)
+
+#### 2) Centralize Curated Emoji Lists
+
+- [x] Add `lib/emoji/recommendedEmojis.ts` exporting:
+  - [x] `RECOMMENDED_CATEGORY_EMOJIS`
+  - [x] `RECOMMENDED_TRIP_EMOJIS`
+  - [x] `RECOMMENDED_ACCOUNT_EMOJIS_BY_KIND` keyed by `AccountKind`
+
+#### 3) Build Shared Full-screen Recommended Selector
+
+- [x] Add `components/emoji/EmojiPickerModal.tsx`
+- [x] Requirements:
+  - [x] Full-screen `Modal` presentation on iOS
+  - [x] Shows recommended emoji grid
+  - [x] Highlights current selection
+  - [x] “More…” triggers system emoji picker via `EmojiPopup`
+  - [x] Any selection closes modal immediately
+
+#### 4) Wire Into Categories
+
+- [x] Update `screens/EditCategoryScreen.tsx`
+  - [x] Remove inline emoji grid + `EMOJI_OPTIONS`
+  - [x] Emoji button opens `EmojiPickerModal` with `RECOMMENDED_CATEGORY_EMOJIS`
+
+#### 5) Wire Into Accounts
+
+- [x] Update `screens/EditAccountScreen.tsx`
+  - [x] Emoji button opens `EmojiPickerModal`
+  - [x] Recommended list depends on `kind`
+  - [x] Ensure kind changes do NOT modify emoji automatically
+
+#### 6) Wire Into Local Trips
+
+- [x] Update `screens/AddTripScreen.tsx`
+  - [x] Remove custom emoji modal + `EMOJI_OPTIONS`
+  - [x] Use `EmojiPickerModal` with `RECOMMENDED_TRIP_EMOJIS`
+- [x] Update `screens/EditTripScreen.tsx`
+  - [x] Add emoji picker (missing today)
+
+#### 7) Wire Into Shared Trips
+
+- [x] Update `screens/AddSharedTripScreen.tsx`
+  - [x] Remove custom emoji modal + `EMOJI_OPTIONS`
+  - [x] Use `EmojiPickerModal` with `RECOMMENDED_TRIP_EMOJIS`
+- [x] Update `screens/EditSharedTripScreen.tsx`
+  - [x] Add emoji picker (missing today)
+
+#### 8) Cleanup + Consistency
+
+- [x] Ensure no per-screen `EMOJI_OPTIONS` remain for these contexts
+- [x] Ensure all emoji buttons are tappable and auto-dismiss on selection
+
+### Manual QA (iOS)
+
+- [ ] Categories: create/edit supports recommended + “More…”, persists and renders everywhere
+- [ ] Accounts: create/edit supports recommended + “More…”, kind change does not alter emoji
+- [ ] Trips (local + shared): add + edit supports recommended + “More…”, persists and renders in list + headers
+
+---
+
+## Release 2.0.1 (TestFlight Build 201)
+
+Goal: Ship `2.0.1 (201)` with shared trips + emoji picker, without breaking existing TestFlight build `200`.
+
+### Versioning
+
+- [x] Bump `app.json` → `expo.version = 2.0.1`
+- [x] Bump `app.json` → `ios.buildNumber = 201` (monotonic; build 200 already uploaded)
+- [x] Optional: bump `package.json` version → `2.0.1`
+
+### Preflight Checks
+
+- [x] Ensure `.expo/` is not tracked (remove `.expo/README.md` from git)
+- [x] `npx expo-doctor` passes
+- [x] `npx tsc -p tsconfig.json --noEmit` passes
+- [x] `npm test` passes
+- [x] Align Expo SDK dependency versions via `npx expo install` (runtime deps)
+- [x] Align Jest dev deps (does not affect runtime, but keeps `expo-doctor` clean)
+
+### Convex Production Deploy (must be additive)
+
+Constraints:
+- Build `200` must remain functional (no endpoint/table renames/removals)
+- Shared trips are new for prod; deploy adds new tables + functions only
+
+Steps:
+- [ ] Export/backup production Convex data (dashboard export)
+- [ ] Confirm production Convex env has `CLERK_JWT_ISSUER_DOMAIN` set correctly
+- [ ] Deploy Convex to prod deployment `ceaseless-mandrill-733`
+- [ ] Post-deploy smoke:
+  - [ ] Existing endpoints still OK: `sync:push`, `sync:pull`, `sync:latestSeq`
+  - [ ] New endpoints available: `sharedTrips:create`, `sharedTripInvites:joinByCode`, `sharedTripSync:push/pull`
+
+### Build + Submit (TestFlight)
+
+- [ ] Create EAS iOS store build (production profile)
+- [ ] Submit to TestFlight
+- [ ] App Store Connect: set “What to Test” notes (shared trips + emoji)
+
+### Upgrade + Migration QA (iOS)
+
+- [ ] Upgrade test: install build `200` with real data → update to build `201` → confirm local data still present
+- [ ] Sync continuity: 2 devices signed-in → edits propagate, no duplicates
+- [ ] Shared trips: create → rotate code → join → add expense → settle
+- [ ] Emoji picker: recommended + “More” works in TestFlight build (native module included)
+
+---
+
 ## Architecture Overview
 
 ```
