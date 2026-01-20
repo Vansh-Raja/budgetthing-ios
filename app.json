@@ -2,7 +2,7 @@
   "expo": {
     "name": "BudgetThing",
     "slug": "budgetthing",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-1024.png",
     "scheme": "budgetthing",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.Vansh.BudgetThing",
-      "buildNumber": "201",
+      "buildNumber": "202",
       "icon": "./assets/images/app-icon-1024.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

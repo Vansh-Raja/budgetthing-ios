@@ -1,7 +1,7 @@
 {
   "name": "budgetthing",
   "main": "expo-router/entry",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
