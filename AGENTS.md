@@ -316,6 +316,10 @@ When starting work on a feature, read these files:
 - Build: `eas build`
 - Convex: `npx convex dev`
 
+Build/Release workflow rule:
+- Do not run EAS build/submit commands automatically.
+- Provide the exact commands for the maintainer to run (EAS builds, submits, and any App Store Connect steps are executed by the maintainer).
+
 ---
 
 ## Questions to Ask User
