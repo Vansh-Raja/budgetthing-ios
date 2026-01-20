@@ -296,6 +296,8 @@ interface TransactionRow {
   transferFromAccountId: string | null;
   transferToAccountId: string | null;
   tripExpenseId: string | null;
+  sourceTripExpenseId: string | null;
+  sourceTripSettlementId: string | null;
   createdAtMs: number;
   updatedAtMs: number;
   deletedAtMs: number | null;
@@ -314,6 +316,8 @@ function rowToTransaction(row: TransactionRow): Transaction {
     transferFromAccountId: row.transferFromAccountId ?? undefined,
     transferToAccountId: row.transferToAccountId ?? undefined,
     tripExpenseId: row.tripExpenseId ?? undefined,
+    sourceTripExpenseId: row.sourceTripExpenseId ?? undefined,
+    sourceTripSettlementId: row.sourceTripSettlementId ?? undefined,
     createdAtMs: row.createdAtMs,
     updatedAtMs: row.updatedAtMs,
     deletedAtMs: row.deletedAtMs ?? undefined,
@@ -368,37 +372,46 @@ export const TransactionRepository = {
     const now = Date.now();
 
     await run(
-      `INSERT INTO ${TABLES.TRANSACTIONS} 
-       (id, amountCents, date, note, type, systemType, accountId, categoryId, 
-        transferFromAccountId, transferToAccountId, tripExpenseId, createdAtMs, updatedAtMs, 
-        syncVersion, needsSync, deletedAtMs) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        tx.amountCents,
-        tx.date,
-        tx.note ?? null,
-        tx.type,
-        tx.systemType ?? null,
-        tx.accountId ?? null,
-        tx.categoryId ?? null,
-        tx.transferFromAccountId ?? null,
-        tx.transferToAccountId ?? null,
-        tx.tripExpenseId ?? null,
-        now,
-        now,
-        1, // syncVersion
-        1, // needsSync
-        null, // deletedAtMs
-      ]
-    );
+       `INSERT INTO ${TABLES.TRANSACTIONS} 
+        (id, amountCents, date, note, type, systemType, accountId, categoryId, 
+         transferFromAccountId, transferToAccountId, tripExpenseId, sourceTripExpenseId, sourceTripSettlementId,
+         createdAtMs, updatedAtMs, 
+         syncVersion, needsSync, deletedAtMs) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       [
+         id,
+         tx.amountCents,
+         tx.date,
+         tx.note ?? null,
+         tx.type,
+         tx.systemType ?? null,
+         tx.accountId ?? null,
+         tx.categoryId ?? null,
+         tx.transferFromAccountId ?? null,
+         tx.transferToAccountId ?? null,
+         tx.tripExpenseId ?? null,
+         tx.sourceTripExpenseId ?? null,
+         tx.sourceTripSettlementId ?? null,
+         now,
+         now,
+         1, // syncVersion
+         1, // needsSync
+         null, // deletedAtMs
+       ]
+     );
 
     GlobalEvents.emit(Events.transactionsChanged);
 
     return { ...tx, id, createdAtMs: now, updatedAtMs: now };
   },
 
-  async update(id: string, updates: Partial<Omit<Transaction, 'id' | 'createdAtMs'>>): Promise<void> {
+  async update(
+    id: string,
+    updates: Omit<Partial<Omit<Transaction, 'id' | 'createdAtMs'>>, 'tripExpenseId'> & {
+      // Some columns are nullable in SQLite; allow explicitly clearing them.
+      tripExpenseId?: string | null;
+    }
+  ): Promise<void> {
     const now = Date.now();
     const fields: string[] = ['updatedAtMs = ?', 'needsSync = 1', 'syncVersion = syncVersion + 1'];
     const values: SQLiteBindValue[] = [now];
@@ -413,6 +426,8 @@ export const TransactionRepository = {
     if (updates.transferFromAccountId !== undefined) { fields.push('transferFromAccountId = ?'); values.push(updates.transferFromAccountId); }
     if (updates.transferToAccountId !== undefined) { fields.push('transferToAccountId = ?'); values.push(updates.transferToAccountId); }
     if (updates.tripExpenseId !== undefined) { fields.push('tripExpenseId = ?'); values.push(updates.tripExpenseId); }
+    if (updates.sourceTripExpenseId !== undefined) { fields.push('sourceTripExpenseId = ?'); values.push(updates.sourceTripExpenseId); }
+    if (updates.sourceTripSettlementId !== undefined) { fields.push('sourceTripSettlementId = ?'); values.push(updates.sourceTripSettlementId); }
 
     values.push(id);
     await run(`UPDATE ${TABLES.TRANSACTIONS} SET ${fields.join(', ')} WHERE id = ?`, values);
@@ -425,6 +440,118 @@ export const TransactionRepository = {
       `UPDATE ${TABLES.TRANSACTIONS} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 1, syncVersion = syncVersion + 1 WHERE id = ?`,
       [now, now, id]
     );
+    GlobalEvents.emit(Events.transactionsChanged);
+  },
+
+  async upsertDerivedBatch(rows: Array<{
+    id: string;
+    amountCents: number;
+    date: number;
+    note?: string;
+    type: TransactionType;
+    systemType: SystemType;
+    accountId?: string;
+    categoryId?: string;
+    sourceTripExpenseId?: string;
+    sourceTripSettlementId?: string;
+  }>): Promise<void> {
+    if (rows.length === 0) return;
+
+    const now = Date.now();
+
+    const preserveAccountIdRows = rows.filter(
+      (r) => r.systemType === 'trip_cashflow' || r.systemType === 'trip_settlement'
+    );
+    const forceNullAccountIdRows = rows.filter(
+      (r) => !(r.systemType === 'trip_cashflow' || r.systemType === 'trip_settlement')
+    );
+
+    const baseInsert = `INSERT INTO ${TABLES.TRANSACTIONS}
+      (id, amountCents, date, note, type, systemType, accountId, categoryId,
+       transferFromAccountId, transferToAccountId, tripExpenseId, sourceTripExpenseId, sourceTripSettlementId,
+       createdAtMs, updatedAtMs, deletedAtMs, syncVersion, needsSync)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        amountCents=excluded.amountCents,
+        date=excluded.date,
+        note=excluded.note,
+        type=excluded.type,
+        systemType=excluded.systemType,
+        categoryId=excluded.categoryId,
+        sourceTripExpenseId=excluded.sourceTripExpenseId,
+        sourceTripSettlementId=excluded.sourceTripSettlementId,
+        updatedAtMs=excluded.updatedAtMs,
+        deletedAtMs=NULL,
+        needsSync=0`;
+
+    await withTransaction(async () => {
+      for (const row of forceNullAccountIdRows) {
+        await run(
+          `${baseInsert}, accountId=NULL`,
+          [
+            row.id,
+            row.amountCents,
+            row.date,
+            row.note ?? null,
+            row.type,
+            row.systemType ?? null,
+            null,
+            row.categoryId ?? null,
+            null,
+            null,
+            null,
+            row.sourceTripExpenseId ?? null,
+            row.sourceTripSettlementId ?? null,
+            now,
+            now,
+            null,
+            1,
+            0,
+          ]
+        );
+      }
+
+      for (const row of preserveAccountIdRows) {
+        await run(
+          `${baseInsert}, accountId=COALESCE(${TABLES.TRANSACTIONS}.accountId, excluded.accountId)`,
+          [
+            row.id,
+            row.amountCents,
+            row.date,
+            row.note ?? null,
+            row.type,
+            row.systemType ?? null,
+            row.accountId ?? null,
+            row.categoryId ?? null,
+            null,
+            null,
+            null,
+            row.sourceTripExpenseId ?? null,
+            row.sourceTripSettlementId ?? null,
+            now,
+            now,
+            null,
+            1,
+            0,
+          ]
+        );
+      }
+    });
+
+    GlobalEvents.emit(Events.transactionsChanged);
+  },
+
+  async softDeleteDerivedByIds(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+
+    const now = Date.now();
+    const placeholders = ids.map(() => '?').join(',');
+
+    await run(
+      `UPDATE ${TABLES.TRANSACTIONS} SET deletedAtMs = ?, updatedAtMs = ?, needsSync = 0 WHERE id IN (${placeholders})`,
+      [now, now, ...ids]
+    );
+
     GlobalEvents.emit(Events.transactionsChanged);
   },
 };

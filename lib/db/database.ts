@@ -175,6 +175,14 @@ export async function clearAllData(): Promise<void> {
       await database.execAsync(`DELETE FROM ${TABLES.TRIP_EXPENSES}`);
       await database.execAsync(`DELETE FROM ${TABLES.TRIP_PARTICIPANTS}`);
       await database.execAsync(`DELETE FROM ${TABLES.TRIPS}`);
+
+      // Shared trips v1 tables
+      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIP_SETTLEMENTS}`);
+      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIP_EXPENSES}`);
+      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIP_PARTICIPANTS}`);
+      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIP_MEMBERS}`);
+      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIPS}`);
+
       await database.execAsync(`DELETE FROM ${TABLES.TRANSACTIONS}`);
       await database.execAsync(`DELETE FROM ${TABLES.CATEGORIES}`);
       await database.execAsync(`DELETE FROM ${TABLES.ACCOUNTS}`);

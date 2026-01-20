@@ -40,9 +40,17 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const latestSeq = useQuery("sync:latestSeq" as any, isSignedIn ? {} : undefined);
   const lastHandledSeqRef = useRef<number | null>(null);
 
-  // Track latestSeq per user. If user switches, reset so we don't suppress pulls.
+  // Shared Trip realtime "poke" (separate signal from user-scoped changeLog).
+  const sharedTripLatestUpdatedAtMs = useQuery(
+    "sharedTripPoke:latestUpdatedAtMs" as any,
+    isSignedIn ? {} : undefined
+  );
+  const lastHandledSharedTripPokeRef = useRef<number | null>(null);
+
+  // Track poke state per user. If user switches, reset so we don't suppress pulls.
   useEffect(() => {
     lastHandledSeqRef.current = null;
+    lastHandledSharedTripPokeRef.current = null;
   }, [userId]);
 
   const clearPushDebounce = () => {
@@ -257,6 +265,27 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       console.error('[SyncProvider] Poke pull failed:', e);
     });
   }, [isSignedIn, userId, isBootstrapping, latestSeq, sync]);
+
+  // Shared trip poke → pull immediately (this covers other members changing shared trips)
+  useEffect(() => {
+    if (!isSignedIn || !userId) return;
+    if (isBootstrapping) return;
+
+    if (sharedTripLatestUpdatedAtMs === undefined || sharedTripLatestUpdatedAtMs === null) return;
+
+    // Avoid pulling on initial subscription value.
+    if (lastHandledSharedTripPokeRef.current === null) {
+      lastHandledSharedTripPokeRef.current = sharedTripLatestUpdatedAtMs;
+      return;
+    }
+
+    if (sharedTripLatestUpdatedAtMs <= lastHandledSharedTripPokeRef.current) return;
+    lastHandledSharedTripPokeRef.current = sharedTripLatestUpdatedAtMs;
+
+    sync({ mode: 'pull', reason: 'shared_trip_poke', allowPush: false }).catch((e) => {
+      console.error('[SyncProvider] Shared trip poke pull failed:', e);
+    });
+  }, [isSignedIn, userId, isBootstrapping, sharedTripLatestUpdatedAtMs, sync]);
 
   // Reset per-user sync state when switching users (rare) or sign-out.
   useEffect(() => {

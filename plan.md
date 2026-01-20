@@ -690,3 +690,243 @@ Future: if needed, can add SQLCipher or similar.
 - **Widgets**: If needed, use Expo prebuild + native widget extensions.
 - **Encryption at rest**: Add SQLCipher for sensitive data.
 - **Web app**: Expo Web or separate Next.js frontend sharing Convex backend.
+
+---
+
+## 14. Shared Trips v1 (INR-only, Splitwise-style)
+
+This section is the implementation blueprint for turning Trips into a shared, Splitwise-like feature where multiple signed-in users can see and collaborate on the same trip.
+
+### 14.1 Scope (v1)
+
+- Shared group trips across multiple signed-in users (Clerk)
+- Guest participants supported (non-app people can be included in splits)
+- Join by code (no email invites / no deep links in v1)
+- Any member can:
+  - add/edit/delete trip expenses
+  - regenerate join code
+  - remove members
+  - delete the trip (global delete)
+- **INR-only**: `currencyCode` is fixed to `INR` for all trips and immutable.
+
+### 14.2 Non-goals (v1)
+
+- Currency conversion / exchange rates
+- Multi-currency accounts or cross-currency totals
+- Fine-grained roles/permissions (admin-only actions)
+
+### 14.3 Core Behavioral Rules (must match exactly)
+
+#### Trip visibility
+
+- Every member of a trip can see every trip expense in the Trip UI, even if their share is 0.
+- For members with `myShareCents == 0`, the expense should show as “Not included” (or equivalent) in the trip UI.
+
+#### Transactions tab visibility (personal)
+
+Trip expenses should appear in the main Transactions tab **only if the user is included in the split**:
+
+- If `myShareCents > 0`: show a personal entry with amount = `myShareCents`.
+- If `myShareCents == 0`: do not show it in Transactions (even if the user paid).
+
+Examples:
+
+- Trip has 5 members A, B, C, D, E.
+- Expense is split among A, B, C only.
+  - Trip UI: A/B/C/D/E can all see the expense.
+  - Transactions tab: only A/B/C get an entry.
+
+Special case (“paid on behalf”):
+
+- If A paid for B (payer=A) but split includes only B:
+  - A has `myShare == 0` → no Transactions-tab entry for A.
+  - B has `myShare > 0` → Transactions-tab entry for B.
+
+#### Settlements
+
+- Settlements represent real cashflow.
+- When a settlement is recorded, it should automatically create personal cashflow transactions:
+  - receiver: income
+  - payer: expense
+- These should go into `userSettings.defaultAccountId` at first creation and be editable later.
+
+#### Category
+
+- Category is shared across members and must live on the shared trip expense.
+- Store category snapshot on the expense: `categoryName`, `categoryEmoji`.
+
+### 14.4 Architecture Overview (two ledgers + reconciliation)
+
+Trips require separating “shared trip ledger” from “personal cashflow ledger” and linking them safely.
+
+#### Shared Trip Ledger (shared across all members)
+
+A single set of trip entities exists per trip and is synced to all members.
+
+#### Personal Ledger (per user)
+
+Accounts/categories/personal transactions remain per-user. Trip participation produces *derived* personal entries (below).
+
+#### Reconciliation (derived personal transactions)
+
+We will materialize derived personal `transactions` locally so:
+
+- Transactions tab rendering is straightforward and offline-first.
+- Derived rows are idempotent across devices.
+- Deletes/edits to shared trip expenses correctly cascade.
+
+### 14.5 Data Model (Convex)
+
+Current Convex schema is user-owned (each record has `userId`). Shared trips require membership-based access.
+
+Plan: introduce new membership-scoped tables (keep existing user-owned tables for now during migration).
+
+#### New tables
+
+- `sharedTrips`
+  - `id`, `name`, `emoji`, `currencyCode` (always `INR`), `createdAtMs`, `updatedAtMs`, `deletedAtMs`
+- `sharedTripMembers`
+  - `tripId`, `userId`, `participantId`, `joinedAtMs`, `deletedAtMs`
+- `sharedTripParticipants`
+  - `tripId`, `name`, `colorHex`, `linkedUserId?`, `createdAtMs`, `updatedAtMs`, `deletedAtMs`
+- `sharedTripExpenses`
+  - `tripId`, `amountCents`, `dateMs`, `note`
+  - `paidByParticipantId`
+  - `splitType`, `splitDataJson`, `computedSplitsJson`
+  - `categoryName`, `categoryEmoji`
+  - `createdAtMs`, `updatedAtMs`, `deletedAtMs`
+- `sharedTripSettlements`
+  - `tripId`, `fromParticipantId`, `toParticipantId`, `amountCents`, `dateMs`, `note`
+  - `createdAtMs`, `updatedAtMs`, `deletedAtMs`
+- `sharedTripInvites`
+  - `tripId`, `code`, `createdAtMs`, `expiresAtMs`, `uses`, `maxUses`, `createdByUserId`
+
+#### Access control
+
+- All shared trip queries/mutations must require: caller is a `sharedTripMember` of that `tripId`.
+- `joinByCode` is the exception: it validates code then creates membership.
+
+### 14.6 Data Model (SQLite)
+
+Local DB will mirror the shared trip tables and add linking fields to support derived transactions.
+
+#### New local tables
+
+- `tripMembers` (mirror of `sharedTripMembers`)
+- `tripInvites` (optional local cache)
+
+#### Trip expenses
+
+We will evolve local `tripExpenses` to store the shared expense fields directly:
+
+- `amountCents`, `dateMs`, `note`
+- `categoryName`, `categoryEmoji`
+
+(Trip UI should not require joining through a local cashflow transaction to render an expense.)
+
+#### Transactions linking
+
+Add to `transactions`:
+
+- `sourceTripExpenseId` (nullable)
+- `sourceTripSettlementId` (nullable)
+
+### 14.7 Derived Transaction Types (local-only, idempotent)
+
+We will standardize the following `systemType` values:
+
+- `trip_share` (derived, appears in Transactions tab)
+  - Exists iff `myShareCents > 0`
+  - `amountCents = myShareCents`
+  - `accountId = NULL` (does not affect account balances)
+  - Linked via `sourceTripExpenseId`
+  - Tapping it navigates to the original trip expense
+- `trip_cashflow` (payer cashflow)
+  - Exists only if payer participant is linked to a signed-in user
+  - `amountCents = totalAmountCents`
+  - `accountId = defaultAccountId` on first create, user-editable later
+  - Hidden from Transactions tab to avoid double-counting
+  - Linked via `sourceTripExpenseId`
+- `trip_settlement` (settlement cashflow)
+  - payer gets expense, receiver gets income
+  - `accountId = defaultAccountId` on first create, user-editable later
+  - Linked via `sourceTripSettlementId`
+
+#### Deterministic IDs
+
+To prevent duplicates across a user’s devices, derived transactions must have deterministic IDs:
+
+- `trip_share`: `hash(tripExpenseId + userId)`
+- `trip_cashflow`: `hash(tripExpenseId + payerUserId)`
+- `trip_settlement`: `hash(settlementId + userId + direction)`
+
+#### Preserve user edits
+
+Reconciliation should never overwrite a user’s chosen `accountId` for `trip_cashflow` and `trip_settlement` once set.
+
+### 14.8 Sync Design (two scopes)
+
+We keep existing per-user sync for personal tables and add a second sync scope for shared trips.
+
+#### A) User-scoped sync (existing)
+
+- accounts, categories, transactions, userSettings, etc.
+
+#### B) Trip-scoped sync (new)
+
+- Pull list of `sharedTripMembers` for current user to get `tripId`s.
+- Maintain per-trip cursors (like `changeLog.seq` but keyed by trip).
+- For each trip:
+  - push pending shared trip rows
+  - pull new shared trip rows
+  - apply to SQLite
+  - run reconciliation to upsert/delete derived local transactions
+
+Conflict resolution remains last-write-wins by `updatedAtMs`.
+
+### 14.9 UI Flows (v1)
+
+- Trips list:
+  - “Join Trip” (enter join code)
+  - “Invite” (show code; regenerate)
+- Join:
+  - user selects/claims an existing guest participant or creates a new participant
+- Trip detail:
+  - Expenses list shows all expenses
+  - For excluded users: show “Not included”
+- Trip settings:
+  - members list + remove
+  - regenerate join code
+  - delete trip (global)
+- Transactions tab:
+  - render `trip_share` rows + normal transactions + settlements
+  - hide `trip_cashflow` rows
+  - tapping `trip_share` navigates to original trip expense
+
+### 14.10 Implementation Checklist
+
+Branch + planning:
+- [ ] Create branch `feature/shared-trips-v1`
+- [ ] Add this section to `plan.md`
+
+Backend (Convex):
+- [ ] Add `sharedTrips`/members/participants/expenses/settlements/invites tables
+- [ ] Add trip changelog + trip sync endpoints (`tripSync:push`/`tripSync:pull`)
+- [ ] Add join code endpoints (create/rotate/join)
+- [ ] Enforce membership ACL on all shared trip operations
+
+Local DB (SQLite):
+- [ ] Add local tables + columns (`tripMembers`, `sourceTripExpenseId`, `sourceTripSettlementId`)
+- [ ] Evolve `tripExpenses` to store shared expense fields directly (amount/date/category)
+
+Client:
+- [ ] Add trip-scoped sync loop with per-trip cursors
+- [ ] Implement reconciliation for `trip_share` / `trip_cashflow` / `trip_settlement`
+- [ ] Refactor Trips UI to use shared expense fields
+- [ ] Refactor Transactions tab to render derived `trip_share` rows and link to trip expense
+
+Testing:
+- [ ] Add reconciliation idempotency tests (no dupes; deletes cascade)
+- [ ] Add join-code + membership edge-case tests
+
+---

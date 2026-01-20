@@ -5,7 +5,7 @@
  * Matches Swift's TransactionDetailView design.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
     View,
     StyleSheet,
@@ -15,12 +15,14 @@ import {
     LayoutAnimation,
     Platform,
     Modal,
+    ActivityIndicator,
 } from 'react-native';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useAuth } from '@clerk/clerk-expo';
 
 import { Colors } from '../constants/theme';
 import { SplitType, Transaction, Trip, TripExpense } from '../lib/logic/types';
@@ -29,36 +31,62 @@ import { Actions } from '../lib/logic/actions';
 import { withTransaction } from '../lib/db/database';
 import { TransactionRepository, TripExpenseRepository } from '../lib/db/repositories';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
+import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
+import { reconcileSharedTripDerivedTransactionsForExpense } from '../lib/sync/sharedTripReconcile';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { useCategories, useAccounts } from '../lib/hooks/useData';
 import { useTrips } from '../lib/hooks/useTrips';
 import { SplitEditorScreen } from './SplitEditorScreen';
 
 interface TransactionDetailScreenProps {
-    transactionId: string;
+    transactionId?: string;
+    sharedTripExpense?: { tripId: string; expenseId: string };
+    initialEditMode?: boolean;
     onDismiss: () => void;
     onDelete?: () => void; // Callback after delete
     onUpdate?: () => void; // Callback after update
+    readOnly?: boolean;
+    onEditInTrip?: (tripId: string, expenseId: string) => void;
 }
 
 export function TransactionDetailScreen({
     transactionId,
+    sharedTripExpense,
+    initialEditMode,
     onDismiss,
     onDelete,
-    onUpdate
+    onUpdate,
+    readOnly,
+    onEditInTrip,
 }: TransactionDetailScreenProps) {
     const insets = useSafeAreaInsets();
+    const { userId } = useAuth();
 
+    const isMountedRef = useRef(true);
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+ 
     // Data
+
     const { data: categories } = useCategories();
     const { data: accounts } = useAccounts();
     const { trips } = useTrips(); // We need trips to find related trip info
+    const { syncNow } = useSyncStatus();
 
     const [transaction, setTransaction] = useState<Transaction | null>(null);
     const [tripExpense, setTripExpense] = useState<TripExpense | null>(null);
     const [relatedTrip, setRelatedTrip] = useState<Trip | null>(null);
+    const [isSharedTripContext, setIsSharedTripContext] = useState(false);
     const [loading, setLoading] = useState(true);
+ 
+    const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
+    const [isEditing, setIsEditing] = useState(!!initialEditMode);
 
-    const [isEditing, setIsEditing] = useState(false);
 
     // Edit State
     const [editAmountString, setEditAmountString] = useState("");
@@ -80,70 +108,211 @@ export function TransactionDetailScreen({
     const [showSplitEditor, setShowSplitEditor] = useState(false);
     const [showPayerPicker, setShowPayerPicker] = useState(false);
 
+    const effectiveTransactionId = sharedTripExpense?.expenseId ?? transactionId;
+    const isSharedExpense = !!sharedTripExpense;
+ 
     // Load Data
     useEffect(() => {
         loadData();
-    }, [transactionId, trips]);
+    }, [effectiveTransactionId, userId]);
+
 
     const loadData = async () => {
+        let shouldShowLoading = transaction === null || transaction.id !== effectiveTransactionId;
+
         try {
-            // 1. Get Transaction
-            const tx = await TransactionRepository.getById(transactionId);
-            if (!tx) {
-                Alert.alert("Error", "Transaction not found");
+            if (isMountedRef.current && shouldShowLoading) setLoading(true);
+
+            if (!effectiveTransactionId) {
+                Alert.alert("Error", "Missing transaction id");
                 onDismiss();
                 return;
             }
-            setTransaction(tx);
 
-            // 2. Setup Edit State
-            setEditAmountString((Math.abs(tx.amountCents) / 100).toString());
-            setEditNote(tx.note || "");
-            setEditDate(new Date(tx.date));
-            setEditCategoryId(tx.categoryId || null);
-            setEditAccountId(tx.accountId || null);
+            // 1. Load transaction data (either from personal transactions or shared trip mirror)
+            let tx: Transaction | null = null;
+            let nextTripExpense: TripExpense | null = null;
+            let nextRelatedTrip: Trip | null = null;
+            let nextIsSharedTripContext = false;
 
-            // 3. Check for Trip Expense relation
-            if (tx.tripExpenseId) {
-                let foundExpense: TripExpense | undefined;
-                let foundTrip: Trip | undefined;
+            if (isSharedExpense) {
+                if (!userId || !sharedTripExpense) {
+                    Alert.alert("Error", "You must be signed in");
+                    onDismiss();
+                    return;
+                }
 
-                for (const t of trips) {
-                    const exp = t.expenses?.find(e => e.id === tx.tripExpenseId || e.transactionId === tx.id);
-                    if (exp) {
-                        foundExpense = exp;
-                        foundTrip = t;
-                        break;
+                const hydrated = await SharedTripRepository.getHydratedTripForUser(userId, sharedTripExpense.tripId);
+                const exp = hydrated?.expenses?.find(e => e.id === sharedTripExpense.expenseId) ?? null;
+
+                if (!hydrated || !exp) {
+                    Alert.alert("Error", "Expense not found");
+                    onDismiss();
+                    return;
+                }
+
+                tx = {
+                    id: exp.id,
+                    amountCents: exp.transaction?.amountCents ?? 0,
+                    date: exp.transaction?.date ?? Date.now(),
+                    note: exp.transaction?.note,
+                    type: 'expense',
+                    systemType: null,
+                    createdAtMs: exp.transaction?.createdAtMs ?? exp.createdAtMs,
+                    updatedAtMs: exp.transaction?.updatedAtMs ?? exp.updatedAtMs,
+                    deletedAtMs: undefined,
+                };
+
+                nextTripExpense = exp;
+                nextRelatedTrip = hydrated;
+                nextIsSharedTripContext = true;
+            } else {
+                tx = await TransactionRepository.getById(effectiveTransactionId);
+                if (!tx) {
+                    Alert.alert("Error", "Transaction not found");
+                    onDismiss();
+                    return;
+                }
+
+                const personalTx = tx;
+ 
+                const isSharedTripShareTx = personalTx.systemType === 'trip_share' && !!personalTx.sourceTripExpenseId;
+
+
+                // 2) Local trip expense relation (non-shared-trip)
+                if (!isSharedTripShareTx) {
+                    if (personalTx.tripExpenseId) {
+                        for (const t of trips) {
+                            const exp = t.expenses?.find(e => e.id === personalTx.tripExpenseId || e.transactionId === personalTx.id);
+                            if (exp) {
+                                nextTripExpense = exp;
+                                nextRelatedTrip = t;
+                                break;
+                            }
+                        }
+                    } else {
+                        // Reverse lookup
+                        for (const t of trips) {
+                            const exp = t.expenses?.find(e => e.transactionId === personalTx.id);
+                            if (exp) {
+                                nextTripExpense = exp;
+                                nextRelatedTrip = t;
+                                break;
+                            }
+                        }
                     }
                 }
 
-                if (foundExpense && foundTrip) {
-                    setTripExpense(foundExpense);
-                    setRelatedTrip(foundTrip);
-                }
-            } else {
-                // Double check reverse lookup
-                for (const t of trips) {
-                    const exp = t.expenses?.find(e => e.transactionId === tx.id);
-                    if (exp) {
-                        setTripExpense(exp);
-                        setRelatedTrip(t);
-                        break;
+                // 3) Shared trip "trip_share" transactions (derived personal view).
+                if (isSharedTripShareTx && personalTx.sourceTripExpenseId && userId) {
+                    const sharedTripId = await SharedTripRepository.getTripIdForExpense(personalTx.sourceTripExpenseId);
+                    if (sharedTripId) {
+                        const sharedTrip = await SharedTripRepository.getHydratedTripForUser(userId, sharedTripId);
+                        const sharedExpense = sharedTrip?.expenses?.find(e => e.id === personalTx.sourceTripExpenseId) ?? null;
+
+                        if (sharedTrip && sharedExpense) {
+                            nextTripExpense = sharedExpense;
+                            nextRelatedTrip = sharedTrip;
+                            nextIsSharedTripContext = true;
+                        }
                     }
                 }
             }
 
+            if (!isMountedRef.current || !tx) return;
+
+            setTransaction(tx);
+
+            // Setup Edit State
+            setEditAmountString((Math.abs(tx.amountCents) / 100).toString());
+            setEditNote(tx.note || "");
+            setEditDate(new Date(tx.date));
+
+            if (isSharedExpense) {
+                setEditCategoryId(null);
+                setEditAccountId(null);
+            } else {
+                setEditCategoryId(tx.categoryId || null);
+                setEditAccountId(tx.accountId || null);
+            }
+
+            setTripExpense(nextTripExpense);
+            setRelatedTrip(nextRelatedTrip);
+            setIsSharedTripContext(nextIsSharedTripContext);
+
+            // Ensure group-trip edit state is initialized even when starting in edit mode.
+            if (nextRelatedTrip?.isGroup && nextTripExpense) {
+                setEditPaidByParticipantId(nextTripExpense.paidByParticipantId ?? null);
+                setEditSplitType(nextTripExpense.splitType);
+                setEditSplitData(nextTripExpense.splitData ?? {});
+                setEditComputedSplits(nextTripExpense.computedSplits ?? {});
+            }
+
+ 
         } catch (e) {
             console.error(e);
         } finally {
-            setLoading(false);
+            if (isMountedRef.current && shouldShowLoading) setLoading(false);
         }
     };
 
+    // Keep local-trip metadata in sync as trips hydrate/change.
+    useEffect(() => {
+        if (!transaction) return;
+        if (transaction.systemType === 'trip_share' && transaction.sourceTripExpenseId) return;
+        if (isSharedTripContext) return;
+
+        let foundExpense: TripExpense | null = null;
+        let foundTrip: Trip | null = null;
+
+        if (transaction.tripExpenseId) {
+            for (const t of trips) {
+                const exp = t.expenses?.find(e => e.id === transaction.tripExpenseId || e.transactionId === transaction.id);
+                if (exp) {
+                    foundExpense = exp;
+                    foundTrip = t;
+                    break;
+                }
+            }
+        } else {
+            for (const t of trips) {
+                const exp = t.expenses?.find(e => e.transactionId === transaction.id);
+                if (exp) {
+                    foundExpense = exp;
+                    foundTrip = t;
+                    break;
+                }
+            }
+        }
+
+        setTripExpense(foundExpense);
+        setRelatedTrip(foundTrip);
+    }, [transaction, trips, isSharedTripContext]);
+ 
     // derived
+
     const category = categories.find(c => c.id === (isEditing ? editCategoryId : transaction?.categoryId));
     const account = accounts.find(a => a.id === (isEditing ? editAccountId : transaction?.accountId));
     const isIncome = transaction?.type === 'income';
+
+    const isTripShare = transaction?.systemType === 'trip_share' && !!transaction?.sourceTripExpenseId;
+    const isReadOnly = !!readOnly || isTripShare;
+
+    const displayNote = (isTripShare || isSharedExpense)
+        ? (tripExpense?.transaction?.note ?? transaction?.note)
+        : transaction?.note;
+
+    const displayCategoryEmoji = (isTripShare || isSharedExpense)
+        ? (tripExpense?.categoryEmoji ?? category?.emoji)
+        : category?.emoji;
+
+    const displayCategoryName = (isTripShare || isSharedExpense)
+        ? (tripExpense?.categoryName ?? category?.name)
+        : category?.name;
+
+    const splitTotalAmountCents = (isTripShare || isSharedExpense)
+        ? Math.abs(tripExpense?.transaction?.amountCents ?? 0)
+        : Math.abs(transaction?.amountCents ?? 0);
 
     // Sync trip-edit state from DB when not editing.
     useEffect(() => {
@@ -212,14 +381,101 @@ export function TransactionDetailScreen({
         if (!transaction) return;
 
         const newAmount = parseFloat(editAmountString);
-        if (isNaN(newAmount) || newAmount < 0) {
+        if (!Number.isFinite(newAmount) || newAmount < 0) {
             Alert.alert("Invalid Amount", "Please enter a valid positive number");
             return;
         }
 
-        const newAmountCents = Math.round(newAmount * 100) * (isIncome ? 1 : -1);
+        // Shared trip expenses store positive cents.
+        const absoluteCents = Math.round(newAmount * 100);
+        const newAmountCents = isSharedExpense
+            ? absoluteCents
+            : absoluteCents * (isIncome ? 1 : -1);
 
         try {
+            if (isSharedExpense) {
+                if (!sharedTripExpense) return;
+
+                const categorySnapshot = editCategoryId ? categories.find((c) => c.id === editCategoryId) : undefined;
+
+                const payerId = ensurePayerSelected();
+                const computed = relatedTrip?.isGroup
+                    ? TripSplitCalculator.calculateSplits(
+                        absoluteCents,
+                        editSplitType,
+                        relatedTrip.participants ?? [],
+                        editSplitData
+                    )
+                    : {};
+
+                await SharedTripExpenseRepository.update(sharedTripExpense.expenseId, {
+                    amountCents: absoluteCents,
+                    dateMs: editDate.getTime(),
+                    note: editNote.trim() ? editNote.trim() : null,
+                    paidByParticipantId: payerId,
+                    splitType: editSplitType,
+                    splitData: editSplitData,
+                    computedSplits: computed,
+                    categoryName: categorySnapshot?.name ?? tripExpense?.categoryName ?? null,
+                    categoryEmoji: categorySnapshot?.emoji ?? tripExpense?.categoryEmoji ?? null,
+                });
+
+                // Keep derived personal rows up-to-date locally (non-blocking).
+                if (userId) {
+                    reconcileSharedTripDerivedTransactionsForExpense(userId, sharedTripExpense.expenseId)
+                        .catch((e) => console.warn('[TransactionDetail] reconcile failed', e));
+                }
+
+                // Exit edit mode immediately; sync in background.
+                setIsEditing(false);
+
+                setTransaction((prev) => prev ? ({
+                    ...prev,
+                    amountCents: newAmountCents,
+                    date: editDate.getTime(),
+                    note: editNote.trim() || undefined,
+                }) : prev);
+
+                setTripExpense((prev) => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        paidByParticipantId: payerId ?? undefined,
+                        splitType: editSplitType,
+                        splitData: editSplitData,
+                        computedSplits: computed,
+                        categoryName: categorySnapshot?.name ?? prev.categoryName,
+                        categoryEmoji: categorySnapshot?.emoji ?? prev.categoryEmoji,
+                        transaction: {
+                            ...(prev.transaction ?? ({} as any)),
+                            id: prev.id,
+                            amountCents: absoluteCents,
+                            date: editDate.getTime(),
+                            note: editNote.trim() || undefined,
+                            type: 'expense',
+                            systemType: null,
+                            createdAtMs: prev.transaction?.createdAtMs ?? prev.createdAtMs,
+                            updatedAtMs: Date.now(),
+                        },
+                    };
+                });
+
+                setIsBackgroundSyncing(true);
+
+                // Defer to next tick so UI can render instantly.
+                setTimeout(() => {
+                    syncNow('update_shared_trip_expense')
+                        .catch((e) => console.warn('[TransactionDetail] shared expense sync failed', e))
+                        .finally(() => {
+                            if (isMountedRef.current) setIsBackgroundSyncing(false);
+                        });
+                }, 0);
+
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                onUpdate?.();
+                return;
+            }
+
             await withTransaction(async () => {
                 await TransactionRepository.update(transaction.id, {
                     amountCents: newAmountCents,
@@ -259,15 +515,39 @@ export function TransactionDetailScreen({
     };
 
     const handleDelete = () => {
+        const title = isSharedExpense ? 'Delete Expense?' : 'Delete Transaction?';
+        const message = isSharedExpense ? 'This deletes it for everyone.' : 'This cannot be undone.';
+
         Alert.alert(
-            "Delete Transaction?",
-            "This cannot be undone.",
+            title,
+            message,
             [
                 { text: "Cancel", style: "cancel" },
                 {
                     text: "Delete", style: "destructive", onPress: async () => {
                         try {
-                            await Actions.deleteTransaction(transactionId);
+                            if (isSharedExpense && sharedTripExpense) {
+                                await SharedTripExpenseRepository.delete(sharedTripExpense.expenseId);
+
+                                // Local derived cleanup.
+                                if (userId) {
+                                    reconcileSharedTripDerivedTransactionsForExpense(userId, sharedTripExpense.expenseId)
+                                        .catch((e) => console.warn('[TransactionDetail] reconcile delete failed', e));
+                                }
+
+                                setIsBackgroundSyncing(true);
+
+                                setTimeout(() => {
+                                    syncNow('delete_shared_trip_expense')
+                                        .catch((e) => console.warn('[TransactionDetail] shared expense delete sync failed', e))
+                                        .finally(() => {
+                                            if (isMountedRef.current) setIsBackgroundSyncing(false);
+                                        });
+                                }, 0);
+                            } else {
+                                await Actions.deleteTransaction(transaction!.id);
+                            }
+
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                             onDelete?.();
                             onDismiss();
@@ -281,6 +561,7 @@ export function TransactionDetailScreen({
     };
 
     const handleRemoveFromTrip = () => {
+        if (isSharedTripContext || isTripShare) return;
         if (!relatedTrip || !tripExpense || !transaction) return;
 
         Alert.alert(
@@ -292,7 +573,9 @@ export function TransactionDetailScreen({
                     text: "Remove", style: "destructive", onPress: async () => {
                         try {
                             await TripExpenseRepository.delete(tripExpense.id);
-                            await TransactionRepository.update(transaction.id, { tripExpenseId: undefined });
+                            // Important: TransactionRepository.update ignores `undefined` fields.
+                            // Use NULL to clear the link.
+                            await TransactionRepository.update(transaction.id, { tripExpenseId: null });
 
                             setTripExpense(null);
                             setRelatedTrip(null);
@@ -328,7 +611,7 @@ export function TransactionDetailScreen({
 
                 <View style={{ flex: 1 }} />
 
-                {isEditing && (
+                {!isReadOnly && isEditing && (
                     <TouchableOpacity
                         onPress={handleSave}
                         style={styles.saveButton}
@@ -336,7 +619,8 @@ export function TransactionDetailScreen({
                         <Text style={styles.saveButtonText}>Save</Text>
                     </TouchableOpacity>
                 )}
-                {!isEditing && (
+
+                {!isReadOnly && !isEditing && (
                     <TouchableOpacity
                         onPress={() => {
                             setIsEditing(true);
@@ -345,6 +629,20 @@ export function TransactionDetailScreen({
                         style={styles.editButton}
                     >
                         <Text style={styles.editButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                )}
+
+                {isReadOnly && isTripShare && (
+                    <TouchableOpacity
+                        onPress={() => {
+                            if (!relatedTrip || !tripExpense) return;
+                            Haptics.selectionAsync();
+                            onEditInTrip?.(relatedTrip.id, tripExpense.id);
+                        }}
+                        style={styles.editButton}
+                        disabled={!relatedTrip || !tripExpense || !onEditInTrip}
+                    >
+                        <Text style={styles.editInTripText}>Edit in Trip</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -362,7 +660,7 @@ export function TransactionDetailScreen({
                         <Text style={styles.heroEmoji}>{
                             transaction?.systemType === 'transfer' ? "⇅" :
                                 transaction?.systemType === 'adjustment' ? "🛠" :
-                                    category?.emoji || (isIncome ? "💰" : "💸")
+                                    displayCategoryEmoji || (isIncome ? "💰" : "💸")
                         }</Text>
                         {isEditing && (
                             <View style={styles.editBadge}>
@@ -384,17 +682,40 @@ export function TransactionDetailScreen({
                         </View>
                     ) : (
                         <Text style={styles.heroAmount}>
-                            {formatCents(Math.abs(transaction.amountCents), "INR")}
+                            {formatCents(Math.abs(transaction!.amountCents), "INR")}
                         </Text>
+                    )}
+
+                    {!isEditing && isTripShare && (
+                        <Text style={styles.tripShareLabel}>Your share</Text>
                     )}
 
                     {/* View Mode Meta */}
                     {!isEditing && (
                         <Text style={styles.metaText}>
-                            {new Date(transaction.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true })}
-                            <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
-                            {account?.emoji} {account?.name}
+                            {new Date(transaction!.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true })}
+
+                            {!!account && !isTripShare && !isSharedExpense && (
+                                <Text>
+                                    <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
+                                    {account.emoji} {account.name}
+                                </Text>
+                            )}
+
+                            {(isTripShare || isSharedExpense) && !!relatedTrip && (
+                                <Text>
+                                    <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
+                                    {relatedTrip.emoji} {relatedTrip.name}
+                                </Text>
+                            )}
                         </Text>
+                    )}
+
+                    {!isEditing && isSharedExpense && isBackgroundSyncing && (
+                        <View style={styles.syncingRow}>
+                            <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
+                            <Text style={styles.syncingText}>Syncing…</Text>
+                        </View>
                     )}
                 </View>
 
@@ -416,14 +737,18 @@ export function TransactionDetailScreen({
                             </TouchableOpacity>
                         </View>
 
-                        {/* Account */}
-                        <View style={styles.fieldGroup}>
-                            <Text style={styles.label}>Account</Text>
-                            <TouchableOpacity onPress={() => setShowAccountPicker(true)} style={[styles.pill, { alignSelf: 'flex-start' }]}>
-                                <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || "🏦"}</Text>
-                                <Text style={styles.pillText}>{account?.name || "Select Account"}</Text>
-                            </TouchableOpacity>
-                        </View>
+                        {!isSharedExpense && (
+                            <>
+                                {/* Account */}
+                                <View style={styles.fieldGroup}>
+                                    <Text style={styles.label}>Account</Text>
+                                    <TouchableOpacity onPress={() => setShowAccountPicker(true)} style={[styles.pill, { alignSelf: 'flex-start' }]}>
+                                        <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || "🏦"}</Text>
+                                        <Text style={styles.pillText}>{account?.name || "Select Account"}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </>
+                        )}
 
                         {/* Category Quick Picker */}
                         <View style={styles.fieldGroup}>
@@ -470,9 +795,11 @@ export function TransactionDetailScreen({
                                 <View style={styles.tripPill}>
                                     <Text>{relatedTrip.emoji}</Text>
                                     <Text style={{ color: 'white', fontWeight: '600' }}>{relatedTrip.name}</Text>
-                                    <TouchableOpacity onPress={handleRemoveFromTrip}>
-                                        <Ionicons name="close-circle" size={18} color={Colors.error} style={{ marginLeft: 4 }} />
-                                    </TouchableOpacity>
+                                    {!isSharedTripContext && (
+                                        <TouchableOpacity onPress={handleRemoveFromTrip}>
+                                            <Ionicons name="close-circle" size={18} color={Colors.error} style={{ marginLeft: 4 }} />
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             ) : (
                                 <TouchableOpacity style={styles.addToTripButton}>
@@ -597,9 +924,9 @@ export function TransactionDetailScreen({
                     /* VIEW MODE LAYOUT */
                     <View style={styles.dataSection}>
                         {/* Note (Only if exists) */}
-                        {!!transaction.note && (
+                        {!!displayNote && (
                             <View style={styles.viewNoteContainer}>
-                                <Text style={styles.viewNoteText}>{transaction.note}</Text>
+                                <Text style={styles.viewNoteText}>{displayNote}</Text>
                             </View>
                         )}
 
@@ -610,14 +937,16 @@ export function TransactionDetailScreen({
                                 <Text style={styles.sectionLabel}>Trip</Text>
 
                                 {/* Trip Badge Row */}
-                                <View style={styles.tripBadge}>
-                                    <Text style={{ fontSize: 22, marginRight: 10 }}>{relatedTrip.emoji}</Text>
-                                    <Text style={styles.tripName}>{relatedTrip.name}</Text>
-                                    <View style={{ flex: 1 }} />
-                                    <TouchableOpacity onPress={handleRemoveFromTrip}>
-                                        <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.5)" />
-                                    </TouchableOpacity>
-                                </View>
+                                    <View style={styles.tripBadge}>
+                                        <Text style={{ fontSize: 22, marginRight: 10 }}>{relatedTrip.emoji}</Text>
+                                        <Text style={styles.tripName}>{relatedTrip.name}</Text>
+                                        <View style={{ flex: 1 }} />
+                                        {!isSharedTripContext && (
+                                            <TouchableOpacity onPress={handleRemoveFromTrip}>
+                                                <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.5)" />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
 
                                 {/* Split Details Section - for group trips */}
                                 {tripExpense && relatedTrip.isGroup && (
@@ -639,7 +968,7 @@ export function TransactionDetailScreen({
                                                             </Text>
                                                             <View style={{ flex: 1 }} />
                                                             <Text style={styles.paidByAmount}>
-                                                                {formatCents(Math.abs(transaction.amountCents), "INR")}
+                                                                {formatCents(splitTotalAmountCents, "INR")}
                                                             </Text>
                                                         </View>
                                                     );
@@ -696,13 +1025,17 @@ export function TransactionDetailScreen({
                     </View>
                 )}
 
-                {/* Delete Button */}
-                <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={handleDelete}
-                >
-                    <Text style={styles.deleteText}>Delete Transaction</Text>
-                </TouchableOpacity>
+                {!isReadOnly && (
+                    <>
+                        {/* Delete Button */}
+                        <TouchableOpacity
+                            style={styles.deleteButton}
+                            onPress={handleDelete}
+                        >
+                            <Text style={styles.deleteText}>{isSharedExpense ? 'Delete Expense' : 'Delete Transaction'}</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
 
                 <View style={{ height: 100 }} />
             </ScrollView>
@@ -902,6 +1235,11 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
     },
+    editInTripText: {
+        color: Colors.accent,
+        fontSize: 15,
+        fontWeight: '600',
+    },
     content: {
         paddingHorizontal: 20,
         paddingTop: 10,
@@ -960,6 +1298,23 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: 'rgba(255,255,255,0.6)',
         fontFamily: 'System',
+    },
+    tripShareLabel: {
+        marginTop: 6,
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.5)',
+        fontFamily: 'System',
+    },
+    syncingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 10,
+    },
+    syncingText: {
+        fontFamily: 'System',
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.5)',
     },
 
     // Edit Layout

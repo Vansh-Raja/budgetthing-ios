@@ -9,6 +9,11 @@
  */
 
 import type * as deleteMyAccount from "../deleteMyAccount.js";
+import type * as sharedTripInvites from "../sharedTripInvites.js";
+import type * as sharedTripMembers from "../sharedTripMembers.js";
+import type * as sharedTripPoke from "../sharedTripPoke.js";
+import type * as sharedTripSync from "../sharedTripSync.js";
+import type * as sharedTrips from "../sharedTrips.js";
 import type * as sync from "../sync.js";
 
 import type {
@@ -19,6 +24,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   deleteMyAccount: typeof deleteMyAccount;
+  sharedTripInvites: typeof sharedTripInvites;
+  sharedTripMembers: typeof sharedTripMembers;
+  sharedTripPoke: typeof sharedTripPoke;
+  sharedTripSync: typeof sharedTripSync;
+  sharedTrips: typeof sharedTrips;
   sync: typeof sync;
 }>;
 

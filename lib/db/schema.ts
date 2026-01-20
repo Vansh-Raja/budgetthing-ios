@@ -6,7 +6,7 @@
  */
 
 // Schema version - increment when adding new migrations
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Initial schema creation - version 1
@@ -181,6 +181,105 @@ export const MIGRATIONS: Record<number, string[]> = {
 
     `CREATE INDEX IF NOT EXISTS idx_trips_sortIndex ON trips(sortIndex)`,
   ],
+
+  3: [
+    // Transactions: link derived trip rows to shared sources
+    `ALTER TABLE transactions ADD COLUMN sourceTripExpenseId TEXT`,
+    `ALTER TABLE transactions ADD COLUMN sourceTripSettlementId TEXT`,
+
+    `CREATE INDEX IF NOT EXISTS idx_transactions_sourceTripExpenseId ON transactions(sourceTripExpenseId)`,
+    `CREATE INDEX IF NOT EXISTS idx_transactions_sourceTripSettlementId ON transactions(sourceTripSettlementId)`,
+
+    // Shared trips (v1 scaffolding): local mirror tables for trip-scoped sync
+    `CREATE TABLE IF NOT EXISTS sharedTrips (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      currencyCode TEXT NOT NULL DEFAULT 'INR',
+      createdAtMs INTEGER NOT NULL,
+      updatedAtMs INTEGER NOT NULL,
+      deletedAtMs INTEGER,
+      syncVersion INTEGER NOT NULL DEFAULT 1,
+      needsSync INTEGER NOT NULL DEFAULT 1
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS sharedTripMembers (
+      id TEXT PRIMARY KEY,
+      tripId TEXT NOT NULL,
+      userId TEXT NOT NULL,
+      participantId TEXT NOT NULL,
+      joinedAtMs INTEGER NOT NULL,
+      updatedAtMs INTEGER NOT NULL,
+      deletedAtMs INTEGER,
+      syncVersion INTEGER NOT NULL DEFAULT 1,
+      needsSync INTEGER NOT NULL DEFAULT 1
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS sharedTripParticipants (
+      id TEXT PRIMARY KEY,
+      tripId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      colorHex TEXT,
+      linkedUserId TEXT,
+      createdAtMs INTEGER NOT NULL,
+      updatedAtMs INTEGER NOT NULL,
+      deletedAtMs INTEGER,
+      syncVersion INTEGER NOT NULL DEFAULT 1,
+      needsSync INTEGER NOT NULL DEFAULT 1
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS sharedTripExpenses (
+      id TEXT PRIMARY KEY,
+      tripId TEXT NOT NULL,
+      amountCents INTEGER NOT NULL,
+      dateMs INTEGER NOT NULL,
+      note TEXT,
+      paidByParticipantId TEXT,
+      splitType TEXT NOT NULL DEFAULT 'equal',
+      splitDataJson TEXT,
+      computedSplitsJson TEXT,
+      categoryName TEXT,
+      categoryEmoji TEXT,
+      createdAtMs INTEGER NOT NULL,
+      updatedAtMs INTEGER NOT NULL,
+      deletedAtMs INTEGER,
+      syncVersion INTEGER NOT NULL DEFAULT 1,
+      needsSync INTEGER NOT NULL DEFAULT 1
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS sharedTripSettlements (
+      id TEXT PRIMARY KEY,
+      tripId TEXT NOT NULL,
+      fromParticipantId TEXT NOT NULL,
+      toParticipantId TEXT NOT NULL,
+      amountCents INTEGER NOT NULL,
+      dateMs INTEGER NOT NULL,
+      note TEXT,
+      createdAtMs INTEGER NOT NULL,
+      updatedAtMs INTEGER NOT NULL,
+      deletedAtMs INTEGER,
+      syncVersion INTEGER NOT NULL DEFAULT 1,
+      needsSync INTEGER NOT NULL DEFAULT 1
+    )`,
+
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripMembers_userId ON sharedTripMembers(userId)`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripMembers_tripId ON sharedTripMembers(tripId)`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripParticipants_tripId ON sharedTripParticipants(tripId)`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripExpenses_tripId ON sharedTripExpenses(tripId)`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripSettlements_tripId ON sharedTripSettlements(tripId)`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTrips_needsSync ON sharedTrips(needsSync) WHERE needsSync = 1`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripMembers_needsSync ON sharedTripMembers(needsSync) WHERE needsSync = 1`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripParticipants_needsSync ON sharedTripParticipants(needsSync) WHERE needsSync = 1`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripExpenses_needsSync ON sharedTripExpenses(needsSync) WHERE needsSync = 1`,
+    `CREATE INDEX IF NOT EXISTS idx_sharedTripSettlements_needsSync ON sharedTripSettlements(needsSync) WHERE needsSync = 1`,
+  ],
+
+  4: [
+    // Shared trips: add optional trip metadata
+    `ALTER TABLE sharedTrips ADD COLUMN startDateMs INTEGER`,
+    `ALTER TABLE sharedTrips ADD COLUMN endDateMs INTEGER`,
+    `ALTER TABLE sharedTrips ADD COLUMN budgetCents INTEGER`,
+  ],
 };
 
 /**
@@ -194,6 +293,11 @@ export const TABLES = {
   TRIP_PARTICIPANTS: 'tripParticipants',
   TRIP_EXPENSES: 'tripExpenses',
   TRIP_SETTLEMENTS: 'tripSettlements',
+  SHARED_TRIPS: 'sharedTrips',
+  SHARED_TRIP_MEMBERS: 'sharedTripMembers',
+  SHARED_TRIP_PARTICIPANTS: 'sharedTripParticipants',
+  SHARED_TRIP_EXPENSES: 'sharedTripExpenses',
+  SHARED_TRIP_SETTLEMENTS: 'sharedTripSettlements',
   USER_SETTINGS: 'userSettings',
   SCHEMA_VERSION: '_schema_version',
 } as const;

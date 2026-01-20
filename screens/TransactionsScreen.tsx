@@ -4,7 +4,7 @@
  * Pixel-perfect port of TransactionsListView.swift
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -32,6 +32,7 @@ import { Actions } from '../lib/logic/actions';
 import { TransactionRepository } from '../lib/db/repositories';
 import { TransactionDetailScreen } from './TransactionDetailScreen';
 import { useTrips } from '../lib/hooks/useTrips';
+import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { useAuth } from '@clerk/clerk-expo';
@@ -288,12 +289,12 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
       const date = parseISO(key + '-01');
       const title = format(date, 'MMMM yyyy');
 
-      const totalCents = txs.reduce((sum, tx) => {
-        // Use effective amount (user's share for trip expenses)
-        const info = getEffectiveDisplayInfo(tx);
-        if (info.shouldHide || info.isIncome || tx.systemType === 'transfer') return sum;
-        return sum + info.amount;
-      }, 0);
+        const totalCents = txs.reduce((sum, tx) => {
+          // Use effective amount (user's share for trip expenses)
+          const info = getEffectiveDisplayInfo(tx);
+          if (info.shouldHide || info.isIncome || tx.systemType === 'transfer' || tx.systemType === 'trip_cashflow') return sum;
+          return sum + info.amount;
+        }, 0);
 
       return { id: key, title, totalCents, data: txs };
     });
@@ -365,7 +366,11 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   }, []);
 
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [tripShareTxId, setTripShareTxId] = useState<string | null>(null);
+  const [tripShareEditTarget, setTripShareEditTarget] = useState<{ tripId: string; expenseId: string } | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+
+  const [sharedExpenseMeta, setSharedExpenseMeta] = useState<Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null }>>({});
 
   const handleChangeCategory = useCallback(() => {
     Haptics.selectionAsync();
@@ -376,9 +381,33 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   const canMove = selectedIds.size > 0;
   const canChangeCategory = selectedIds.size > 0;
 
+  useEffect(() => {
+    const expenseIds = transactions
+      .filter((t) => t.systemType === 'trip_share' && t.sourceTripExpenseId)
+      .map((t) => t.sourceTripExpenseId!)
+      .filter(Boolean);
+
+    let cancelled = false;
+
+    SharedTripRepository.getExpenseMetaByIds(expenseIds)
+      .then((map) => {
+        if (!cancelled) setSharedExpenseMeta(map);
+      })
+      .catch(() => {
+        if (!cancelled) setSharedExpenseMeta({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [transactions]);
+
   const renderItem = useCallback(({ item }: { item: Transaction }) => {
     const category = item.categoryId ? categoryMap[item.categoryId] : null;
     const displayInfo = getEffectiveDisplayInfo(item);
+
+    // Hide derived payer cashflow rows (shown in Accounts, not Transactions)
+    if (item.systemType === 'trip_cashflow') return null;
 
     // Hide transactions not relevant to current user
     if (displayInfo.shouldHide) return null;
@@ -390,18 +419,29 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
     const dateStr = format(item.date, 'd MMMM yyyy');
     const iconColor = isIncome ? '#34C759' : '#FFFFFF';
 
-    // Check if this is a trip expense
+    // Check if this is a local trip expense
     const tripInfo = tripExpenseMap.get(item.id);
+    const sharedMeta = item.systemType === 'trip_share' && item.sourceTripExpenseId
+      ? sharedExpenseMeta[item.sourceTripExpenseId]
+      : undefined;
 
     return (
       <TouchableOpacity
         onPress={() => {
-          if (isSelecting) {
-            toggleItemSelection(item.id);
-          } else {
-            Haptics.selectionAsync();
-            setEditingTx(item);
-          }
+           if (isSelecting) {
+             toggleItemSelection(item.id);
+           } else {
+             Haptics.selectionAsync();
+
+              if (item.systemType === 'trip_share') {
+                setTripShareTxId(item.id);
+                return;
+              }
+
+              setEditingTx(item);
+
+           }
+
         }}
         activeOpacity={0.7}
       >
@@ -425,6 +465,8 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
                 <Text style={{ fontSize: 24, color: '#FFFFFF' }}>⇅</Text>
               ) : item.systemType === 'adjustment' ? (
                 <Text style={{ fontSize: 24, color: '#FFFFFF' }}>🛠</Text>
+              ) : item.systemType === 'trip_share' ? (
+                <Text style={{ fontSize: 24 }}>{sharedMeta?.categoryEmoji ?? '🧾'}</Text>
               ) : isIncome ? (
                 <Ionicons name="arrow-down-circle" size={24} color={iconColor} />
               ) : category ? (
@@ -442,7 +484,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
               </Text>
               {/* Date as Subtitle */}
               <Text style={styles.dateSubtitle}>
-                {dateStr}{tripInfo ? ` · ${tripInfo.tripEmoji}` : ''}
+                {dateStr}{tripInfo ? ` · ${tripInfo.tripEmoji}` : (sharedMeta?.tripEmoji ? ` · ${sharedMeta.tripEmoji}` : '')}
               </Text>
             </View>
 
@@ -457,7 +499,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         </View>
       </TouchableOpacity>
     );
-  }, [isSelecting, selectedIds, toggleItemSelection, categoryMap, getEffectiveDisplayInfo, tripExpenseMap]);
+  }, [isSelecting, selectedIds, toggleItemSelection, categoryMap, getEffectiveDisplayInfo, tripExpenseMap, sharedExpenseMeta]);
 
   // Render Header
   const renderSectionHeader = useCallback(({ section: { title, totalCents } }: { section: MonthSection }) => (
@@ -569,26 +611,59 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         />
       )}
 
-      {/* Edit Modal (Detail View) */}
+      {/* Trip share detail (derived personal view) */}
       <Modal
-        visible={!!editingTx}
+        visible={tripShareTxId !== null}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setTripShareTxId(null)}
+      >
+        {tripShareTxId && (
+          <TransactionDetailScreen
+            transactionId={tripShareTxId}
+            readOnly
+            onDismiss={() => setTripShareTxId(null)}
+            onEditInTrip={(tripId, expenseId) => {
+              setTripShareTxId(null);
+              setTripShareEditTarget({ tripId, expenseId });
+            }}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        visible={tripShareEditTarget !== null}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setTripShareEditTarget(null)}
+      >
+        {tripShareEditTarget && (
+          <TransactionDetailScreen
+            sharedTripExpense={{ tripId: tripShareEditTarget.tripId, expenseId: tripShareEditTarget.expenseId }}
+            initialEditMode
+            onDismiss={() => setTripShareEditTarget(null)}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        visible={editingTx !== null}
+        animationType="slide"
+        presentationStyle="fullScreen"
         onRequestClose={() => setEditingTx(null)}
       >
         {editingTx && (
           <TransactionDetailScreen
             transactionId={editingTx.id}
             onDismiss={() => setEditingTx(null)}
-            onUpdate={() => { refresh(); refreshTrips(); }}
             onDelete={() => {
               setEditingTx(null);
               refresh();
-              refreshTrips();
             }}
           />
         )}
       </Modal>
+
 
       {/* Bulk Category Picker Modal */}
       <Modal

@@ -10,7 +10,8 @@ export type SplitType = 'equal' | 'equalSelected' | 'percentage' | 'shares' | 'e
 export type TransactionType = 'expense' | 'income';
 
 // System transaction types
-export type SystemType = 'transfer' | 'adjustment' | null;
+// Note: "trip_*" types are local-only derived rows for shared trips.
+export type SystemType = 'transfer' | 'adjustment' | 'trip_share' | 'trip_cashflow' | 'trip_settlement' | null;
 
 // Account kinds
 export type AccountKind = 'cash' | 'card' | 'savings';
@@ -24,6 +25,7 @@ export interface TripParticipant {
   name: string;
   isCurrentUser: boolean;
   colorHex?: string;
+  linkedUserId?: string;
   createdAtMs: number;
   updatedAtMs: number;
   deletedAtMs?: number;
@@ -76,6 +78,8 @@ export interface Transaction {
   transferFromAccountId?: string;
   transferToAccountId?: string;
   tripExpenseId?: string;
+  sourceTripExpenseId?: string;
+  sourceTripSettlementId?: string;
   createdAtMs: number;
   updatedAtMs: number;
   deletedAtMs?: number;
@@ -117,6 +121,11 @@ export interface TripExpense {
   createdAtMs: number;
   updatedAtMs: number;
   deletedAtMs?: number;
+
+  // Shared trip category snapshot (v1)
+  categoryName?: string;
+  categoryEmoji?: string;
+
   // Runtime associations
   transaction?: Transaction;
   paidByParticipant?: TripParticipant;

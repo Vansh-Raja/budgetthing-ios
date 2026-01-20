@@ -22,12 +22,18 @@ import { Colors } from '../constants/theme';
 import { Trip } from '../lib/logic/types';
 import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
 import { TripCard } from '../components/TripCard';
+import { SharedTripCard } from '../components/SharedTripCard';
 import { TripDetailScreen } from './TripDetailScreen';
+import { SharedTripDetailScreen } from './SharedTripDetailScreen';
 import { AddTripScreen } from './AddTripScreen';
+import { AddSharedTripScreen } from './AddSharedTripScreen';
+import { JoinSharedTripScreen } from './JoinSharedTripScreen';
 import { Modal } from 'react-native';
 import { useTrips } from '../lib/hooks/useTrips';
+import { useSharedTrips } from '../lib/hooks/useSharedTrips';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { TripRepository, TripParticipantRepository } from '../lib/db/repositories';
+import { useAuth } from '@clerk/clerk-expo';
 
 // ============================================================================
 // Types & Props
@@ -46,26 +52,31 @@ interface TripsScreenProps {
 export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0 }: TripsScreenProps) {
   const insets = useSafeAreaInsets();
   const { trips, refresh } = useTrips();
+  const { trips: sharedTrips, refresh: refreshSharedTrips } = useSharedTrips();
   const { syncNow } = useSyncStatus();
+  const { isSignedIn } = useAuth();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     syncNow('manual_refresh')
-      .then(() => refresh())
+      .then(() => Promise.all([refresh(), refreshSharedTrips()]))
       .catch((error) => {
         console.error('[Trips] Refresh failed:', error);
       })
       .finally(() => {
         setIsRefreshing(false);
       });
-  }, [syncNow, refresh]);
+  }, [syncNow, refresh, refreshSharedTrips]);
 
   // State
   const [showFloatingPager, setShowFloatingPager] = useState(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [selectedSharedTripId, setSelectedSharedTripId] = useState<string | null>(null);
   const [showAddTrip, setShowAddTrip] = useState(false);
+  const [showAddSharedTrip, setShowAddSharedTrip] = useState(false);
+  const [showJoinTrip, setShowJoinTrip] = useState(false);
 
   useEffect(() => {
     if (addTripRequestId <= 0) return;
@@ -74,6 +85,10 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
   }, [addTripRequestId]);
 
   const selectedTrip = useMemo(() => trips.find(t => t.id === selectedTripId) || null, [trips, selectedTripId]);
+  const selectedSharedTripSummary = useMemo(
+    () => sharedTrips.find(t => t.id === selectedSharedTripId) || null,
+    [sharedTrips, selectedSharedTripId]
+  );
 
   const [orderedTrips, setOrderedTrips] = useState<Trip[]>([]);
 
@@ -83,7 +98,30 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
 
   const handleAddTrip = () => {
     Haptics.selectionAsync();
+
+    if (isSignedIn) {
+      Alert.alert(
+        'New Trip',
+        undefined,
+        [
+          { text: 'Local Trip', onPress: () => setShowAddTrip(true) },
+          { text: 'Shared Trip', onPress: () => setShowAddSharedTrip(true) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
     setShowAddTrip(true);
+  };
+
+  const handleJoinTrip = () => {
+    if (!isSignedIn) {
+      Alert.alert('Sign in required', 'Sign in to join shared trips.');
+      return;
+    }
+    Haptics.selectionAsync();
+    setShowJoinTrip(true);
   };
 
   const handleSaveTrip = async (tripData: any) => {
@@ -127,6 +165,11 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
     setSelectedTripId(trip.id);
   };
 
+  const handleSharedTripPress = (tripId: string) => {
+    Haptics.selectionAsync();
+    setSelectedSharedTripId(tripId);
+  };
+
   const handleReorder = useCallback(({ data }: { data: Trip[] }) => {
     setOrderedTrips(data);
 
@@ -145,6 +188,14 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Trips</Text>
           <View style={{ flex: 1 }} />
+          {isSignedIn && (
+            <TouchableOpacity
+              onPress={handleJoinTrip}
+              style={styles.addButton}
+            >
+              <Ionicons name="log-in" size={22} color={Colors.accent} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={handleAddTrip}
             style={styles.addButton}
@@ -153,7 +204,7 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
           </TouchableOpacity>
         </View>
 
-        {trips.length === 0 ? (
+        {trips.length === 0 && sharedTrips.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>✈️</Text>
             <Text style={styles.emptyTitle}>No trips yet</Text>
@@ -168,12 +219,41 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
               <Ionicons name="add" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
               <Text style={styles.emptyButtonText}>New Trip</Text>
             </TouchableOpacity>
+
+            {isSignedIn && (
+              <TouchableOpacity
+                onPress={handleJoinTrip}
+                style={[styles.emptyButton, { marginTop: 12, backgroundColor: 'rgba(255, 255, 255, 0.10)' }]}
+              >
+                <Ionicons name="log-in" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.emptyButtonText}>Join Trip</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <DraggableFlatList
             data={orderedTrips}
             keyExtractor={(item) => item.id}
             onDragEnd={handleReorder}
+            ListHeaderComponent={
+              sharedTrips.length > 0 ? (
+                <View style={{ paddingBottom: 14 }}>
+                  <Text style={styles.sectionHeader}>Shared</Text>
+                  <View style={{ gap: 12 }}>
+                    {sharedTrips.map((t) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        onPress={() => handleSharedTripPress(t.id)}
+                        activeOpacity={0.7}
+                      >
+                        <SharedTripCard trip={t} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {orderedTrips.length > 0 && <Text style={[styles.sectionHeader, { marginTop: 18 }]}>Local</Text>}
+                </View>
+              ) : null
+            }
             renderItem={({ item: trip, drag, isActive, getIndex }: RenderItemParams<Trip>) => {
               const index = getIndex?.() ?? -1;
               const showArchivedHeader =
@@ -203,6 +283,7 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
           />
+
         )}
       </View>
 
@@ -225,6 +306,16 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
         </View>
       )}
 
+      {/* Shared Trip Detail Modal */}
+      {selectedSharedTripSummary && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 110 }]}>
+          <SharedTripDetailScreen
+            tripId={selectedSharedTripSummary.id}
+            onDismiss={() => setSelectedSharedTripId(null)}
+          />
+        </View>
+      )}
+
       {/* Add Trip Modal */}
       <Modal
         visible={showAddTrip}
@@ -234,12 +325,42 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
       >
         <AddTripScreen
           onDismiss={() => setShowAddTrip(false)}
-          onSave={() => {
-            refresh(); // Just refresh the trips list
-            setShowAddTrip(false);
+          onSave={() => refresh()}
+        />
+      </Modal>
+
+      {/* Add Shared Trip Modal */}
+      <Modal
+        visible={showAddSharedTrip}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAddSharedTrip(false)}
+      >
+        <AddSharedTripScreen
+          onDismiss={() => setShowAddSharedTrip(false)}
+          onCreated={(id) => {
+            setSelectedSharedTripId(id);
+            refreshSharedTrips();
           }}
         />
       </Modal>
+
+      {/* Join Shared Trip Modal */}
+      <Modal
+        visible={showJoinTrip}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowJoinTrip(false)}
+      >
+        <JoinSharedTripScreen
+          onDismiss={() => setShowJoinTrip(false)}
+          onJoined={(id) => {
+            setSelectedSharedTripId(id);
+            refreshSharedTrips();
+          }}
+        />
+      </Modal>
+
     </View>
   );
 }

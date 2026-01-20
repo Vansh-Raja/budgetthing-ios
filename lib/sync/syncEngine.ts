@@ -4,6 +4,8 @@ import { useAuth } from '@clerk/clerk-expo';
 import NetInfo from "@react-native-community/netinfo";
 import * as SecureStore from 'expo-secure-store';
 import { syncRepository } from "../db/sync";
+import { sharedTripSyncRepository } from "../db/sharedTripSync";
+import { reconcileSharedTripDerivedTransactionsForUser } from "./sharedTripReconcile";
 
 export type SyncMode = 'pull' | 'push' | 'full';
 
@@ -36,6 +38,62 @@ function lastPullSeqKey(userId: string) {
   return safeUserId ? `sync.last_pull_seq.${safeUserId}` : "sync.last_pull_seq";
 }
 
+function lastTripPullSeqKey(userId: string, tripId: string) {
+  const safeUserId = safeSecureStoreKeySegment(userId);
+  const safeTripId = safeSecureStoreKeySegment(tripId);
+  return `sync.trip.last_pull_seq.${safeUserId}.${safeTripId}`;
+}
+
+function knownTripsKey(userId: string) {
+  const safeUserId = safeSecureStoreKeySegment(userId);
+  return `sync.trip.known_trips.${safeUserId}`;
+}
+
+async function registerKnownTrip(userId: string, tripId: string): Promise<void> {
+  const key = knownTripsKey(userId);
+  const raw = await SecureStore.getItemAsync(key);
+  let list: string[] = [];
+  try {
+    list = raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    list = [];
+  }
+
+  if (!list.includes(tripId)) {
+    const next = [...list, tripId];
+    await SecureStore.setItemAsync(key, JSON.stringify(next));
+  }
+}
+
+async function clearTripCursorStateForUser(userId: string): Promise<void> {
+  const key = knownTripsKey(userId);
+  const raw = await SecureStore.getItemAsync(key);
+  let list: string[] = [];
+  try {
+    list = raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    list = [];
+  }
+
+  for (const tripId of list) {
+    await SecureStore.deleteItemAsync(lastTripPullSeqKey(userId, tripId));
+  }
+
+  await SecureStore.deleteItemAsync(key);
+}
+
+async function getLastTripPullSeq(userId: string, tripId: string): Promise<number> {
+  const value = await SecureStore.getItemAsync(lastTripPullSeqKey(userId, tripId));
+  const parsed = value ? parseInt(value, 10) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function setLastTripPullSeq(userId: string, tripId: string, seq: number): Promise<void> {
+  const safe = Number.isFinite(seq) && seq > 0 ? Math.floor(seq) : 0;
+  await SecureStore.setItemAsync(lastTripPullSeqKey(userId, tripId), String(safe));
+  await registerKnownTrip(userId, tripId);
+}
+
 export async function getLastPullSeq(userId: string): Promise<number> {
   const value = await SecureStore.getItemAsync(lastPullSeqKey(userId));
   const parsed = value ? parseInt(value, 10) : 0;
@@ -53,6 +111,7 @@ export async function resetLastPullSeq(userId: string): Promise<void> {
 
 export async function clearSyncStateForUser(userId: string): Promise<void> {
   await SecureStore.deleteItemAsync(lastPullSeqKey(userId));
+  await clearTripCursorStateForUser(userId);
 }
 
 /**
@@ -150,6 +209,76 @@ export function useSync() {
         didPull = true;
       }
     }
+
+    // -------------------------------------------------------------------------
+    // Shared Trips v1: trip-scoped sync + derived transaction reconciliation
+    // -------------------------------------------------------------------------
+
+    // 1) Fetch my memberships (source of truth for which trips to sync).
+    const memberships = await convex.query("sharedTripMembers:mine" as any, {});
+    const membershipRows = Array.isArray(memberships) ? memberships : [];
+    await sharedTripSyncRepository.applyRemoteMembershipRows(membershipRows);
+
+    const tripIds: string[] = membershipRows
+      .filter((m: any) => m && m.tripId && m.deletedAtMs === undefined)
+      .map((m: any) => m.tripId);
+
+    const uniqueTripIds = Array.from(new Set(tripIds));
+
+    // 2) Trip-scoped push/pull for each trip.
+    for (const tripId of uniqueTripIds) {
+      if ((mode === 'push' || mode === 'full') && allowPush) {
+        const pending = await sharedTripSyncRepository.getPendingChangesForTrip(tripId);
+        const pushPayload = {
+          sharedTrips: pending.sharedTrips,
+          sharedTripParticipants: pending.sharedTripParticipants,
+          sharedTripExpenses: pending.sharedTripExpenses,
+          sharedTripSettlements: pending.sharedTripSettlements,
+        };
+
+        const hasPending = Object.values(pushPayload).some((arr) => Array.isArray(arr) && arr.length > 0);
+
+        if (hasPending) {
+          await convex.mutation("sharedTripSync:push" as any, {
+            tripId,
+            ...pushPayload,
+          });
+
+          await sharedTripSyncRepository.markAsSynced({
+            ...pending,
+            sharedTripMembers: [],
+          });
+          didPush = true;
+        }
+      }
+
+      if (mode === 'pull' || mode === 'full') {
+        const lastTripSeq = await getLastTripPullSeq(userId, tripId);
+        const remoteTripChanges = await convex.query("sharedTripSync:pull" as any, { tripId, lastSeq: lastTripSeq });
+
+        if (remoteTripChanges) {
+          const { latestSeq: remoteLatestTripSeq, ...changesDict } = remoteTripChanges as any;
+
+          const changeCount = Object.values(changesDict).reduce<number>(
+            (acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0),
+            0
+          );
+
+          if (changeCount > 0) {
+            await sharedTripSyncRepository.applyRemoteChanges(tripId, changesDict as any);
+          }
+
+          if (typeof remoteLatestTripSeq === 'number' && remoteLatestTripSeq !== lastTripSeq) {
+            await setLastTripPullSeq(userId, tripId, remoteLatestTripSeq);
+          }
+
+          didPull = true;
+        }
+      }
+    }
+
+    // 3) Reconcile derived personal transactions (trip_share for now).
+    await reconcileSharedTripDerivedTransactionsForUser(userId);
 
     return { didRun: true, didPush, didPull, queued: false, latestSeq };
   }, [convex, isSignedIn, userId]);

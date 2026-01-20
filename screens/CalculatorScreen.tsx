@@ -29,8 +29,13 @@ import { SplitType } from '../lib/logic/types';
 import { useCategories, useAccounts } from '../lib/hooks/useData';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
 import { useTrips } from '../lib/hooks/useTrips';
+import { useSharedTrips } from '../lib/hooks/useSharedTrips';
 import { TransactionRepository, TripExpenseRepository, TripRepository } from '../lib/db/repositories';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import { useAuth } from '@clerk/clerk-expo';
+import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
+import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
+import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
 
 // ============================================================================
 // Types
@@ -338,9 +343,20 @@ interface CalculatorScreenProps {
     tripId: string | null;
   }) => void;
   onRequestAddTrip?: () => void;
+
+  /**
+   * Override trip items in the trip emoji row.
+   * If not provided, the row shows local trips + (if signed in) shared trips.
+   */
+  tripItemsOverride?: Array<{ id: string; emoji: string }>;
+
+  /**
+   * Disable selecting/deselecting trips in the trip emoji row.
+   */
+  tripSelectionDisabled?: boolean;
 }
 
-export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: CalculatorScreenProps) {
+export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, tripItemsOverride, tripSelectionDisabled }: CalculatorScreenProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { settings } = useUserSettings();
@@ -361,13 +377,18 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [showSplitEditor, setShowSplitEditor] = useState(false);
   const [pendingTransaction, setPendingTransaction] = useState<any>(null);
+  const [pendingTripKind, setPendingTripKind] = useState<'local' | 'shared' | null>(null);
   const [selectedPayerId, setSelectedPayerId] = useState<string | null>(null);
+
+  const [selectedSharedTrip, setSelectedSharedTrip] = useState<any>(null);
   const noteInputRef = useRef<React.ElementRef<typeof TextInput>>(null);
 
   // Data Hooks
   const { data: categoriesData } = useCategories();
   const { data: accountsData } = useAccounts();
   const { trips } = useTrips();
+  const { trips: sharedTrips } = useSharedTrips();
+  const { isSignedIn, userId } = useAuth();
 
   useEffect(() => {
     if (accountsData.length === 0) return;
@@ -396,6 +417,24 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
   const accounts = accountsData;
 
   const openTrips = useMemo(() => trips.filter(t => !t.isArchived), [trips]);
+
+  const sharedTripIdSet = useMemo(() => new Set(sharedTrips.map((t) => t.id)), [sharedTrips]);
+  const selectedTripIsShared = useMemo(
+    () => !!(selectedTripId && sharedTripIdSet.has(selectedTripId)),
+    [selectedTripId, sharedTripIdSet]
+  );
+
+  const tripEmojiItems = useMemo(() => {
+    if (tripItemsOverride) return tripItemsOverride;
+
+    const localItems = openTrips.map((t) => ({ id: t.id, emoji: t.emoji }));
+    const sharedItems = isSignedIn
+      ? sharedTrips.map((t) => ({ id: t.id, emoji: t.emoji }))
+      : [];
+
+    // Shared first, then local.
+    return [...sharedItems, ...localItems];
+  }, [tripItemsOverride, openTrips, sharedTrips, isSignedIn]);
 
   const isCompactHeight = height < 820;
   const isVeryCompactHeight = height < 700;
@@ -428,8 +467,35 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
     return accounts.find(a => a.id === selectedAccountId) || accounts[0];
   }, [accounts, selectedAccountId]);
 
+  const canSave = !!currentAccount || (selectedTripIsShared && mode === 'expense');
+
   // Handlers
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      if (!selectedTripIsShared || !selectedTripId || !isSignedIn || !userId) {
+        setSelectedSharedTrip(null);
+        return;
+      }
+
+      try {
+        const trip = await SharedTripRepository.getHydratedTripForUser(userId, selectedTripId);
+        if (!cancelled) setSelectedSharedTrip(trip);
+      } catch {
+        if (!cancelled) setSelectedSharedTrip(null);
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTripIsShared, selectedTripId, isSignedIn, userId]);
+
   const handleSave = useCallback(async () => {
+
     const amountDecimal = calculator.getDecimalAmount();
     if (amountDecimal === 0) {
       setErrorToast('Enter an amount greater than 0 to save.');
@@ -444,20 +510,23 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
     // Resolve IDs
     const categoryId = mode === 'income' ? null : (selectedCategoryId || null);
 
-    if (!currentAccount) {
+    // Shared trip expenses do not care about accounts.
+    // We still require accounts for normal (non-shared-trip) saves.
+    if (!currentAccount && !(selectedTripIsShared && mode === 'expense')) {
       setErrorToast('Create an account to save.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setTimeout(() => setErrorToast(null), 1400);
       return;
     }
 
-    const accountId = currentAccount.id;
+    const accountId = currentAccount?.id ?? null;
 
     const data = {
       amountCents,
       type: mode,
       categoryId,
-      accountId,
+      // Shared trips do not store an account on create.
+      accountId: selectedTripIsShared ? null : accountId,
       note: noteText.trim() || null,
       tripId: selectedTripId,
     };
@@ -468,15 +537,35 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
     }
 
     // Check if group trip needs split
-    const trip = openTrips.find(t => t.id === selectedTripId);
-    if (trip?.isGroup && mode === 'expense') {
+    const localTrip = openTrips.find(t => t.id === selectedTripId);
+    if (localTrip?.isGroup && mode === 'expense') {
       // Default payer to current user
-      const me = trip.participants?.find(p => p.isCurrentUser);
-      setSelectedPayerId(me?.id || trip.participants?.[0]?.id || null);
+      const me = localTrip.participants?.find(p => p.isCurrentUser);
+      setSelectedPayerId(me?.id || localTrip.participants?.[0]?.id || null);
       setPendingTransaction(data);
+      setPendingTripKind('local');
       setShowSplitEditor(true);
       return;
     }
+
+    if (selectedTripIsShared && mode === 'expense' && selectedTripId) {
+      const participants = selectedSharedTrip?.participants ?? [];
+      if (participants.length === 0) {
+        setErrorToast('Loading trip… try again.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setTimeout(() => setErrorToast(null), 1400);
+        return;
+      }
+
+      const me = participants.find((p: any) => p.isCurrentUser);
+      setSelectedPayerId(me?.id || (participants[0]?.id ?? null));
+      setPendingTransaction({ ...data, tripId: selectedTripId });
+      setPendingTripKind('shared');
+      setShowSplitEditor(true);
+      return;
+    }
+
+    const trip = localTrip;
 
     // Save solo transaction
     try {
@@ -515,7 +604,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
       Alert.alert('Error', `Save failed: ${e}`);
       setErrorToast('Failed to save');
     }
-  }, [calculator, mode, selectedCategoryId, selectedAccountId, noteText, selectedTripId, onSave, accounts, openTrips]);
+  }, [calculator, mode, selectedCategoryId, selectedAccountId, noteText, selectedTripId, onSave, accounts, openTrips, selectedTripIsShared, selectedSharedTrip, isSignedIn, userId]);
 
   const toggleNoteField = useCallback(() => {
     const newValue = !showNoteField;
@@ -540,9 +629,61 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
 
   const handleSplitSave = async (splitType: SplitType, splitData: Record<string, number>) => {
     try {
+      const now = Date.now();
+
+      if (pendingTripKind === 'shared' && pendingTransaction?.tripId && selectedSharedTrip) {
+        const sharedTripParticipants = selectedSharedTrip.participants ?? [];
+        const payerId = selectedPayerId || sharedTripParticipants.find((p: any) => p.isCurrentUser)?.id;
+
+        const computed = TripSplitCalculator.calculateSplits(
+          Math.abs(pendingTransaction.amountCents),
+          splitType,
+          sharedTripParticipants,
+          splitData
+        );
+
+        const category = pendingTransaction.categoryId
+          ? categoriesData.find((c) => c.id === pendingTransaction.categoryId)
+          : undefined;
+
+        const amountCents = Math.abs(pendingTransaction.amountCents);
+
+        const expense = await SharedTripExpenseRepository.create({
+          tripId: pendingTransaction.tripId,
+          amountCents,
+          dateMs: now,
+          note: pendingTransaction.note ?? undefined,
+          paidByParticipantId: payerId ?? undefined,
+          splitType,
+          splitData,
+          computedSplits: computed,
+          categoryName: category?.name,
+          categoryEmoji: category?.emoji,
+        });
+
+        // Do not pick an account in shared space.
+        // Payer cashflow is derived with defaultAccountId and can be changed later.
+        if (userId) {
+          await reconcileSharedTripDerivedTransactionsForUser(userId);
+        }
+
+        setShowSplitEditor(false);
+        setPendingTransaction(null);
+        setPendingTripKind(null);
+
+        calculator.clearAll();
+        setNoteText('');
+        setShowNoteField(false);
+        setShowSavedToast(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => setShowSavedToast(false), 1200);
+        return;
+      }
+
+      // Local group trip flow
       const tx = await TransactionRepository.create({
         amountCents: pendingTransaction.amountCents,
-        date: Date.now(),
+        date: now,
         note: pendingTransaction.note ?? undefined,
         type: pendingTransaction.type,
         categoryId: pendingTransaction.categoryId ?? undefined,
@@ -569,12 +710,12 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
           computedSplits: computed,
         });
 
-        // Link transaction to trip expense
         await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
       }
 
       setShowSplitEditor(false);
       setPendingTransaction(null);
+      setPendingTripKind(null);
 
       calculator.clearAll();
       setNoteText('');
@@ -780,10 +921,10 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
  
           {/* Save Button */}
           <TouchableOpacity
-            style={[styles.saveButton, !currentAccount && { opacity: 0.4 }]}
+            style={[styles.saveButton, !canSave && { opacity: 0.4 }]}
             onPress={handleSave}
-            activeOpacity={currentAccount ? 0.7 : 1}
-            disabled={!currentAccount}
+            activeOpacity={canSave ? 0.7 : 1}
+            disabled={!canSave}
           >
             <Ionicons name="checkmark" size={16} color={Colors.textPrimary} />
           </TouchableOpacity>
@@ -912,17 +1053,22 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
           )}
         </View>
 
-        {/* Trip Emoji Row (only if open trips exist and expense mode) */}
-        {openTrips.length > 0 && mode !== 'income' && (
+        {/* Trip Emoji Row (local + shared trips) */}
+        {tripEmojiItems.length > 0 && mode !== 'income' && (
           <View style={[styles.emojiRowWrapper, { marginBottom: 4 }]}>
             {renderEmojiRow(
-              openTrips.map(t => ({ id: t.id, emoji: t.emoji })),
+              tripEmojiItems,
               selectedTripId,
-              setSelectedTripId,
+              (id) => {
+                if (tripSelectionDisabled) return;
+                setSelectedTripId(id);
+              },
               7,
-              () => {
-                onRequestAddTrip?.();
-              }
+              tripSelectionDisabled
+                ? undefined
+                : () => {
+                    onRequestAddTrip?.();
+                  }
             )}
           </View>
         )}
@@ -931,7 +1077,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
         <View style={[
           styles.emojiRowWrapper,
           { opacity: mode === 'income' ? 0.4 : 1 },
-          (openTrips.length === 0 || mode === 'income') && { marginTop: 5 },
+          (tripEmojiItems.length === 0 || mode === 'income') && { marginTop: 5 },
           { marginBottom: 4 }
         ]}>
           {renderEmojiRow(
@@ -986,15 +1132,22 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip }: Ca
         onRequestClose={() => setShowSplitEditor(false)}
       >
         {pendingTransaction && (
-          <SplitEditorScreen
-            participants={openTrips.find(t => t.id === selectedTripId)?.participants ?? []}
-            totalAmountCents={Math.abs(pendingTransaction.amountCents)}
-            currencyCode={currencyCode}
-            payerId={selectedPayerId || undefined}
-            onPayerChange={(id) => setSelectedPayerId(id)}
-            onSave={handleSplitSave}
-            onCancel={() => setShowSplitEditor(false)}
-          />
+            <SplitEditorScreen
+              participants={
+                pendingTripKind === 'shared'
+                  ? (selectedSharedTrip?.participants ?? [])
+                  : (openTrips.find(t => t.id === pendingTransaction.tripId)?.participants ?? [])
+              }
+              totalAmountCents={Math.abs(pendingTransaction.amountCents)}
+              currencyCode={currencyCode}
+              payerId={selectedPayerId || undefined}
+              onPayerChange={(id) => setSelectedPayerId(id)}
+              onSave={handleSplitSave}
+              onCancel={() => {
+                setShowSplitEditor(false);
+                setPendingTripKind(null);
+              }}
+            />
         )}
       </Modal>
     </View>

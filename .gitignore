@@ -31,6 +31,9 @@ yarn-error.*
 # macOS
 .DS_Store
 
+# Convex dev logs
+convex-dev.log
+
 # Legacy Swift (reference only)
 legacySwiftApp/DerivedData/
 legacySwiftApp/build/

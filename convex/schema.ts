@@ -163,4 +163,119 @@ export default defineSchema({
   })
     .index("by_user_seq", ["userId", "seq"])
     .index("by_user_entity", ["userId", "entityType", "entityId"]),
+
+  // ---------------------------------------------------------------------------
+  // Shared Trips v1 (INR-only)
+  // ---------------------------------------------------------------------------
+
+  sharedTrips: defineTable({
+    id: v.string(),
+    name: v.string(),
+    emoji: v.string(),
+    currencyCode: v.string(), // v1: always "INR"
+    startDateMs: v.optional(v.number()),
+    endDateMs: v.optional(v.number()),
+    budgetCents: v.optional(v.number()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    deletedAtMs: v.optional(v.number()),
+    syncVersion: v.number(),
+  })
+    .index("by_client_id", ["id"]),
+
+  sharedTripMembers: defineTable({
+    id: v.string(), // recommended: `${tripId}:${userId}`
+    tripId: v.string(),
+    userId: v.string(),
+    participantId: v.string(),
+    joinedAtMs: v.number(),
+    updatedAtMs: v.number(),
+    deletedAtMs: v.optional(v.number()),
+    syncVersion: v.number(),
+  })
+    .index("by_client_id", ["id"])
+    .index("by_user", ["userId"])
+    .index("by_trip", ["tripId"])
+    .index("by_user_trip", ["userId", "tripId"]),
+
+  sharedTripParticipants: defineTable({
+    id: v.string(),
+    tripId: v.string(),
+    name: v.string(),
+    colorHex: v.optional(v.string()),
+    linkedUserId: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    deletedAtMs: v.optional(v.number()),
+    syncVersion: v.number(),
+  })
+    .index("by_client_id", ["id"])
+    .index("by_trip", ["tripId"])
+    .index("by_trip_linkedUser", ["tripId", "linkedUserId"]),
+
+  sharedTripExpenses: defineTable({
+    id: v.string(),
+    tripId: v.string(),
+    amountCents: v.number(),
+    dateMs: v.number(),
+    note: v.optional(v.string()),
+    paidByParticipantId: v.optional(v.string()),
+    splitType: v.string(),
+    splitDataJson: v.optional(v.string()),
+    computedSplitsJson: v.optional(v.string()),
+    categoryName: v.optional(v.string()),
+    categoryEmoji: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    deletedAtMs: v.optional(v.number()),
+    syncVersion: v.number(),
+  })
+    .index("by_client_id", ["id"])
+    .index("by_trip", ["tripId"])
+    .index("by_trip_date", ["tripId", "dateMs"]),
+
+  sharedTripSettlements: defineTable({
+    id: v.string(),
+    tripId: v.string(),
+    fromParticipantId: v.string(),
+    toParticipantId: v.string(),
+    amountCents: v.number(),
+    dateMs: v.number(),
+    note: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    deletedAtMs: v.optional(v.number()),
+    syncVersion: v.number(),
+  })
+    .index("by_client_id", ["id"])
+    .index("by_trip", ["tripId"])
+    .index("by_trip_date", ["tripId", "dateMs"]),
+
+  sharedTripInvites: defineTable({
+    id: v.string(), // can equal `code`
+    tripId: v.string(),
+    code: v.string(),
+    createdByUserId: v.string(),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    expiresAtMs: v.optional(v.number()),
+    uses: v.number(),
+    maxUses: v.number(),
+    deletedAtMs: v.optional(v.number()),
+  })
+    .index("by_client_id", ["id"])
+    .index("by_code", ["code"])
+    .index("by_trip", ["tripId"]),
+
+  // Trip-scoped changelog for shared trip sync
+  sharedTripChangeLog: defineTable({
+    tripId: v.string(),
+    entityType: v.string(),
+    entityId: v.string(),
+    action: v.string(), // "upsert" | "delete"
+    updatedAtMs: v.number(),
+    seq: v.number(), // monotonic sequence per trip
+  })
+    .index("by_trip_seq", ["tripId", "seq"])
+    .index("by_trip_entity", ["tripId", "entityType", "entityId"]),
 });

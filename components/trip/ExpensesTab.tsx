@@ -118,14 +118,15 @@ function ExpenseRow({
   const paidBy = expense.paidByParticipant;
 
   const category = useMemo(() =>
-    categories.find(c => c.id === transaction.categoryId),
+    transaction.categoryId ? categories.find(c => c.id === transaction.categoryId) : undefined,
     [categories, transaction.categoryId]
   );
 
   const displayTitle = transaction.note && transaction.note.trim().length > 0
     ? transaction.note
-    : category?.name
-    ?? 'Expense';
+    : expense.categoryName
+      ?? category?.name
+      ?? 'Expense';
 
   // Calculate net info
   // ... (rest of logic)
@@ -161,7 +162,7 @@ function ExpenseRow({
       <View style={styles.rowContent}>
         {/* Emoji/Icon */}
         <View style={styles.iconContainer}>
-          <Text style={styles.iconEmoji}>{category?.emoji || (transaction.categoryId ? '🍔' : '📝')}</Text>
+          <Text style={styles.iconEmoji}>{expense.categoryEmoji || category?.emoji || (transaction.categoryId ? '🍔' : '📝')}</Text>
         </View>
 
         {/* Main Info */}

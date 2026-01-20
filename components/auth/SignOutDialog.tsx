@@ -74,7 +74,7 @@ export function SignOutDialog({
                                 <>
                                     <Text style={styles.buttonTitle}>Keep Data</Text>
                                     <Text style={styles.buttonSubtitle}>
-                                        Sign out but keep your data on this device
+                                        Sign out but keep your local data on this device
                                     </Text>
                                 </>
                             )}
@@ -92,7 +92,7 @@ export function SignOutDialog({
                                 <>
                                     <Text style={[styles.buttonTitle, styles.removeText]}>Remove Data</Text>
                                     <Text style={[styles.buttonSubtitle, styles.removeSubtitle]}>
-                                        Sign out and delete all data from this device
+                                        Sign out and delete local data (cloud stays)
                                     </Text>
                                 </>
                             )}

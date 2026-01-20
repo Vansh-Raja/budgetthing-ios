@@ -58,6 +58,38 @@ export const deleteMyAccount = mutation({
             totalDeleted++;
         }
 
+        // Shared trips v1: remove memberships and unlink participant mapping.
+        // Do NOT delete shared trip data; other members keep it.
+        const now = Date.now();
+
+        const memberships = await ctx.db
+            .query("sharedTripMembers")
+            .withIndex("by_user", (q) => q.eq("userId", userId))
+            .collect();
+
+        for (const member of memberships) {
+            // Soft-remove membership
+            await ctx.db.patch(member._id, {
+                deletedAtMs: now,
+                updatedAtMs: now,
+                syncVersion: (member.syncVersion ?? 1) + 1,
+            });
+
+            // Unlink participant, turning them back into a guest in that trip.
+            const participant = await ctx.db
+                .query("sharedTripParticipants")
+                .withIndex("by_client_id", (q) => q.eq("id", member.participantId))
+                .first();
+
+            if (participant && participant.linkedUserId === userId) {
+                await ctx.db.patch(participant._id, {
+                    linkedUserId: undefined,
+                    updatedAtMs: now,
+                    syncVersion: (participant.syncVersion ?? 1) + 1,
+                });
+            }
+        }
+
         return {
             success: true,
             deletedCount: totalDeleted,
