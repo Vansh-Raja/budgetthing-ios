@@ -53,7 +53,13 @@ const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
   tripParticipants: new Set(["colorHex", "deletedAtMs"]),
   tripExpenses: new Set(["paidByParticipantId", "splitDataJson", "computedSplitsJson", "deletedAtMs"]),
   tripSettlements: new Set(["note", "deletedAtMs"]),
-  userSettings: new Set(["defaultAccountId"]),
+  userSettings: new Set([
+    "defaultAccountId",
+    "syncTransactionFilters",
+    "resetTransactionFiltersOnReopen",
+    "transactionsFiltersJson",
+    "transactionsFiltersUpdatedAtMs",
+  ]),
 };
 
 /**

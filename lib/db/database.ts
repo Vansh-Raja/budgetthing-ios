@@ -163,30 +163,28 @@ export async function resetDatabase(): Promise<void> {
  * Keeps the schema and migrations intact, just removes data.
  */
 export async function clearAllData(): Promise<void> {
-  const database = await getDatabase();
-
   // Batch GlobalEvents so subscribers only refresh after commit.
   GlobalEvents.beginBatch();
   try {
-    await database.withTransactionAsync(async () => {
-      // Delete all user data from each table
-      // Order matters for foreign key constraints (if we had them)
-      await database.execAsync(`DELETE FROM ${TABLES.TRIP_SETTLEMENTS}`);
-      await database.execAsync(`DELETE FROM ${TABLES.TRIP_EXPENSES}`);
-      await database.execAsync(`DELETE FROM ${TABLES.TRIP_PARTICIPANTS}`);
-      await database.execAsync(`DELETE FROM ${TABLES.TRIPS}`);
+    await withTransaction(async () => {
+      // Delete all user data from each table.
+      // Order matters for foreign key constraints (if we had them).
+      await run(`DELETE FROM ${TABLES.TRIP_SETTLEMENTS}`);
+      await run(`DELETE FROM ${TABLES.TRIP_EXPENSES}`);
+      await run(`DELETE FROM ${TABLES.TRIP_PARTICIPANTS}`);
+      await run(`DELETE FROM ${TABLES.TRIPS}`);
 
       // Shared trips v1 tables
-      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIP_SETTLEMENTS}`);
-      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIP_EXPENSES}`);
-      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIP_PARTICIPANTS}`);
-      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIP_MEMBERS}`);
-      await database.execAsync(`DELETE FROM ${TABLES.SHARED_TRIPS}`);
+      await run(`DELETE FROM ${TABLES.SHARED_TRIP_SETTLEMENTS}`);
+      await run(`DELETE FROM ${TABLES.SHARED_TRIP_EXPENSES}`);
+      await run(`DELETE FROM ${TABLES.SHARED_TRIP_PARTICIPANTS}`);
+      await run(`DELETE FROM ${TABLES.SHARED_TRIP_MEMBERS}`);
+      await run(`DELETE FROM ${TABLES.SHARED_TRIPS}`);
 
-      await database.execAsync(`DELETE FROM ${TABLES.TRANSACTIONS}`);
-      await database.execAsync(`DELETE FROM ${TABLES.CATEGORIES}`);
-      await database.execAsync(`DELETE FROM ${TABLES.ACCOUNTS}`);
-      await database.execAsync(`DELETE FROM ${TABLES.USER_SETTINGS}`);
+      await run(`DELETE FROM ${TABLES.TRANSACTIONS}`);
+      await run(`DELETE FROM ${TABLES.CATEGORIES}`);
+      await run(`DELETE FROM ${TABLES.ACCOUNTS}`);
+      await run(`DELETE FROM ${TABLES.USER_SETTINGS}`);
     });
 
     // Emit changes for all affected entities.
@@ -216,6 +214,17 @@ export async function execRaw(sql: string): Promise<void> {
 
 // Type for SQLite bind parameters
 export type SQLiteBindValue = string | number | null | Uint8Array;
+
+// -----------------------------------------------------------------------------
+// Transaction serialization
+// -----------------------------------------------------------------------------
+// expo-sqlite uses a single underlying connection per database. Concurrent
+// `withTransactionAsync` calls can lead to errors like:
+//   "cannot rollback - no transaction is active"
+// when two transactions overlap. We serialize transactions through a simple
+// promise queue.
+let transactionQueue: Promise<void> = Promise.resolve();
+let transactionDepth = 0;
 
 /**
  * Get all rows from a query
@@ -258,20 +267,39 @@ export async function withTransaction<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   const database = await getDatabase();
-  let result: T;
 
-  // Batch GlobalEvents until the transaction commits.
-  // This prevents subscribers from re-querying before changes are visible.
-  GlobalEvents.beginBatch();
-  try {
-    await database.withTransactionAsync(async () => {
-      result = await fn();
-    });
-
-    GlobalEvents.endBatch(true);
-    return result!;
-  } catch (error) {
-    GlobalEvents.endBatch(false);
-    throw error;
+  // If already inside a transaction (caller used withTransaction), do not start
+  // a nested transaction. This keeps behavior predictable.
+  if (transactionDepth > 0) {
+    return fn();
   }
+
+  const runInTransaction = async () => {
+    let result: T;
+
+    // Batch GlobalEvents until the transaction commits.
+    // This prevents subscribers from re-querying before changes are visible.
+    GlobalEvents.beginBatch();
+    transactionDepth += 1;
+    try {
+      await database.withTransactionAsync(async () => {
+        result = await fn();
+      });
+
+      GlobalEvents.endBatch(true);
+      return result!;
+    } catch (error) {
+      GlobalEvents.endBatch(false);
+      throw error;
+    } finally {
+      transactionDepth -= 1;
+    }
+  };
+
+  const queued = transactionQueue.then(runInTransaction, runInTransaction);
+  transactionQueue = queued.then(
+    () => undefined,
+    () => undefined
+  );
+  return queued;
 }

@@ -54,14 +54,15 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const canSave = name.trim().length > 0;
   const currencyCode = 'INR';
 
   const handleSave = async () => {
     if (!canSave) return;
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (isSaving) return;
+    setIsSaving(true);
 
     try {
       // Prepare participants data
@@ -96,10 +97,13 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
       })));
 
       if (onSave) onSave();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onDismiss();
     } catch (e) {
       console.error("Failed to save trip", e);
       Alert.alert("Error", "Failed to save trip. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -140,9 +144,9 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
         <TouchableOpacity
           onPress={handleSave}
           style={styles.headerButton}
-          disabled={!canSave}
+          disabled={!canSave || isSaving}
         >
-          <Text style={[styles.saveText, !canSave && styles.saveTextDisabled]}>Save</Text>
+          <Text style={[styles.saveText, (!canSave || isSaving) && styles.saveTextDisabled]}>Save</Text>
         </TouchableOpacity>
       </View>
 

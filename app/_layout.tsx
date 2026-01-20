@@ -14,6 +14,7 @@ import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { tokenCache } from '../lib/auth/tokenCache';
 import { SyncProvider } from '../lib/sync/SyncProvider';
 import * as Linking from 'expo-linking';
+import { ToastProvider } from '@/components/ui/ToastProvider';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -84,7 +85,9 @@ function RootLayoutNav() {
             <ThemeProvider value={AppTheme}>
               <SyncProvider>
                 <UserSettingsProvider>
-                  <InitialLayout />
+                  <ToastProvider>
+                    <InitialLayout />
+                  </ToastProvider>
                 </UserSettingsProvider>
               </SyncProvider>
             </ThemeProvider>
@@ -201,4 +204,3 @@ function InitialLayout() {
     </Stack>
   );
 }
-

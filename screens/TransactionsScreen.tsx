@@ -15,6 +15,8 @@ import {
   Alert,
   Platform,
   Modal,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,11 +29,12 @@ import { Colors, Sizes, BorderRadius } from '../constants/theme';
 import { formatCents } from '../lib/logic/currencyUtils';
 import { Transaction, Category, Account } from '../lib/logic/types';
 import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
-import { useTransactions, useCategories } from '../lib/hooks/useData';
+import { useTransactions, useCategories, useAccounts } from '../lib/hooks/useData';
 import { Actions } from '../lib/logic/actions';
 import { TransactionRepository } from '../lib/db/repositories';
 import { TransactionDetailScreen } from './TransactionDetailScreen';
 import { useTrips } from '../lib/hooks/useTrips';
+import { useSharedTrips } from '../lib/hooks/useSharedTrips';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { TripExpenseRepository, TripSettlementRepository } from '../lib/db/repositories';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
@@ -41,9 +44,21 @@ import {
   shouldCountInMonthlySpentTotals,
   shouldRenderInTransactions,
 } from '../lib/ui/transactionRules';
+import {
+  DEFAULT_TRANSACTIONS_FILTERS,
+  isTransactionsFiltersActive,
+  normalizeTransactionsFilters,
+  shouldIncludeTransaction,
+} from '../lib/ui/transactionFilters';
+import {
+  loadTransactionsFiltersFromSecureStore,
+  saveTransactionsFiltersToSecureStore,
+} from '../lib/ui/transactionFiltersStorage';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { useAuth } from '@clerk/clerk-expo';
 import { Tabs } from '../constants/theme';
+import { useUserSettings } from '../lib/hooks/useUserSettings';
+import { TransactionsFilterSheet } from '../components/transactions/TransactionsFilterSheet';
 
 // ============================================================================
 // Types & Props
@@ -144,11 +159,22 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
 
   const { data: transactions, refresh } = useTransactions();
   const { data: categories } = useCategories();
+  const { data: accounts } = useAccounts();
   const { trips, refresh: refreshTrips } = useTrips();
+  const { trips: sharedTrips } = useSharedTrips();
   const { syncNow } = useSyncStatus();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, userId } = useAuth();
+  const { settings, updateSettings } = useUserSettings();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [filters, setFilters] = useState(DEFAULT_TRANSACTIONS_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
+
+  const filtersActive = useMemo(() => isTransactionsFiltersActive(filters), [filters]);
+
+  const resetFiltersOnReopen = settings?.resetTransactionFiltersOnReopen ?? false;
+  const syncFiltersEnabled = settings?.syncTransactionFilters ?? false;
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -161,6 +187,99 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         setIsRefreshing(false);
       });
   }, [syncNow, refresh, refreshTrips]);
+
+  // Load filters from SecureStore + optional synced userSettings.
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      const local = await loadTransactionsFiltersFromSecureStore(isSignedIn ? userId : null);
+      if (cancelled) return;
+
+      // If reset-on-reopen is enabled, we do not use synced filters.
+      if (!isSignedIn || !userId || !syncFiltersEnabled || resetFiltersOnReopen) {
+        setFilters(normalizeTransactionsFilters(local.filters));
+        return;
+      }
+
+      let remoteUpdatedAtMs = settings?.transactionsFiltersUpdatedAtMs ?? 0;
+      if (!Number.isFinite(remoteUpdatedAtMs as any)) remoteUpdatedAtMs = 0;
+
+      let remoteFilters = null as any;
+      if (settings?.transactionsFiltersJson) {
+        try {
+          remoteFilters = normalizeTransactionsFilters(JSON.parse(settings.transactionsFiltersJson));
+        } catch {
+          remoteFilters = null;
+        }
+      }
+
+      const localUpdatedAtMs = local.updatedAtMs ?? 0;
+      const shouldUseRemote = !!remoteFilters && remoteUpdatedAtMs > localUpdatedAtMs;
+      const chosenFilters = shouldUseRemote ? remoteFilters : normalizeTransactionsFilters(local.filters);
+      const chosenUpdatedAtMs = shouldUseRemote ? remoteUpdatedAtMs : localUpdatedAtMs;
+
+      setFilters(chosenFilters);
+
+      if (shouldUseRemote) {
+        await saveTransactionsFiltersToSecureStore(userId, { filters: chosenFilters, updatedAtMs: chosenUpdatedAtMs });
+      }
+    };
+
+    run().catch((e) => {
+      console.warn('[Transactions] Failed to load filters:', e);
+      if (!cancelled) setFilters(DEFAULT_TRANSACTIONS_FILTERS);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn, userId, syncFiltersEnabled, resetFiltersOnReopen, settings?.transactionsFiltersJson, settings?.transactionsFiltersUpdatedAtMs]);
+
+  const persistFilters = useCallback(async (nextFiltersRaw: any) => {
+    const nextFilters = normalizeTransactionsFilters(nextFiltersRaw);
+    const now = Date.now();
+
+    setFilters(nextFilters);
+    setIsSelecting(false);
+    setSelectedIds(new Set());
+
+    try {
+      await saveTransactionsFiltersToSecureStore(isSignedIn ? userId : null, { filters: nextFilters, updatedAtMs: now });
+    } catch (e) {
+      console.warn('[Transactions] Failed to persist filters to SecureStore:', e);
+    }
+
+    if (!isSignedIn || !userId) return;
+    if (resetFiltersOnReopen) return;
+    if (!syncFiltersEnabled) return;
+
+    try {
+      await updateSettings({
+        transactionsFiltersJson: JSON.stringify(nextFilters),
+        transactionsFiltersUpdatedAtMs: now,
+      });
+    } catch (e) {
+      console.warn('[Transactions] Failed to persist synced filters:', e);
+    }
+  }, [isSignedIn, userId, syncFiltersEnabled, resetFiltersOnReopen, updateSettings]);
+
+  // Reset-on-reopen behavior (Transactions tab only).
+  const lastAppStateRef = React.useRef<AppStateStatus>(AppState.currentState ?? 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      const prev = lastAppStateRef.current;
+      lastAppStateRef.current = next;
+      if (next !== 'active') return;
+      if (prev === 'active') return;
+      if (!resetFiltersOnReopen) return;
+
+      persistFilters(DEFAULT_TRANSACTIONS_FILTERS);
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [resetFiltersOnReopen, persistFilters]);
 
   // Map to find trip expense info for a transaction
   const tripExpenseMap = useMemo(() => {
@@ -284,11 +403,94 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
 
+  const [sharedExpenseMeta, setSharedExpenseMeta] = useState<Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null; amountCents: number }>>({});
+  const [sharedSettlementMeta, setSharedSettlementMeta] = useState<Record<string, { tripId: string; tripEmoji: string }>>({});
+  const [localExpenseMeta, setLocalExpenseMeta] = useState<Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null; amountCents: number }>>({});
+  const [localSettlementMeta, setLocalSettlementMeta] = useState<Record<string, { tripId: string; tripEmoji: string }>>({});
+
   // Data processing
+  const resolveTripIdForTransaction = useCallback((tx: Transaction): string | null => {
+    if (tx.systemType === 'trip_share' && tx.sourceTripExpenseId) {
+      const meta = sharedExpenseMeta[tx.sourceTripExpenseId] ?? localExpenseMeta[tx.sourceTripExpenseId];
+      return meta?.tripId ?? null;
+    }
+    if (tx.systemType === 'trip_settlement' && tx.sourceTripSettlementId) {
+      const meta = sharedSettlementMeta[tx.sourceTripSettlementId] ?? localSettlementMeta[tx.sourceTripSettlementId];
+      return meta?.tripId ?? null;
+    }
+
+    const tripInfo = tripExpenseMap.get(tx.id);
+    return tripInfo?.tripId ?? null;
+  }, [sharedExpenseMeta, localExpenseMeta, sharedSettlementMeta, localSettlementMeta, tripExpenseMap]);
+
+  const categorySignatureToId = useMemo(() => {
+    const map = new Map<string, string>();
+    const byName = new Map<string, string>();
+    for (const c of categories) {
+      const name = (c?.name ?? '').trim();
+      const emoji = (c?.emoji ?? '').trim();
+      if (!name || !emoji) continue;
+      const sig = `${emoji}::${name}`;
+      if (!map.has(sig)) map.set(sig, c.id);
+
+      const nameKey = name.toLowerCase();
+      if (!byName.has(nameKey)) byName.set(nameKey, c.id);
+    }
+    return { bySig: map, byName };
+  }, [categories]);
+
+  const resolveEffectiveCategoryIdForTransaction = useCallback((tx: Transaction): string | null => {
+    if (tx.categoryId) return tx.categoryId;
+
+    if (tx.systemType === 'trip_share' && tx.sourceTripExpenseId) {
+      const meta = sharedExpenseMeta[tx.sourceTripExpenseId] ?? localExpenseMeta[tx.sourceTripExpenseId];
+      const emoji = (meta?.categoryEmoji ?? '').trim();
+      const name = (meta?.categoryName ?? '').trim();
+      if (emoji && name) {
+        const sig = `${emoji}::${name}`;
+        return categorySignatureToId.bySig.get(sig) ?? categorySignatureToId.byName.get(name.toLowerCase()) ?? null;
+      }
+
+      if (name) {
+        return categorySignatureToId.byName.get(name.toLowerCase()) ?? null;
+      }
+    }
+
+    return null;
+  }, [sharedExpenseMeta, localExpenseMeta, categorySignatureToId]);
+
+  const visibleTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      // Base visibility rules (derived cashflow hidden, excluded shares hidden, etc.)
+      if (!shouldRenderInTransactions(tx)) return false;
+      const info = getEffectiveDisplayInfo(tx);
+      if (info.shouldHide) return false;
+
+      return shouldIncludeTransaction({
+        tx,
+        filters,
+        resolveTripId: resolveTripIdForTransaction,
+        resolveCategoryId: resolveEffectiveCategoryIdForTransaction,
+      });
+    });
+  }, [transactions, filters, getEffectiveDisplayInfo, resolveTripIdForTransaction, resolveEffectiveCategoryIdForTransaction]);
+
+  const baseVisibleTransactions = useMemo(() => {
+    // Used to differentiate true empty state vs filtered-empty state.
+    return transactions.filter((tx) => {
+      if (!shouldRenderInTransactions(tx)) return false;
+      const info = getEffectiveDisplayInfo(tx);
+      return !info.shouldHide;
+    });
+  }, [transactions, getEffectiveDisplayInfo]);
+
+  const showFilteredEmptyState = filtersActive && visibleTransactions.length === 0;
+  const hasAnyBaseTransactions = baseVisibleTransactions.length > 0;
+
   const { monthSections, allMonths } = useMemo(() => {
     // Group by month
     const groups: Record<string, Transaction[]> = {};
-    transactions.forEach(tx => {
+    visibleTransactions.forEach(tx => {
       const date = new Date(tx.date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       if (!groups[key]) groups[key] = [];
@@ -315,12 +517,19 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
     const months = sections.map(s => ({ id: s.id, title: s.title }));
 
     return { monthSections: sections, allMonths: months };
-  }, [transactions, getEffectiveDisplayInfo]);
+   }, [visibleTransactions, getEffectiveDisplayInfo]);
 
   const filteredSections = useMemo(() => {
     if (!selectedMonthKey) return monthSections;
     return monthSections.filter(s => s.id === selectedMonthKey);
   }, [monthSections, selectedMonthKey]);
+
+  // If month selection is now invalid (e.g. filters changed), reset to All.
+  useEffect(() => {
+    if (!selectedMonthKey) return;
+    if (allMonths.some((m) => m.id === selectedMonthKey)) return;
+    setSelectedMonthKey(null);
+  }, [selectedMonthKey, allMonths]);
 
   // Handlers
   const toggleSelectionMode = useCallback(() => {
@@ -381,11 +590,6 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   const [tripShareTxId, setTripShareTxId] = useState<string | null>(null);
   const [tripShareEditTarget, setTripShareEditTarget] = useState<{ tripId: string; expenseId: string } | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-
-  const [sharedExpenseMeta, setSharedExpenseMeta] = useState<Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null; amountCents: number }>>({});
-  const [sharedSettlementMeta, setSharedSettlementMeta] = useState<Record<string, { tripId: string; tripEmoji: string }>>({});
-  const [localExpenseMeta, setLocalExpenseMeta] = useState<Record<string, { tripId: string; tripEmoji: string; categoryEmoji: string | null; categoryName: string | null; amountCents: number }>>({});
-  const [localSettlementMeta, setLocalSettlementMeta] = useState<Record<string, { tripId: string; tripEmoji: string }>>({});
 
   const handleChangeCategory = useCallback(() => {
     Haptics.selectionAsync();
@@ -602,23 +806,43 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         </View>
 
         {/* Month Chips */}
-        {allMonths.length > 0 && (
+        {(allMonths.length > 0 || filtersActive) && (
           <View style={styles.chipsContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, gap: 10 }}>
-              <MonthChip
-                title="All"
-                isSelected={selectedMonthKey === null}
-                onPress={() => { setSelectedMonthKey(null); Haptics.selectionAsync(); }}
-              />
-              {allMonths.map(m => (
+            <View style={styles.chipsRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingLeft: 24, paddingRight: 12, gap: 10 }}
+              >
                 <MonthChip
-                  key={m.id}
-                  title={m.title}
-                  isSelected={selectedMonthKey === m.id}
-                  onPress={() => { setSelectedMonthKey(m.id); Haptics.selectionAsync(); }}
+                  title="All"
+                  isSelected={selectedMonthKey === null}
+                  onPress={() => { setSelectedMonthKey(null); Haptics.selectionAsync(); }}
                 />
-              ))}
-            </ScrollView>
+                {allMonths.map(m => (
+                  <MonthChip
+                    key={m.id}
+                    title={m.title}
+                    isSelected={selectedMonthKey === m.id}
+                    onPress={() => { setSelectedMonthKey(m.id); Haptics.selectionAsync(); }}
+                  />
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setShowFilters(true);
+                }}
+                disabled={isSelecting}
+                activeOpacity={0.7}
+                style={[styles.filterButton, { opacity: isSelecting ? 0.4 : 1 }]}
+              >
+                <Ionicons name="funnel" size={16} color="#FFFFFF" />
+                {filtersActive ? <View style={styles.filterDot} /> : null}
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -635,13 +859,58 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No transactions yet</Text>
-              <Text style={styles.emptySubtitle}>
-                Add an amount on the calculator and tap the checkmark to save.
-                {!isSignedIn ? ' Or sign in to restore your synced data.' : ''}
+              {showFilteredEmptyState ? (
+                <View style={styles.filteredEmptyIcon}>
+                  <Ionicons name="funnel" size={18} color="rgba(255, 255, 255, 0.75)" />
+                </View>
+              ) : null}
+
+              <Text style={styles.emptyTitle}>
+                {!showFilteredEmptyState
+                  ? 'No transactions yet'
+                  : hasAnyBaseTransactions
+                    ? 'No transactions match your filters'
+                    : 'No transactions yet'}
               </Text>
 
-              {!isSignedIn && (
+              <Text style={styles.emptySubtitle}>
+                {showFilteredEmptyState
+                  ? (hasAnyBaseTransactions
+                    ? 'Try changing or clearing your filters.'
+                    : 'Filters are active. Clear filters or add a transaction.')
+                  : `Add an amount on the calculator and tap the checkmark to save.${!isSignedIn ? ' Or sign in to restore your synced data.' : ''}`}
+              </Text>
+
+              {showFilteredEmptyState ? (
+                <View style={styles.emptyActionsRow}>
+                  <TouchableOpacity
+                    style={styles.emptyActionButton}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setShowFilters(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="funnel" size={14} color={Colors.accent} />
+                    <Text style={styles.emptyActionText}>Edit filters</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.emptyActionButton}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSelectedMonthKey(null);
+                      persistFilters(DEFAULT_TRANSACTIONS_FILTERS);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={14} color={Colors.accent} />
+                    <Text style={styles.emptyActionText}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              {!isSignedIn && !showFilteredEmptyState && (
                 <TouchableOpacity
                   style={styles.signInCta}
                   onPress={() => {
@@ -779,6 +1048,20 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
           </ScrollView>
         </View>
       </Modal>
+
+      <TransactionsFilterSheet
+        visible={showFilters}
+        initialFilters={filters}
+        categories={categories}
+        accounts={accounts}
+        localTrips={trips}
+        sharedTrips={sharedTrips}
+        onCancel={() => setShowFilters(false)}
+        onApply={(next) => {
+          setShowFilters(false);
+          persistFilters(next);
+        }}
+      />
     </View>
   );
 }
@@ -830,6 +1113,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     height: 34, // Chip height + padding
   },
+  chipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   monthChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -839,6 +1126,27 @@ const styles = StyleSheet.create({
     fontFamily: 'AvenirNextCondensed-DemiBold',
     fontSize: 16,
     color: '#FFFFFF',
+  },
+
+  filterButton: {
+    marginRight: 24,
+    width: 34,
+    height: 34,
+    borderRadius: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  filterDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.accent,
   },
 
   // Section Header
@@ -951,13 +1259,27 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 100,
-    gap: 12,
+    paddingTop: 92,
+    gap: 10,
+  },
+  filteredEmptyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    marginBottom: 6,
   },
   emptyTitle: {
     fontFamily: 'AvenirNextCondensed-Heavy',
-    fontSize: 28,
+    fontSize: 26,
     color: '#FFFFFF',
+    textAlign: 'center',
+    maxWidth: 280,
+    lineHeight: 32,
   },
   emptySubtitle: {
     fontSize: 13,
@@ -966,6 +1288,30 @@ const styles = StyleSheet.create({
     marginTop: 6,
     maxWidth: 280,
     lineHeight: 18,
+  },
+  emptyActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+  },
+  emptyActionButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 9999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  emptyActionText: {
+    fontFamily: 'AvenirNextCondensed-DemiBold',
+    fontSize: 16,
+    color: Colors.accent,
   },
   signInCta: {
     marginTop: 18,
@@ -980,6 +1326,24 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   signInCtaText: {
+    fontFamily: 'AvenirNextCondensed-DemiBold',
+    fontSize: 16,
+    color: Colors.accent,
+  },
+
+  clearFiltersCta: {
+    marginTop: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 9999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  clearFiltersCtaText: {
     fontFamily: 'AvenirNextCondensed-DemiBold',
     fontSize: 16,
     color: Colors.accent,

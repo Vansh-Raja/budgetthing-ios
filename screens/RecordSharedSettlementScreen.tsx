@@ -10,6 +10,7 @@ import type { Trip, TripParticipant } from '../lib/logic/types';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { SharedTripSettlementRepository } from '../lib/db/sharedTripWriteRepositories';
 import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface RecordSharedSettlementScreenProps {
   trip: Trip;
@@ -31,6 +32,7 @@ export function RecordSharedSettlementScreen({
   onRecorded,
 }: RecordSharedSettlementScreenProps) {
   const { userId } = useAuth();
+  const toast = useToast();
 
   const currentUserParticipantId = useMemo(
     () => participants.find((p) => p.isCurrentUser)?.id ?? null,
@@ -43,6 +45,7 @@ export function RecordSharedSettlementScreen({
     initialAmountCents > 0 ? (Math.abs(initialAmountCents) / 100).toString() : ''
   );
   const [dateMs] = useState(() => Date.now());
+  const [isSaving, setIsSaving] = useState(false);
 
   const payer = participants.find((p) => p.id === payerId);
   const receiver = participants.find((p) => p.id === receiverId);
@@ -63,6 +66,8 @@ export function RecordSharedSettlementScreen({
   }, [participants]);
 
   const handleSave = useCallback(async () => {
+    if (isSaving) return;
+
     const amount = parseFloat(amountString);
     if (!payerId || !receiverId || payerId === receiverId || isNaN(amount) || amount <= 0) {
       Alert.alert('Invalid', 'Please select payer/receiver and enter a valid amount.');
@@ -70,6 +75,8 @@ export function RecordSharedSettlementScreen({
     }
 
     const amountCents = Math.round(amount * 100);
+
+    setIsSaving(true);
 
     try {
       await SharedTripSettlementRepository.create({
@@ -81,8 +88,14 @@ export function RecordSharedSettlementScreen({
         note: 'Payment',
       });
 
+      // Record succeeded. Keep reconcile best-effort so we don't surface a scary
+      // error after the settlement row is already written.
       if (userId) {
-        await reconcileSharedTripDerivedTransactionsForUser(userId);
+        reconcileSharedTripDerivedTransactionsForUser(userId)
+          .catch((e) => {
+            console.warn('[RecordSharedSettlement] reconcile failed:', e);
+            toast.show('Saved. Sync pending.');
+          });
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -92,8 +105,10 @@ export function RecordSharedSettlementScreen({
       console.error('[RecordSharedSettlement] Failed:', e);
       Alert.alert('Error', 'Failed to record settlement.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSaving(false);
     }
-  }, [amountString, dateMs, onDismiss, onRecorded, payerId, receiverId, trip.id, userId]);
+  }, [amountString, dateMs, isSaving, onDismiss, onRecorded, payerId, receiverId, trip.id, userId, toast]);
 
   return (
     <View style={styles.container}>
@@ -102,8 +117,8 @@ export function RecordSharedSettlementScreen({
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Record Payment</Text>
-        <TouchableOpacity onPress={handleSave} disabled={!canSave}>
-          <Text style={[styles.saveText, !canSave && { opacity: 0.4 }]}>Save</Text>
+        <TouchableOpacity onPress={handleSave} disabled={!canSave || isSaving}>
+          <Text style={[styles.saveText, (!canSave || isSaving) && { opacity: 0.4 }]}>Save</Text>
         </TouchableOpacity>
       </View>
 

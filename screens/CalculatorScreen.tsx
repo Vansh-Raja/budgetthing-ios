@@ -36,6 +36,8 @@ import { useAuth } from '@clerk/clerk-expo';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
 import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
+import { withTransaction } from '../lib/db/database';
+import { useToast } from '@/components/ui/ToastProvider';
 
 // ============================================================================
 // Types
@@ -361,6 +363,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
   const router = useRouter();
   const { settings } = useUserSettings();
   const { width, height } = Dimensions.get('window');
+  const toast = useToast();
 
   // Calculator state
   const calculator = useCalculatorEngine();
@@ -569,28 +572,30 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
     // Save solo transaction
     try {
-      const tx = await TransactionRepository.create({
-        amountCents,
-        date: Date.now(),
-        note: data.note ?? undefined,
-        type: mode,
-        categoryId: categoryId ?? undefined,
-        accountId: accountId ?? undefined,
-      });
-
-      // Link to trip if selected (solo trip)
-      if (trip && mode === 'expense') {
-        const me = trip.participants?.find(p => p.isCurrentUser);
-
-        const tripExpense = await TripExpenseRepository.create({
-          tripId: trip.id,
-          transactionId: tx.id,
-          splitType: 'equal',
-          paidByParticipantId: me?.id,
+      await withTransaction(async () => {
+        const tx = await TransactionRepository.create({
+          amountCents,
+          date: Date.now(),
+          note: data.note ?? undefined,
+          type: mode,
+          categoryId: categoryId ?? undefined,
+          accountId: accountId ?? undefined,
         });
 
-        await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
-      }
+        // Link to trip if selected (solo trip)
+        if (trip && mode === 'expense') {
+          const me = trip.participants?.find(p => p.isCurrentUser);
+
+          const tripExpense = await TripExpenseRepository.create({
+            tripId: trip.id,
+            transactionId: tx.id,
+            splitType: 'equal',
+            paidByParticipantId: me?.id,
+          });
+
+          await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
+        }
+      });
 
       calculator.clearAll();
       setNoteText('');
@@ -664,7 +669,10 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
         // Do not pick an account in shared space.
         // Payer cashflow is derived with defaultAccountId and can be changed later.
         if (userId) {
-          await reconcileSharedTripDerivedTransactionsForUser(userId);
+          reconcileSharedTripDerivedTransactionsForUser(userId).catch((e) => {
+            console.warn('[Calculator] reconcile failed:', e);
+            toast.show('Saved. Sync pending.');
+          });
         }
 
         setShowSplitEditor(false);

@@ -341,10 +341,6 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
         />
       </Modal>
 
-      {/* INR-only */}
-      <View style={styles.currencyPill}>
-        <Text style={styles.currencyText}>INR</Text>
-      </View>
     </View>
   );
 }
@@ -421,21 +417,5 @@ const styles = StyleSheet.create({
   },
   page: {
     flex: 1,
-  },
-  currencyPill: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.10)',
-  },
-  currencyText: {
-    fontFamily: 'AvenirNextCondensed-DemiBold',
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
   },
 });

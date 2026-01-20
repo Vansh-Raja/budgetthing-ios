@@ -29,15 +29,16 @@ import { SplitType, Transaction, Trip, TripExpense } from '../lib/logic/types';
 import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { Actions } from '../lib/logic/actions';
 import { withTransaction } from '../lib/db/database';
-import { TransactionRepository, TripExpenseRepository } from '../lib/db/repositories';
+import { TransactionRepository, TripExpenseRepository, TripSettlementRepository } from '../lib/db/repositories';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
-import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
-import { reconcileSharedTripDerivedTransactionsForExpense } from '../lib/sync/sharedTripReconcile';
+import { SharedTripExpenseRepository, SharedTripSettlementRepository } from '../lib/db/sharedTripWriteRepositories';
+import { reconcileSharedTripDerivedTransactionsForExpense, reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
 import { derivedTripCashflowId } from '../lib/sync/sharedTripDerivedIds';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { useCategories, useAccounts } from '../lib/hooks/useData';
 import { useTrips } from '../lib/hooks/useTrips';
+import { reconcileLocalTripDerivedTransactionsForTrip } from '../lib/sync/localTripReconcile';
 import { SplitEditorScreen } from './SplitEditorScreen';
 
 interface TransactionDetailScreenProps {
@@ -355,6 +356,7 @@ export function TransactionDetailScreen({
     // Trip-settlement and trip-cashflow rows should allow changing only the account used.
     const isReadOnly = !!readOnly || isTripShare || isDerivedSettlement || isDerivedCashflow;
     const canChangeDerivedAccount = isDerivedSettlement || isDerivedCashflow;
+    const canDelete = !isReadOnly || isDerivedSettlement;
 
     const displayNote = (isTripShare || isSharedExpense)
         ? (tripExpense?.transaction?.note ?? transaction?.note)
@@ -595,8 +597,17 @@ export function TransactionDetailScreen({
     };
 
     const handleDelete = () => {
-        const title = isSharedExpense ? 'Delete Expense?' : 'Delete Transaction?';
-        const message = isSharedExpense ? 'This deletes it for everyone.' : 'This cannot be undone.';
+        const title = isSharedExpense
+            ? 'Delete Expense?'
+            : isDerivedSettlement
+                ? 'Delete Settlement?'
+                : 'Delete Transaction?';
+
+        const message = isSharedExpense
+            ? 'This deletes it for everyone.'
+            : isDerivedSettlement
+                ? 'This will remove the settlement and restore the suggested settle-up.'
+                : 'This cannot be undone.';
 
         Alert.alert(
             title,
@@ -624,6 +635,46 @@ export function TransactionDetailScreen({
                                             if (isMountedRef.current) setIsBackgroundSyncing(false);
                                         });
                                 }, 0);
+
+                            } else if (isDerivedSettlement && transaction?.sourceTripSettlementId) {
+                                const settlementId = transaction.sourceTripSettlementId;
+
+                                // Determine if this settlement belongs to a shared trip (deletes for everyone).
+                                const sharedTripId = await SharedTripRepository.getTripIdForSettlement(settlementId);
+
+                                if (sharedTripId) {
+                                    await SharedTripSettlementRepository.delete(settlementId);
+                                } else {
+                                    await TripSettlementRepository.delete(settlementId);
+                                }
+
+                                // Immediately remove derived settlement transactions locally.
+                                const existingDerived = await TransactionRepository.getDerivedBySourceTripSettlementIds([settlementId]);
+                                if (existingDerived.length) {
+                                    await TransactionRepository.softDeleteDerivedByIds(existingDerived.map((t) => t.id));
+                                }
+
+                                // Reconcile best-effort so derived state stays consistent.
+                                if (sharedTripId && userId) {
+                                    reconcileSharedTripDerivedTransactionsForUser(userId)
+                                        .catch((e) => console.warn('[TransactionDetail] reconcile settlement delete failed', e));
+
+                                    setIsBackgroundSyncing(true);
+                                    setTimeout(() => {
+                                        syncNow('delete_shared_trip_settlement')
+                                            .catch((e) => console.warn('[TransactionDetail] shared settlement delete sync failed', e))
+                                            .finally(() => {
+                                                if (isMountedRef.current) setIsBackgroundSyncing(false);
+                                            });
+                                    }, 0);
+                                } else {
+                                    const localTrip = trips.find((t) => (t.settlements ?? []).some((s) => s.id === settlementId)) ?? null;
+                                    if (localTrip) {
+                                        reconcileLocalTripDerivedTransactionsForTrip(localTrip)
+                                            .catch((e) => console.warn('[TransactionDetail] local reconcile settlement delete failed', e));
+                                    }
+                                }
+
                             } else {
                                 await Actions.deleteTransaction(transaction!.id);
                             }
@@ -652,10 +703,12 @@ export function TransactionDetailScreen({
                 {
                     text: "Remove", style: "destructive", onPress: async () => {
                         try {
-                            await TripExpenseRepository.delete(tripExpense.id);
-                            // Important: TransactionRepository.update ignores `undefined` fields.
-                            // Use NULL to clear the link.
-                            await TransactionRepository.update(transaction.id, { tripExpenseId: null });
+                            await withTransaction(async () => {
+                                await TripExpenseRepository.delete(tripExpense.id);
+                                // Important: TransactionRepository.update ignores `undefined` fields.
+                                // Use NULL to clear the link.
+                                await TransactionRepository.update(transaction.id, { tripExpenseId: null });
+                            });
 
                             setTripExpense(null);
                             setRelatedTrip(null);
@@ -1188,14 +1241,20 @@ export function TransactionDetailScreen({
                     </View>
                 )}
 
-                {!isReadOnly && (
+                {canDelete && (
                     <>
                         {/* Delete Button */}
                         <TouchableOpacity
                             style={styles.deleteButton}
                             onPress={handleDelete}
                         >
-                            <Text style={styles.deleteText}>{isSharedExpense ? 'Delete Expense' : 'Delete Transaction'}</Text>
+                            <Text style={styles.deleteText}>
+                                {isSharedExpense
+                                    ? 'Delete Expense'
+                                    : isDerivedSettlement
+                                        ? 'Delete Settlement'
+                                        : 'Delete Transaction'}
+                            </Text>
                         </TouchableOpacity>
                     </>
                 )}
@@ -1312,7 +1371,7 @@ export function TransactionDetailScreen({
                         initialSplitData={editSplitData}
                         payerId={editPaidByParticipantId || undefined}
                         onPayerChange={(id) => setEditPaidByParticipantId(id)}
-                        onSave={(splitType, splitData, computedSplits) => {
+                        onSave={async (splitType, splitData, computedSplits) => {
                             setEditSplitType(splitType);
                             setEditSplitData(splitData);
                             setEditComputedSplits(computedSplits);

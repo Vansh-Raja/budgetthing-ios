@@ -124,6 +124,8 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
 
   const hapticsEnabled = settings?.hapticsEnabled ?? true;
   const currency = settings?.currencyCode ?? 'INR';
+  const syncTransactionFilters = settings?.syncTransactionFilters ?? false;
+  const resetTransactionFiltersOnReopen = settings?.resetTransactionFiltersOnReopen ?? false;
 
   const isSyncBusy = isSyncing || isBootstrapping;
   const lastSyncLabel = lastSyncAtMs ? new Date(lastSyncAtMs).toLocaleString() : '—';
@@ -151,6 +153,38 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
       await updateSettings({ hapticsEnabled: value });
     } catch (error) {
       console.error('[Settings] Failed to update haptics:', error);
+      Alert.alert('Error', 'Failed to update setting.');
+    }
+  }, [updateSettings]);
+
+  const toggleSyncTransactionFilters = useCallback(async (value: boolean) => {
+    try {
+      if (resetTransactionFiltersOnReopen) return;
+      Haptics.selectionAsync();
+      await updateSettings({ syncTransactionFilters: value });
+    } catch (error) {
+      console.error('[Settings] Failed to update syncTransactionFilters:', error);
+      Alert.alert('Error', 'Failed to update setting.');
+    }
+  }, [updateSettings, resetTransactionFiltersOnReopen]);
+
+  const toggleResetTransactionFiltersOnReopen = useCallback(async (value: boolean) => {
+    try {
+      Haptics.selectionAsync();
+
+      if (value) {
+        // Reset-on-reopen is a device behavior, so syncing filters is pointless.
+        await updateSettings({
+          resetTransactionFiltersOnReopen: true,
+          syncTransactionFilters: false,
+          transactionsFiltersJson: null,
+          transactionsFiltersUpdatedAtMs: null,
+        });
+      } else {
+        await updateSettings({ resetTransactionFiltersOnReopen: false });
+      }
+    } catch (error) {
+      console.error('[Settings] Failed to update resetTransactionFiltersOnReopen:', error);
       Alert.alert('Error', 'Failed to update setting.');
     }
   }, [updateSettings]);
@@ -337,6 +371,44 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
           />
         </View>
 
+        {/* Transactions Section */}
+        <View style={styles.section}>
+          <SectionHeader title="Transactions" />
+
+          <SettingsItem
+            label="Sync transaction filters"
+            rightElement={
+              <Switch
+                value={syncTransactionFilters}
+                onValueChange={toggleSyncTransactionFilters}
+                disabled={resetTransactionFiltersOnReopen}
+                trackColor={{ false: '#3a3a3c', true: '#34C759' }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#3a3a3c"
+              />
+            }
+          />
+
+          <SettingsItem
+            label="Reset filters on reopen"
+            rightElement={
+              <Switch
+                value={resetTransactionFiltersOnReopen}
+                onValueChange={toggleResetTransactionFiltersOnReopen}
+                trackColor={{ false: '#3a3a3c', true: '#34C759' }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#3a3a3c"
+              />
+            }
+          />
+
+          {resetTransactionFiltersOnReopen ? (
+            <Text style={styles.syncHintText}>
+              Syncing filters is turned off while this is on, so your filters don’t keep changing between devices.
+            </Text>
+          ) : null}
+        </View>
+
         {/* Manage Section */}
         <View style={styles.section}>
           <SectionHeader title="Manage" />
@@ -481,6 +553,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  syncHintText: {
+    fontFamily: 'AvenirNextCondensed-Medium',
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.45)',
+    marginTop: 6,
   },
   syncStatusText: {
     fontFamily: 'AvenirNextCondensed-Medium',

@@ -24,6 +24,11 @@ import {
 } from '../logic/types';
 import { Events, GlobalEvents } from '../events';
 import { pickSingleCurrentUserParticipantId } from '../logic/tripAccounting/currentUserParticipant';
+import {
+  idempotentAdjustmentTransactionId,
+  idempotentTransferTransactionId,
+  idempotentTripSettlementId,
+} from '../logic/idempotency';
 
 // =============================================================================
 // Account Repository
@@ -369,39 +374,77 @@ export const TransactionRepository = {
   },
 
   async create(tx: Omit<Transaction, 'id' | 'createdAtMs' | 'updatedAtMs'>): Promise<Transaction> {
-    const id = uuidv4();
+    const isTransfer = tx.systemType === 'transfer';
+    const isAdjustment = tx.systemType === 'adjustment';
+
+    const id = isTransfer
+      ? idempotentTransferTransactionId({
+          transferFromAccountId: tx.transferFromAccountId ?? '',
+          transferToAccountId: tx.transferToAccountId ?? '',
+          amountCents: tx.amountCents,
+          dateMs: tx.date,
+          note: tx.note ?? null,
+        })
+      : isAdjustment
+        ? idempotentAdjustmentTransactionId({
+            accountId: tx.accountId ?? '',
+            amountCents: tx.amountCents,
+            dateMs: tx.date,
+            note: tx.note ?? null,
+          })
+        : uuidv4();
     const now = Date.now();
 
-    await run(
-       `INSERT INTO ${TABLES.TRANSACTIONS} 
-        (id, amountCents, date, note, type, systemType, accountId, categoryId, 
-         transferFromAccountId, transferToAccountId, tripExpenseId, sourceTripExpenseId, sourceTripSettlementId,
-         createdAtMs, updatedAtMs, 
-         syncVersion, needsSync, deletedAtMs) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-       [
-         id,
-         tx.amountCents,
-         tx.date,
-         tx.note ?? null,
-         tx.type,
-         tx.systemType ?? null,
-         tx.accountId ?? null,
-         tx.categoryId ?? null,
-         tx.transferFromAccountId ?? null,
-         tx.transferToAccountId ?? null,
-         tx.tripExpenseId ?? null,
-         tx.sourceTripExpenseId ?? null,
-         tx.sourceTripSettlementId ?? null,
-         now,
-         now,
-         1, // syncVersion
-         1, // needsSync
-         null, // deletedAtMs
-       ]
-     );
+    const insert = async () => {
+      await run(
+        `INSERT INTO ${TABLES.TRANSACTIONS} 
+         (id, amountCents, date, note, type, systemType, accountId, categoryId, 
+          transferFromAccountId, transferToAccountId, tripExpenseId, sourceTripExpenseId, sourceTripSettlementId,
+          createdAtMs, updatedAtMs, 
+          syncVersion, needsSync, deletedAtMs) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          tx.amountCents,
+          tx.date,
+          tx.note ?? null,
+          tx.type,
+          tx.systemType ?? null,
+          tx.accountId ?? null,
+          tx.categoryId ?? null,
+          tx.transferFromAccountId ?? null,
+          tx.transferToAccountId ?? null,
+          tx.tripExpenseId ?? null,
+          tx.sourceTripExpenseId ?? null,
+          tx.sourceTripSettlementId ?? null,
+          now,
+          now,
+          1, // syncVersion
+          1, // needsSync
+          null, // deletedAtMs
+        ]
+      );
+    };
+
+    if (isTransfer || isAdjustment) {
+      await withTransaction(async () => {
+        const existing = await queryFirst<TransactionRow>(
+          `SELECT * FROM ${TABLES.TRANSACTIONS} WHERE id = ? AND deletedAtMs IS NULL`,
+          [id]
+        );
+        if (existing) return;
+        await insert();
+      });
+    } else {
+      await insert();
+    }
 
     GlobalEvents.emit(Events.transactionsChanged);
+
+    if (isTransfer || isAdjustment) {
+      const existing = await this.getById(id);
+      if (existing) return existing;
+    }
 
     return { ...tx, id, createdAtMs: now, updatedAtMs: now };
   },
@@ -1204,27 +1247,48 @@ export const TripSettlementRepository = {
   },
 
   async create(settlement: Omit<TripSettlement, 'id' | 'createdAtMs' | 'updatedAtMs'>): Promise<TripSettlement> {
-    const id = uuidv4();
+    const id = idempotentTripSettlementId({
+      tripId: settlement.tripId,
+      fromParticipantId: settlement.fromParticipantId,
+      toParticipantId: settlement.toParticipantId,
+      amountCents: settlement.amountCents,
+      dateMs: settlement.date,
+      note: settlement.note ?? null,
+    });
     const now = Date.now();
 
-    await run(
-      `INSERT INTO ${TABLES.TRIP_SETTLEMENTS} 
-       (id, tripId, fromParticipantId, toParticipantId, amountCents, date, note, createdAtMs, updatedAtMs) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        settlement.tripId,
-        settlement.fromParticipantId,
-        settlement.toParticipantId,
-        settlement.amountCents,
-        settlement.date,
-        settlement.note ?? null,
-        now,
-        now,
-      ]
-    );
+    await withTransaction(async () => {
+      const existing = await queryFirst<TripSettlementRow>(
+        `SELECT * FROM ${TABLES.TRIP_SETTLEMENTS} WHERE id = ? AND deletedAtMs IS NULL`,
+        [id]
+      );
+      if (existing) return;
+
+      await run(
+        `INSERT INTO ${TABLES.TRIP_SETTLEMENTS} 
+         (id, tripId, fromParticipantId, toParticipantId, amountCents, date, note,
+          createdAtMs, updatedAtMs, deletedAtMs, syncVersion, needsSync) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          settlement.tripId,
+          settlement.fromParticipantId,
+          settlement.toParticipantId,
+          settlement.amountCents,
+          settlement.date,
+          settlement.note ?? null,
+          now,
+          now,
+          null,
+          1,
+          1,
+        ]
+      );
+    });
 
     GlobalEvents.emit(Events.tripSettlementsChanged);
+    const existing = await this.getById(id);
+    if (existing) return existing;
     return { ...settlement, id, createdAtMs: now, updatedAtMs: now };
   },
 
@@ -1270,6 +1334,10 @@ interface UserSettingsRow {
   hapticsEnabled: number;
   defaultAccountId: string | null;
   hasSeenOnboarding: number;
+  syncTransactionFilters?: number | null;
+  resetTransactionFiltersOnReopen?: number | null;
+  transactionsFiltersJson?: string | null;
+  transactionsFiltersUpdatedAtMs?: number | null;
   updatedAtMs: number;
 }
 
@@ -1277,8 +1345,12 @@ function rowToSettings(row: UserSettingsRow): UserSettings {
   return {
     currencyCode: row.currencyCode,
     hapticsEnabled: row.hapticsEnabled === 1,
-    defaultAccountId: row.defaultAccountId ?? undefined,
+    defaultAccountId: row.defaultAccountId ?? null,
     hasSeenOnboarding: row.hasSeenOnboarding === 1,
+    syncTransactionFilters: (row.syncTransactionFilters ?? 0) === 1,
+    resetTransactionFiltersOnReopen: (row.resetTransactionFiltersOnReopen ?? 0) === 1,
+    transactionsFiltersJson: row.transactionsFiltersJson ?? null,
+    transactionsFiltersUpdatedAtMs: row.transactionsFiltersUpdatedAtMs ?? null,
     updatedAtMs: row.updatedAtMs,
   };
 }
@@ -1297,7 +1369,12 @@ export const UserSettingsRepository = {
     return {
       currencyCode: 'INR',
       hapticsEnabled: true,
+      defaultAccountId: null,
       hasSeenOnboarding: false,
+      syncTransactionFilters: false,
+      resetTransactionFiltersOnReopen: false,
+      transactionsFiltersJson: null,
+      transactionsFiltersUpdatedAtMs: null,
       updatedAtMs: Date.now(),
     };
   },
@@ -1314,13 +1391,17 @@ export const UserSettingsRepository = {
       // Insert new row
       await run(
         `INSERT INTO ${TABLES.USER_SETTINGS} 
-         (id, currencyCode, hapticsEnabled, defaultAccountId, hasSeenOnboarding, updatedAtMs, syncVersion, needsSync) 
-         VALUES ('local', ?, ?, ?, ?, ?, ?, ?)`,
+         (id, currencyCode, hapticsEnabled, defaultAccountId, hasSeenOnboarding, syncTransactionFilters, resetTransactionFiltersOnReopen, transactionsFiltersJson, transactionsFiltersUpdatedAtMs, updatedAtMs, syncVersion, needsSync) 
+         VALUES ('local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           updates.currencyCode ?? 'INR',
           updates.hapticsEnabled !== false ? 1 : 0,
           updates.defaultAccountId ?? null,
           updates.hasSeenOnboarding ? 1 : 0,
+          updates.syncTransactionFilters ? 1 : 0,
+          updates.resetTransactionFiltersOnReopen ? 1 : 0,
+          updates.transactionsFiltersJson ?? null,
+          updates.transactionsFiltersUpdatedAtMs ?? null,
           now,
           1, // syncVersion
           1, // needsSync
@@ -1335,6 +1416,23 @@ export const UserSettingsRepository = {
       if (updates.hapticsEnabled !== undefined) { fields.push('hapticsEnabled = ?'); values.push(updates.hapticsEnabled ? 1 : 0); }
       if (updates.defaultAccountId !== undefined) { fields.push('defaultAccountId = ?'); values.push(updates.defaultAccountId); }
       if (updates.hasSeenOnboarding !== undefined) { fields.push('hasSeenOnboarding = ?'); values.push(updates.hasSeenOnboarding ? 1 : 0); }
+
+      if (updates.syncTransactionFilters !== undefined) {
+        fields.push('syncTransactionFilters = ?');
+        values.push(updates.syncTransactionFilters ? 1 : 0);
+      }
+      if (updates.resetTransactionFiltersOnReopen !== undefined) {
+        fields.push('resetTransactionFiltersOnReopen = ?');
+        values.push(updates.resetTransactionFiltersOnReopen ? 1 : 0);
+      }
+      if (updates.transactionsFiltersJson !== undefined) {
+        fields.push('transactionsFiltersJson = ?');
+        values.push(updates.transactionsFiltersJson);
+      }
+      if (updates.transactionsFiltersUpdatedAtMs !== undefined) {
+        fields.push('transactionsFiltersUpdatedAtMs = ?');
+        values.push(updates.transactionsFiltersUpdatedAtMs);
+      }
 
       await run(`UPDATE ${TABLES.USER_SETTINGS} SET ${fields.join(', ')} WHERE id = 'local'`, values);
     }

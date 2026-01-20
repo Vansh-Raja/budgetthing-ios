@@ -16,6 +16,7 @@ import { useAuthState } from '../lib/auth/useAuthHooks';
 import { getDefaultTripNickname } from '../lib/auth/displayName';
 import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
 import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface AddSharedTripScreenProps {
   onDismiss: () => void;
@@ -25,6 +26,7 @@ interface AddSharedTripScreenProps {
 export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScreenProps) {
   const { syncNow } = useSyncStatus();
   const { user } = useAuthState();
+  const toast = useToast();
 
   const createTrip = useMutation(api.sharedTrips.create);
   const rotateInvite = useMutation(api.sharedTripInvites.rotate);
@@ -40,13 +42,16 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
 
   const [hasBudget, setHasBudget] = useState(false);
   const [budgetString, setBudgetString] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const canSave = name.trim().length > 0;
 
   const handleSave = useCallback(async () => {
     if (!canSave) return;
+    if (isSaving) return;
 
     try {
+      setIsSaving(true);
       Haptics.selectionAsync();
 
       const parsedBudget = parseFloat(budgetString);
@@ -65,15 +70,24 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
 
       const tripId = result.tripId;
 
-      // Generate an initial join code immediately.
-      const invite = await rotateInvite({ tripId });
-      const code = invite.code;
-
-      await syncNow('create_shared_trip');
-
-      if (code) {
-        Alert.alert('Join Code', code);
+      // Followups are best-effort: the trip is already created.
+      let code: string | null = null;
+      try {
+        const invite = await rotateInvite({ tripId });
+        code = invite.code ?? null;
+      } catch (e) {
+        console.warn('[AddSharedTrip] rotateInvite failed:', e);
+        toast.show('Saved. Sync pending.');
       }
+
+      try {
+        await syncNow('create_shared_trip');
+      } catch (e) {
+        console.warn('[AddSharedTrip] syncNow failed:', e);
+        toast.show('Saved. Sync pending.');
+      }
+
+      if (code) Alert.alert('Join Code', code);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onCreated?.(tripId);
@@ -82,8 +96,10 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
       console.error('[AddSharedTrip] Failed:', e);
       Alert.alert('Error', e?.message ?? 'Failed to create trip');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSaving(false);
     }
-   }, [canSave, createTrip, emoji, name, onCreated, onDismiss, rotateInvite, syncNow, startDate, endDate, hasBudget, budgetString]);
+   }, [canSave, createTrip, emoji, name, onCreated, onDismiss, rotateInvite, syncNow, startDate, endDate, hasBudget, budgetString, isSaving, toast, user]);
 
 
   return (
@@ -98,9 +114,9 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
         <TouchableOpacity
           onPress={handleSave}
           style={styles.headerButton}
-          disabled={!canSave}
+          disabled={!canSave || isSaving}
         >
-          <Text style={[styles.saveText, !canSave && styles.saveTextDisabled]}>Save</Text>
+          <Text style={[styles.saveText, (!canSave || isSaving) && styles.saveTextDisabled]}>Save</Text>
         </TouchableOpacity>
       </View>
 

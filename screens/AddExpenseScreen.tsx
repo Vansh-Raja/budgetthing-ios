@@ -14,6 +14,7 @@ import { Trip, SplitType } from '../lib/logic/types';
 import { Actions } from '../lib/logic/actions';
 import { useTrips } from '../lib/hooks/useTrips';
 import { TransactionRepository, TripExpenseRepository } from '../lib/db/repositories';
+import { withTransaction } from '../lib/db/database';
 
 interface AddExpenseScreenProps {
   tripId: string;
@@ -54,32 +55,34 @@ export function AddExpenseScreen({ tripId, onDismiss }: AddExpenseScreenProps) {
     } else {
       // Solo trip or income: save immediately
       try {
-        const tx = await TransactionRepository.create({
-          amountCents: data.amountCents,
-          date: Date.now(),
-          type: data.type,
-          note: data.note || undefined,
-          categoryId: data.categoryId || undefined,
-          accountId: data.accountId || undefined,
+        await withTransaction(async () => {
+          const tx = await TransactionRepository.create({
+            amountCents: data.amountCents,
+            date: Date.now(),
+            type: data.type,
+            note: data.note || undefined,
+            categoryId: data.categoryId || undefined,
+            accountId: data.accountId || undefined,
+          });
+
+          // Link to trip if it's an expense (following CalculatorScreen's pattern)
+          if (data.type === 'expense') {
+            // Find "me" participant for solo trips
+            const me = trip.participants?.find(p => p.isCurrentUser);
+
+            const tripExpense = await TripExpenseRepository.create({
+              tripId: trip.id,
+              transactionId: tx.id,
+              splitType: 'equal', // Solo is implicitly equal (1 person)
+              paidByParticipantId: me?.id, // Optional for solo
+            });
+
+            // Link back
+            await TransactionRepository.update(tx.id, {
+              tripExpenseId: tripExpense.id
+            });
+          }
         });
-
-        // Link to trip if it's an expense (following CalculatorScreen's pattern)
-        if (data.type === 'expense') {
-          // Find "me" participant for solo trips
-          const me = trip.participants?.find(p => p.isCurrentUser);
-
-          const tripExpense = await TripExpenseRepository.create({
-            tripId: trip.id,
-            transactionId: tx.id,
-            splitType: 'equal', // Solo is implicitly equal (1 person)
-            paidByParticipantId: me?.id, // Optional for solo
-          });
-
-          // Link back
-          await TransactionRepository.update(tx.id, {
-            tripExpenseId: tripExpense.id
-          });
-        }
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         onDismiss();

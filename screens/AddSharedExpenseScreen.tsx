@@ -9,6 +9,7 @@ import type { SplitType, TripParticipant } from '../lib/logic/types';
 import { useCategories } from '../lib/hooks/useData';
 import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
 import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface AddSharedExpenseScreenProps {
   tripId: string;
@@ -20,6 +21,7 @@ interface AddSharedExpenseScreenProps {
 export function AddSharedExpenseScreen({ tripId, tripEmoji, participants, onDismiss }: AddSharedExpenseScreenProps) {
   const { userId } = useAuth();
   const { data: categories } = useCategories();
+  const toast = useToast();
 
   const [step, setStep] = useState<'calculator' | 'split'>('calculator');
   const [transactionData, setTransactionData] = useState<{
@@ -92,7 +94,10 @@ export function AddSharedExpenseScreen({ tripId, tripEmoji, participants, onDism
 
 
       if (userId) {
-        await reconcileSharedTripDerivedTransactionsForUser(userId);
+        reconcileSharedTripDerivedTransactionsForUser(userId).catch((e) => {
+          console.warn('[AddSharedExpense] reconcile failed:', e);
+          toast.show('Saved. Sync pending.');
+        });
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

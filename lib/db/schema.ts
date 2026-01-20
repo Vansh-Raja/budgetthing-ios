@@ -6,7 +6,7 @@
  */
 
 // Schema version - increment when adding new migrations
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * Initial schema creation - version 1
@@ -279,6 +279,14 @@ export const MIGRATIONS: Record<number, string[]> = {
     `ALTER TABLE sharedTrips ADD COLUMN startDateMs INTEGER`,
     `ALTER TABLE sharedTrips ADD COLUMN endDateMs INTEGER`,
     `ALTER TABLE sharedTrips ADD COLUMN budgetCents INTEGER`,
+  ],
+
+  5: [
+    // UserSettings: transactions filter preferences + optional sync payload
+    `ALTER TABLE userSettings ADD COLUMN syncTransactionFilters INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE userSettings ADD COLUMN resetTransactionFiltersOnReopen INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE userSettings ADD COLUMN transactionsFiltersJson TEXT`,
+    `ALTER TABLE userSettings ADD COLUMN transactionsFiltersUpdatedAtMs INTEGER`,
   ],
 };
 

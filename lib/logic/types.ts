@@ -157,8 +157,15 @@ export interface TripSettlement {
 export interface UserSettings {
   currencyCode: string;
   hapticsEnabled: boolean;
-  defaultAccountId?: string;
+  defaultAccountId?: string | null;
   hasSeenOnboarding: boolean;
+
+  // Transactions filter preferences
+  syncTransactionFilters?: boolean;
+  resetTransactionFiltersOnReopen?: boolean;
+  transactionsFiltersJson?: string | null;
+  transactionsFiltersUpdatedAtMs?: number | null;
+
   updatedAtMs: number;
 }
 

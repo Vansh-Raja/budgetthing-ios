@@ -29,7 +29,7 @@ interface SplitEditorScreenProps {
   currencyCode?: string;
   initialSplitType?: SplitType;
   initialSplitData?: Record<string, number>;
-  onSave: (splitType: SplitType, splitData: Record<string, number>, computedSplits: Record<string, number>) => void;
+  onSave: (splitType: SplitType, splitData: Record<string, number>, computedSplits: Record<string, number>) => Promise<void>;
   onCancel: () => void;
   payerId?: string;
   onPayerChange?: (id: string) => void;
@@ -59,6 +59,7 @@ export function SplitEditorScreen({
   // State
   const [splitType, setSplitType] = useState<SplitType>(initialSplitType);
   const [localSplitData, setLocalSplitData] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   // Initialize data on mount or type change
   useEffect(() => {
@@ -203,14 +204,23 @@ export function SplitEditorScreen({
     }
   }, [splitType, parsedSplitData, computedSplits, totalAmountCents, currencyCode]);
 
-  const handleSave = () => {
-    if (validation.valid) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onSave(splitType, parsedSplitData, computedSplits);
-    } else {
+  const handleSave = useCallback(async () => {
+    if (isSaving) return;
+    if (!validation.valid) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
     }
-  };
+
+    setIsSaving(true);
+    try {
+      await onSave(splitType, parsedSplitData, computedSplits);
+    } catch (e) {
+      console.warn('[SplitEditor] onSave failed:', e);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [computedSplits, isSaving, onSave, parsedSplitData, splitType, validation.valid]);
 
   const handleInputChange = (id: string, text: string) => {
     setLocalSplitData(prev => ({ ...prev, [id]: text }));
@@ -258,12 +268,12 @@ export function SplitEditorScreen({
         <TouchableOpacity
           onPress={handleSave}
           style={styles.headerButton}
-          disabled={!validation.valid}
+          disabled={!validation.valid || isSaving}
         >
           <Text style={[
             styles.headerButtonText,
             styles.doneButtonText,
-            !validation.valid && styles.disabledButtonText
+            (!validation.valid || isSaving) && styles.disabledButtonText
           ]}>Done</Text>
         </TouchableOpacity>
       </View>

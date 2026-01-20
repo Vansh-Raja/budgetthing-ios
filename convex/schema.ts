@@ -146,6 +146,13 @@ export default defineSchema({
     hapticsEnabled: v.number(), // 0/1
     defaultAccountId: v.optional(v.string()),
     hasSeenOnboarding: v.number(), // 0/1
+
+    // Transactions filters (optional; synced via userSettings)
+    syncTransactionFilters: v.optional(v.number()), // 0/1
+    resetTransactionFiltersOnReopen: v.optional(v.number()), // 0/1
+    transactionsFiltersJson: v.optional(v.string()),
+    transactionsFiltersUpdatedAtMs: v.optional(v.number()),
+
     updatedAtMs: v.number(),
     syncVersion: v.number(),
   })

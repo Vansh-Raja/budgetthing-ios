@@ -8,6 +8,7 @@ import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { TripRepository, TripSettlementRepository } from '../lib/db/repositories';
 import { reconcileLocalTripDerivedTransactionsForTrip } from '../lib/sync/localTripReconcile';
 import * as Haptics from 'expo-haptics';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface RecordSettlementScreenProps {
     trip: Trip;
@@ -29,16 +30,21 @@ export function RecordSettlementScreen({
     onRecorded
 }: RecordSettlementScreenProps) {
 
+    const toast = useToast();
+
     // State
     const [payerId, setPayerId] = useState(initialPayerId);
     const [receiverId, setReceiverId] = useState(initialReceiverId);
     const [amountString, setAmountString] = useState((Math.abs(initialAmountCents) / 100).toString());
     const [date, setDate] = useState(new Date());
+    const [isSaving, setIsSaving] = useState(false);
 
     const payer = participants.find(p => p.id === payerId);
     const receiver = participants.find(p => p.id === receiverId);
 
     const handleSave = async () => {
+        if (isSaving) return;
+
         const amount = parseFloat(amountString);
         if (isNaN(amount) || amount <= 0) {
             Alert.alert("Invalid Amount", "Please enter a valid positive amount.");
@@ -47,6 +53,7 @@ export function RecordSettlementScreen({
 
         const amountCents = Math.round(amount * 100);
 
+        setIsSaving(true);
         try {
             await TripSettlementRepository.create({
                 tripId: trip.id,
@@ -57,17 +64,24 @@ export function RecordSettlementScreen({
                 note: "Payment",
             });
 
-            // Keep derived personal rows up-to-date locally.
-            const hydrated = await TripRepository.getHydrated(trip.id);
-            if (hydrated) {
-                await reconcileLocalTripDerivedTransactionsForTrip(hydrated);
-            }
-
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             onRecorded();
             onDismiss();
+
+            // Best-effort reconcile (do not turn a successful save into an error).
+            setTimeout(() => {
+                TripRepository.getHydrated(trip.id)
+                    .then((hydrated) => {
+                        if (hydrated) return reconcileLocalTripDerivedTransactionsForTrip(hydrated);
+                    })
+                    .catch(() => {
+                        toast.show('Saved. Sync pending.');
+                    });
+            }, 0);
         } catch (e) {
             Alert.alert("Error", "Failed to record settlement.");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -79,8 +93,8 @@ export function RecordSettlementScreen({
                     <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <Text style={styles.title}>Record Payment</Text>
-                <TouchableOpacity onPress={handleSave}>
-                    <Text style={styles.saveText}>Save</Text>
+                <TouchableOpacity onPress={handleSave} disabled={isSaving}>
+                    <Text style={[styles.saveText, isSaving && { opacity: 0.4 }]}>Save</Text>
                 </TouchableOpacity>
             </View>
 

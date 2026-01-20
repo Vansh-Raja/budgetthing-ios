@@ -1,5 +1,44 @@
 # BudgetThing: SwiftUI to Expo + Convex Migration Plan
 
+---
+
+## Data Consistency Hardening (2026-01-21)
+
+Goal: Prevent “write succeeded but UI showed failure” and eliminate accidental duplicates/corruption, especially for high-impact entities (settlements/expenses/transfers). Enforce canonical-vs-derived rules so derived rows never permanently break totals.
+
+### Checklist (Newest First)
+
+DB + concurrency
+- [x] Enforce single-writer DB access (queue/mutex around transactions + writes; avoid direct `withTransactionAsync` outside migrations)
+- [x] Make multi-step local writes atomic with `withTransaction` (tx + tripExpense linking; remove-from-trip)
+
+Idempotency + dedupe (high impact, 5s window)
+- [x] Add stable stringify + deterministic hash helpers
+- [x] Deterministic IDs for:
+  - [x] shared trip settlements
+  - [x] local trip settlements
+  - [x] shared trip expenses
+  - [x] transfers + adjustments
+- [x] Add post-sync + post-bootstrap dedupe sweeper that:
+  - [x] soft-deletes non-canonical duplicates in canonical tables
+  - [x] triggers reconcile so derived rows + totals reflect “never existed”
+
+UX behavior (no scary false failures)
+- [x] Make reconcile/sync followups best-effort (never turn a successful save into an error)
+- [x] Add global non-blocking toast host
+- [x] Standard toast for followup failures: “Saved. Sync pending.”
+
+Derived rules
+- [x] Ensure local trip reconcile deletes derived rows for deleted canonical expenses/settlements (include deleted ids in deletion scope)
+- [x] Ensure derived settlement delete path deletes canonical settlement and then reconciles
+
+QA
+- [x] Add tests for stable stringify + deterministic IDs
+- [ ] Add tests for high-impact dedupe grouping + canonical selection
+- [ ] Hammer test: rapid back-to-back saves, forced reconcile failure, forced sync failure
+
+---
+
 ## Executive Summary
 
 Rewrite the existing native iOS SwiftUI budget tracker as an **Expo (React Native)** app with **Convex** as the backend. The app will support:
@@ -168,6 +207,76 @@ Categories (~24; high-signal/common personal finance categories + matches seeds)
 - [ ] Categories: create/edit supports recommended + “More…”, persists and renders everywhere
 - [ ] Accounts: create/edit supports recommended + “More…”, kind change does not alter emoji
 - [ ] Trips (local + shared): add + edit supports recommended + “More…”, persists and renders in list + headers
+
+---
+
+## QoL: Transactions Filters (Transactions Tab Only)
+
+Goal: Add a Transactions tab filter system that is offline-first, optionally syncable, and respects existing transaction visibility rules.
+
+### UX Decisions (Locked)
+
+- Filters apply ONLY to `screens/TransactionsScreen.tsx`.
+- Filter button shows a dot indicator when filters are active (no count in v1).
+- Month totals follow the active filters.
+- Multi-select for Category, Account, and Trip.
+- Provide an `Uncategorized` pseudo-category.
+- Account filter on transfers matches either `transferFromAccountId` or `transferToAccountId`.
+- System types are individually hideable: `transfer`, `adjustment`, `trip_share`, `trip_settlement`.
+- `trip_cashflow` remains hidden from Transactions tab always.
+- Trip filters include BOTH a 3-state mode (All / Trips / Non-trip) and an optional trip multi-select.
+- If `Reset filters on reopen` is enabled, `Sync transaction filters` is forced OFF.
+
+### Execution Checklist (Ordered)
+
+#### 1) Filter predicate + tests
+
+- [x] Add `lib/ui/transactionFilters.ts` (filter state + predicate)
+- [x] Add `lib/ui/__tests__/transactionFilters.test.ts`
+
+#### 2) SecureStore persistence
+
+- [x] Add `lib/ui/transactionFiltersStorage.ts` (guest + per-user keys)
+
+#### 3) userSettings schema + types + repo
+
+- [x] SQLite: bump `lib/db/schema.ts` to schema version 5 and add userSettings columns
+- [x] Update `lib/logic/types.ts` (`UserSettings` fields)
+- [x] Update `lib/db/repositories.ts` (`UserSettingsRepository` read/write)
+
+#### 4) Convex schema + sync allowlists
+
+- [x] Update `convex/schema.ts` (new optional userSettings fields)
+- [x] Update `convex/sync.ts` (NULL-clears allowlist)
+- [x] Update `lib/db/sync.ts` (optional field normalization)
+
+#### 5) Settings UI toggles
+
+- [x] Update `screens/SettingsScreen.tsx`
+  - [x] Toggle: Sync transaction filters
+  - [x] Toggle: Reset filters on reopen (forces sync OFF)
+
+#### 6) Filter sheet UI
+
+- [x] Add `components/transactions/TransactionsFilterSheet.tsx`
+
+#### 7) Wire into TransactionsScreen
+
+- [x] Update `screens/TransactionsScreen.tsx`
+  - [x] Right-aligned filter button with dot indicator
+  - [x] Apply filters before month grouping so totals follow filters
+  - [x] Load/save filters via SecureStore and (optionally) userSettings sync
+  - [x] Reset-on-reopen support
+
+### Manual QA (iOS)
+
+- [ ] Filter dot indicator appears/disappears correctly
+- [ ] Month totals update with filters
+- [ ] System toggles independently hide/show transfer/adjustment/trip_share/trip_settlement
+- [ ] Category filter works with `Uncategorized`
+- [ ] Account filter matches either side of transfers
+- [ ] Trip mode and trip selection work for local + shared trips
+- [ ] Reset-on-reopen resets filters after background/foreground
 
 ---
 

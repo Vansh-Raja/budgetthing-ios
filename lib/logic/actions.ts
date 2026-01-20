@@ -114,7 +114,8 @@ export const Actions = {
         // Update derived rows after write transaction commits.
         const hydrated = await TripRepository.getHydrated(tripId);
         if (hydrated) {
-            await reconcileLocalTripDerivedTransactionsForTrip(hydrated);
+            reconcileLocalTripDerivedTransactionsForTrip(hydrated)
+                .catch((e) => console.warn('[Actions] reconcileLocalTripDerivedTransactionsForTrip failed', e));
         }
     },
 

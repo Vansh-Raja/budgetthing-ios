@@ -18,6 +18,11 @@ This file provides essential context for AI agents working on this codebase. It 
 - Add new decisions or changes to the plan as they arise
 - Update this file (`AGENTS.md`) if project structure or key concepts change
 
+Plan workflow rule:
+- Add new implementation checklists near the top of `plan.md` (newest plans first).
+- As work completes, check off the new plan items.
+- Keep older plans below; mark them completed instead of deleting.
+
 Additional:
 - Correctness rules live in `rules.md` and are enforced by CI tests.
 

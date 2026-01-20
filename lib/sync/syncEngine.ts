@@ -6,6 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 import { syncRepository } from "../db/sync";
 import { sharedTripSyncRepository } from "../db/sharedTripSync";
 import { reconcileSharedTripDerivedTransactionsForUser } from "./sharedTripReconcile";
+import { dedupeHighImpactCanonicalData } from "../logic/dedupe/highImpactDedupe";
 
 export type SyncMode = 'pull' | 'push' | 'full';
 
@@ -336,7 +337,11 @@ export function useSync() {
 
       // Reconcile derived rows only when we actually pulled something or memberships changed.
       if (sharedTripsMembershipChanged || sharedTripsDidPullChanges || mode === 'full') {
-        await reconcileSharedTripDerivedTransactionsForUser(userId);
+        try {
+          await reconcileSharedTripDerivedTransactionsForUser(userId);
+        } catch (e) {
+          console.warn('[syncEngine] reconcileSharedTripDerivedTransactionsForUser failed:', e);
+        }
       }
     }
 
@@ -374,6 +379,16 @@ export function useSync() {
             nextOptions = { ...queued, reason: queued.reason ?? 'queued' };
           } else {
             nextOptions = null;
+          }
+        }
+
+        // If we pulled anything, run a conservative dedupe pass to prevent
+        // old buggy data from permanently corrupting derived totals.
+        if (latestResult.didPull && userId) {
+          try {
+            await dedupeHighImpactCanonicalData({ userId });
+          } catch (e) {
+            console.warn('[syncEngine] dedupeHighImpactCanonicalData failed:', e);
           }
         }
 

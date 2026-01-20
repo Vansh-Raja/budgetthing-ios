@@ -1,4 +1,6 @@
 import { AccountRepository, CategoryRepository, TransactionRepository, TripRepository, UserSettingsRepository } from '../db/repositories';
+import { queryAll } from '../db/database';
+import { TABLES } from '../db/schema';
 import type { Trip } from '../logic/types';
 import { computeTripDerivedRowsForUser } from '../logic/tripAccounting/computeDerivedRows';
 import { getLocalDbOwner } from './localDbOwner';
@@ -95,14 +97,22 @@ export async function reconcileLocalTripDerivedTransactionsForTrip(trip: Trip): 
   // We use sourceTripExpenseId/sourceTripSettlementId to scope.
   const desiredIds = new Set(derived.map((r) => r.id));
 
-  const expenseIds = (trip.expenses ?? []).map((e) => e.id);
+  const expenseIdRows = await queryAll<{ id: string }>(
+    `SELECT id FROM ${TABLES.TRIP_EXPENSES} WHERE tripId = ?`,
+    [trip.id]
+  );
+  const expenseIds = expenseIdRows.map((r) => r.id);
   if (expenseIds.length) {
     const existing = await TransactionRepository.getDerivedBySourceTripExpenseIds(expenseIds);
     const toDelete = existing.filter((t) => !desiredIds.has(t.id)).map((t) => t.id);
     if (toDelete.length) await TransactionRepository.softDeleteDerivedByIds(toDelete);
   }
 
-  const settlementIds = (trip.settlements ?? []).map((s) => s.id);
+  const settlementIdRows = await queryAll<{ id: string }>(
+    `SELECT id FROM ${TABLES.TRIP_SETTLEMENTS} WHERE tripId = ?`,
+    [trip.id]
+  );
+  const settlementIds = settlementIdRows.map((r) => r.id);
   if (settlementIds.length) {
     const existing = await TransactionRepository.getDerivedBySourceTripSettlementIds(settlementIds);
     const toDelete = existing.filter((t) => !desiredIds.has(t.id)).map((t) => t.id);

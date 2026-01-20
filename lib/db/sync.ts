@@ -22,7 +22,13 @@ function normalizeOptionalFields(table: string, data: any) {
     [TABLES.TRIP_PARTICIPANTS]: ['colorHex', 'deletedAtMs'],
     [TABLES.TRIP_EXPENSES]: ['paidByParticipantId', 'splitDataJson', 'computedSplitsJson', 'deletedAtMs'],
     [TABLES.TRIP_SETTLEMENTS]: ['note', 'deletedAtMs'],
-    [TABLES.USER_SETTINGS]: ['defaultAccountId'],
+    [TABLES.USER_SETTINGS]: [
+      'defaultAccountId',
+      'syncTransactionFilters',
+      'resetTransactionFiltersOnReopen',
+      'transactionsFiltersJson',
+      'transactionsFiltersUpdatedAtMs',
+    ],
   };
 
   const optionalCols = optionalByTable[table] ?? [];

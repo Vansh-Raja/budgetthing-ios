@@ -11,6 +11,7 @@ import { dedupeSeededDefaults, getLocalCounts } from './bootstrap';
 import { clearSyncStateForUser, getLastPullSeq, resetLastPullSeq, useSync } from './syncEngine';
 import { getLocalDbOwner, isOwnerCompatibleWithUser, setLocalDbOwner } from './localDbOwner';
 import { reconcileLocalTripDerivedTransactionsForAllGroupTrips } from './localTripReconcile';
+import { dedupeHighImpactCanonicalData } from '../logic/dedupe/highImpactDedupe';
 
 interface SyncContextValue {
   syncNow: (reason?: string) => Promise<void>;
@@ -75,7 +76,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, [sync]);
 
   const syncNow = useCallback(async (reason = 'manual') => {
-    if (!isSignedIn || !userId) {
+        if (!isSignedIn || !userId) {
       // Guest mode: re-query local DB via events.
       GlobalEvents.emit(Events.transactionsChanged);
       GlobalEvents.emit(Events.accountsChanged);
@@ -104,18 +105,21 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         allowPushRef.current = false;
         clearPushDebounce();
 
-        try {
-          const owner = await getLocalDbOwner();
-          if (!owner) {
-            await setLocalDbOwner('guest');
+          try {
+            const owner = await getLocalDbOwner();
+            if (!owner) {
+              await setLocalDbOwner('guest');
+            }
+            await seedDatabaseIfNeeded();
+            await reconcileLocalTripDerivedTransactionsForAllGroupTrips();
+
+            // Conservative local repair: remove any accidental duplicates.
+            await dedupeHighImpactCanonicalData({ userId: null });
+          } catch (e) {
+            console.warn('[SyncProvider] Guest seed failed:', e);
           }
-          await seedDatabaseIfNeeded();
-          await reconcileLocalTripDerivedTransactionsForAllGroupTrips();
-        } catch (e) {
-          console.warn('[SyncProvider] Guest seed failed:', e);
+          return;
         }
-        return;
-      }
 
       // Signed in: bootstrap once per user.
       if (bootstrappedUserRef.current === userId) {
