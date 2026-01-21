@@ -323,6 +323,7 @@ Build/Release workflow rule:
 Git workflow rule:
 - Never create commits or push to GitHub unless the user explicitly asks.
 - For UI/native-facing changes, always ask the user to test locally (e.g. `npx expo run:ios`) before committing.
+- Test before commit/push: do not commit or push a fix that hasn't been verified by the maintainer.
 
 ---
 

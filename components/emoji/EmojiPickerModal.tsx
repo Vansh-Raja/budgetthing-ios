@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  InteractionManager,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +40,17 @@ export function EmojiPickerModal({
     Haptics.selectionAsync();
     onSelect(emoji);
     onClose();
+  };
+
+  const selectFromKeyboardAndClose = (emoji: string) => {
+    if (!emoji) return;
+
+    // Avoid dismissing the parent fullScreen modal while the keyboard modal is
+    // still presented. Nested modal dismissal ordering can leave a blank screen.
+    setIsKeyboardOpen(false);
+    InteractionManager.runAfterInteractions(() => {
+      selectAndClose(emoji);
+    });
   };
 
   return (
@@ -103,7 +115,7 @@ export function EmojiPickerModal({
           enableRecentlyUsed={true}
           categoryPosition="bottom"
           onEmojiSelected={(emojiObject: EmojiType) => {
-            selectAndClose(emojiObject.emoji);
+            selectFromKeyboardAndClose(emojiObject.emoji);
           }}
         />
       </View>
