@@ -1,16 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useMutation } from 'convex/react';
+import * as Haptics from 'expo-haptics';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../convex/_generated/api';
 
 import { Colors } from '../constants/theme';
-import { useSyncStatus } from '../lib/sync/SyncProvider';
-import { useAuthState } from '../lib/auth/useAuthHooks';
 import { getDefaultTripNickname } from '../lib/auth/displayName';
+import { useAuthState } from '../lib/auth/useAuthHooks';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 
 interface JoinSharedTripScreenProps {
   onDismiss: () => void;
@@ -21,6 +22,7 @@ export function JoinSharedTripScreen({ onDismiss, onJoined }: JoinSharedTripScre
   const insets = useSafeAreaInsets();
   const { syncNow, isSyncing } = useSyncStatus();
   const { user } = useAuthState();
+  const { showPopup } = useCustomPopup();
 
   const joinByCode = useMutation(api.sharedTripInvites.joinByCode);
 
@@ -58,12 +60,16 @@ export function JoinSharedTripScreen({ onDismiss, onJoined }: JoinSharedTripScre
       onDismiss();
     } catch (e: any) {
       console.error('[JoinSharedTrip] join failed', e);
-      Alert.alert('Join Failed', e?.message ?? 'Could not join this trip.');
+      showPopup({
+        title: 'Join Failed',
+        message: e?.message ?? 'Could not join this trip.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsJoining(false);
     }
-  }, [canJoin, joinByCode, normalizedCode, name, onDismiss, onJoined, syncNow]);
+  }, [canJoin, joinByCode, normalizedCode, name, onDismiss, onJoined, syncNow, showPopup, user]);
 
   return (
     <View style={styles.container}>

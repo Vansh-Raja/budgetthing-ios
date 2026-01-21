@@ -1,27 +1,27 @@
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
+import { Text, TextInput } from '@/components/ui/LockedText';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { format } from 'date-fns';
+import * as Haptics from 'expo-haptics';
 import React, { useMemo, useState } from 'react';
 import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Switch,
-  Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Text, TextInput } from '@/components/ui/LockedText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import * as Haptics from 'expo-haptics';
-import { format } from 'date-fns';
 
-import { Colors } from '../constants/theme';
-import type { Trip } from '../lib/logic/types';
-import { getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { SharedTripLocalRepository } from '../lib/db/sharedTripLocalRepository';
-import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { Colors } from '../constants/theme';
+import { SharedTripLocalRepository } from '../lib/db/sharedTripLocalRepository';
 import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
+import { getCurrencySymbol } from '../lib/logic/currencyUtils';
+import type { Trip } from '../lib/logic/types';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 
 interface EditSharedTripScreenProps {
   trip: Trip;
@@ -32,6 +32,7 @@ interface EditSharedTripScreenProps {
 export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTripScreenProps) {
   const insets = useSafeAreaInsets();
   const { syncNow } = useSyncStatus();
+  const { showPopup } = useCustomPopup();
 
   const [name, setName] = useState(trip.name);
   const [emoji, setEmoji] = useState(trip.emoji);
@@ -96,7 +97,11 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
       onDismiss();
     } catch (e) {
       console.error('[EditSharedTrip] Failed:', e);
-      Alert.alert('Error', 'Failed to update shared trip.');
+      showPopup({
+        title: 'Error',
+        message: 'Failed to update shared trip.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsSaving(false);

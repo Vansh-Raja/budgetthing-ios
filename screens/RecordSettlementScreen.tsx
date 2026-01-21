@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../constants/theme';
-import { Trip, TripParticipant } from '../lib/logic/types';
-import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { TripRepository, TripSettlementRepository } from '../lib/db/repositories';
-import { reconcileLocalTripDerivedTransactionsForTrip } from '../lib/sync/localTripReconcile';
-import * as Haptics from 'expo-haptics';
 import { useToast } from '@/components/ui/ToastProvider';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import React, { useState } from 'react';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Colors } from '../constants/theme';
+import { TripRepository, TripSettlementRepository } from '../lib/db/repositories';
+import { getCurrencySymbol } from '../lib/logic/currencyUtils';
+import { Trip, TripParticipant } from '../lib/logic/types';
+import { reconcileLocalTripDerivedTransactionsForTrip } from '../lib/sync/localTripReconcile';
 
 interface RecordSettlementScreenProps {
     trip: Trip;
@@ -31,6 +32,7 @@ export function RecordSettlementScreen({
 }: RecordSettlementScreenProps) {
 
     const toast = useToast();
+    const { showPopup } = useCustomPopup();
 
     // State
     const [payerId, setPayerId] = useState(initialPayerId);
@@ -47,7 +49,11 @@ export function RecordSettlementScreen({
 
         const amount = parseFloat(amountString);
         if (isNaN(amount) || amount <= 0) {
-            Alert.alert("Invalid Amount", "Please enter a valid positive amount.");
+            showPopup({
+                title: 'Invalid Amount',
+                message: 'Please enter a valid positive amount.',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
             return;
         }
 
@@ -79,7 +85,11 @@ export function RecordSettlementScreen({
                     });
             }, 0);
         } catch (e) {
-            Alert.alert("Error", "Failed to record settlement.");
+            showPopup({
+                title: 'Error',
+                message: 'Failed to record settlement.',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         } finally {
             setIsSaving(false);
         }

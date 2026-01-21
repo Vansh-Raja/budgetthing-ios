@@ -4,46 +4,41 @@
  * Pixel-perfect port of TransactionsListView.swift
  */
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  SectionList,
-  StatusBar,
-  ScrollView,
-  Alert,
-  Platform,
-  Modal,
-  AppState,
-  AppStateStatus,
-} from 'react-native';
+import { CustomPopupProvider, useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { format, parseISO } from 'date-fns';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import { format, parseISO } from 'date-fns';
-
-import { Colors, Sizes, BorderRadius } from '../constants/theme';
-import { formatCents } from '../lib/logic/currencyUtils';
-import { Transaction, Category, Account } from '../lib/logic/types';
-import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
-import { useTransactions, useCategories, useAccounts } from '../lib/hooks/useData';
-import { Actions } from '../lib/logic/actions';
-import { TransactionRepository } from '../lib/db/repositories';
-import { TransactionDetailScreen } from './TransactionDetailScreen';
-import { useTrips } from '../lib/hooks/useTrips';
-import { useSharedTrips } from '../lib/hooks/useSharedTrips';
-import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
-import { TripExpenseRepository, TripSettlementRepository } from '../lib/db/repositories';
-import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  formatTripShareAmountInline,
-  isSelectableInBulkMode,
-  shouldCountInMonthlySpentTotals,
-  shouldRenderInTransactions,
-} from '../lib/ui/transactionRules';
+  AppState,
+  AppStateStatus,
+  Modal,
+  ScrollView,
+  SectionList,
+  StatusBar,
+  StyleSheet,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useAuth } from '@clerk/clerk-expo';
+import { TransactionsFilterSheet } from '../components/transactions/TransactionsFilterSheet';
+import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
+import { Colors, Tabs } from '../constants/theme';
+import { TransactionRepository, TripExpenseRepository, TripSettlementRepository } from '../lib/db/repositories';
+import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
+import { useAccounts, useCategories, useTransactions } from '../lib/hooks/useData';
+import { useSharedTrips } from '../lib/hooks/useSharedTrips';
+import { useTrips } from '../lib/hooks/useTrips';
+import { useUserSettings } from '../lib/hooks/useUserSettings';
+import { Actions } from '../lib/logic/actions';
+import { formatCents } from '../lib/logic/currencyUtils';
+import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import { Category, Transaction } from '../lib/logic/types';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 import {
   DEFAULT_TRANSACTIONS_FILTERS,
   isTransactionsFiltersActive,
@@ -54,11 +49,13 @@ import {
   loadTransactionsFiltersFromSecureStore,
   saveTransactionsFiltersToSecureStore,
 } from '../lib/ui/transactionFiltersStorage';
-import { useSyncStatus } from '../lib/sync/SyncProvider';
-import { useAuth } from '@clerk/clerk-expo';
-import { Tabs } from '../constants/theme';
-import { useUserSettings } from '../lib/hooks/useUserSettings';
-import { TransactionsFilterSheet } from '../components/transactions/TransactionsFilterSheet';
+import {
+  formatTripShareAmountInline,
+  isSelectableInBulkMode,
+  shouldCountInMonthlySpentTotals,
+  shouldRenderInTransactions,
+} from '../lib/ui/transactionRules';
+import { TransactionDetailScreen } from './TransactionDetailScreen';
 
 // ============================================================================
 // Types & Props
@@ -165,6 +162,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   const { syncNow } = useSyncStatus();
   const { isSignedIn, userId } = useAuth();
   const { settings, updateSettings } = useUserSettings();
+  const { showPopup } = useCustomPopup();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -503,12 +501,12 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
       const date = parseISO(key + '-01');
       const title = format(date, 'MMMM yyyy');
 
-        const totalCents = txs.reduce((sum, tx) => {
-          // Use effective amount (user's share for trip expenses)
-          const info = getEffectiveDisplayInfo(tx);
-          if (info.shouldHide || info.isIncome || !shouldCountInMonthlySpentTotals(tx)) return sum;
-          return sum + info.amount;
-        }, 0);
+      const totalCents = txs.reduce((sum, tx) => {
+        // Use effective amount (user's share for trip expenses)
+        const info = getEffectiveDisplayInfo(tx);
+        if (info.shouldHide || info.isIncome || !shouldCountInMonthlySpentTotals(tx)) return sum;
+        return sum + info.amount;
+      }, 0);
 
       return { id: key, title, totalCents, data: txs };
     });
@@ -517,7 +515,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
     const months = sections.map(s => ({ id: s.id, title: s.title }));
 
     return { monthSections: sections, allMonths: months };
-   }, [visibleTransactions, getEffectiveDisplayInfo]);
+  }, [visibleTransactions, getEffectiveDisplayInfo]);
 
   const filteredSections = useMemo(() => {
     if (!selectedMonthKey) return monthSections;
@@ -551,14 +549,14 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   }, []);
 
   const handleDelete = useCallback(() => {
-    Alert.alert(
-      `Delete ${selectedIds.size} item(s)?`,
-      "This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
+    showPopup({
+      title: `Delete ${selectedIds.size} item(s)?`,
+      message: 'This action cannot be undone.',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: "Delete",
-          style: "destructive",
+          text: 'Delete',
+          style: 'destructive',
           onPress: async () => {
             try {
               // Delete all selected transactions
@@ -572,14 +570,18 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
               refresh();
               refreshTrips();
             } catch (error) {
-              console.error("Failed to delete transactions:", error);
-              Alert.alert("Error", "Failed to delete some items");
+              console.error('Failed to delete transactions:', error);
+              showPopup({
+                title: 'Error',
+                message: 'Failed to delete some items',
+                buttons: [{ text: 'OK', style: 'default' }],
+              });
             }
           }
         }
-      ]
-    );
-  }, [selectedIds, refresh, refreshTrips]);
+      ],
+    });
+  }, [selectedIds, refresh, refreshTrips, showPopup]);
 
   const handleMove = useCallback(() => {
     // TODO: Show move sheet
@@ -956,15 +958,17 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         onRequestClose={() => setTripShareTxId(null)}
       >
         {tripShareTxId && (
-          <TransactionDetailScreen
-            transactionId={tripShareTxId}
-            readOnly
-            onDismiss={() => setTripShareTxId(null)}
-            onEditInTrip={(tripId, expenseId) => {
-              setTripShareTxId(null);
-              setTripShareEditTarget({ tripId, expenseId });
-            }}
-          />
+          <CustomPopupProvider>
+            <TransactionDetailScreen
+              transactionId={tripShareTxId}
+              readOnly
+              onDismiss={() => setTripShareTxId(null)}
+              onEditInTrip={(tripId, expenseId) => {
+                setTripShareTxId(null);
+                setTripShareEditTarget({ tripId, expenseId });
+              }}
+            />
+          </CustomPopupProvider>
         )}
       </Modal>
 
@@ -975,11 +979,13 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         onRequestClose={() => setTripShareEditTarget(null)}
       >
         {tripShareEditTarget && (
-          <TransactionDetailScreen
-            sharedTripExpense={{ tripId: tripShareEditTarget.tripId, expenseId: tripShareEditTarget.expenseId }}
-            initialEditMode
-            onDismiss={() => setTripShareEditTarget(null)}
-          />
+          <CustomPopupProvider>
+            <TransactionDetailScreen
+              sharedTripExpense={{ tripId: tripShareEditTarget.tripId, expenseId: tripShareEditTarget.expenseId }}
+              initialEditMode
+              onDismiss={() => setTripShareEditTarget(null)}
+            />
+          </CustomPopupProvider>
         )}
       </Modal>
 
@@ -990,14 +996,16 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         onRequestClose={() => setEditingTx(null)}
       >
         {editingTx && (
-          <TransactionDetailScreen
-            transactionId={editingTx.id}
-            onDismiss={() => setEditingTx(null)}
-            onDelete={() => {
-              setEditingTx(null);
-              refresh();
-            }}
-          />
+          <CustomPopupProvider>
+            <TransactionDetailScreen
+              transactionId={editingTx.id}
+              onDismiss={() => setEditingTx(null)}
+              onDelete={() => {
+                setEditingTx(null);
+                refresh();
+              }}
+            />
+          </CustomPopupProvider>
         )}
       </Modal>
 
@@ -1037,7 +1045,11 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
                     refresh();
                     refreshTrips();
                   } catch (e) {
-                    Alert.alert("Error", "Failed to update categories");
+                    showPopup({
+                      title: 'Error',
+                      message: 'Failed to update categories',
+                      buttons: [{ text: 'OK', style: 'default' }],
+                    });
                   }
                 }}
               >

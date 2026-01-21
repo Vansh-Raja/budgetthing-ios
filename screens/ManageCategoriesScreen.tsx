@@ -2,23 +2,24 @@
  * Manage Categories Screen
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-    View,
-    StyleSheet,
-    TouchableOpacity,
-    Modal,
-} from 'react-native';
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { Text } from '@/components/ui/LockedText';
-import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+    Modal,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 
+import { CustomPopupProvider } from '@/components/ui/CustomPopupProvider';
 import { Colors } from '../constants/theme';
-import { Category } from '../lib/logic/types';
-import { useCategories } from '../lib/hooks/useData';
 import { CategoryRepository } from '../lib/db/repositories';
+import { useCategories } from '../lib/hooks/useData';
+import { Category } from '../lib/logic/types';
 import { EditCategoryScreen } from './EditCategoryScreen';
 
 export function ManageCategoriesScreen() {
@@ -209,11 +210,13 @@ export function ManageCategoriesScreen() {
                 presentationStyle="pageSheet"
                 onRequestClose={handleEditorDismiss}
             >
-                <EditCategoryScreen
-                    categoryId={editingCategoryId ?? undefined}
-                    onDismiss={handleEditorDismiss}
-                    onSave={handleEditorSave}
-                />
+                <CustomPopupProvider>
+                    <EditCategoryScreen
+                        categoryId={editingCategoryId ?? undefined}
+                        onDismiss={handleEditorDismiss}
+                        onSave={handleEditorSave}
+                    />
+                </CustomPopupProvider>
             </Modal>
         </View>
     );

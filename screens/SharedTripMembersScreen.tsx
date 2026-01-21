@@ -1,15 +1,16 @@
-import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal } from 'react-native';
+import { CustomPopupProvider, useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useMutation } from 'convex/react';
+import * as Haptics from 'expo-haptics';
+import React, { useMemo, useState } from 'react';
+import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { api } from '../convex/_generated/api';
 
 import { Colors } from '../constants/theme';
+import { SharedTripParticipantLocalRepository } from '../lib/db/sharedTripLocalRepository';
 import type { Trip, TripParticipant } from '../lib/logic/types';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
-import { SharedTripParticipantLocalRepository } from '../lib/db/sharedTripLocalRepository';
 
 interface SharedTripMembersScreenProps {
   trip: Trip;
@@ -21,6 +22,7 @@ interface SharedTripMembersScreenProps {
 export function SharedTripMembersScreen({ trip, participants, onDismiss, onChanged }: SharedTripMembersScreenProps) {
   const { syncNow } = useSyncStatus();
   const removeMemberMutation = useMutation(api.sharedTrips.removeMember);
+  const { showPopup } = useCustomPopup();
 
   const [editModal, setEditModal] = useState<{
     visible: boolean;
@@ -43,14 +45,18 @@ export function SharedTripMembersScreen({ trip, participants, onDismiss, onChang
   const handleRemove = async (participant: TripParticipant) => {
     const linkedUserId = participant.linkedUserId;
     if (!linkedUserId) {
-      Alert.alert('Guest participant', 'Guests are not removable in v1.');
+      showPopup({
+        title: 'Guest participant',
+        message: 'Guests are not removable in v1.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       return;
     }
 
-    Alert.alert(
-      'Remove member?',
-      `Remove ${participant.isCurrentUser ? 'you' : participant.name} from this trip?`,
-      [
+    showPopup({
+      title: 'Remove member?',
+      message: `Remove ${participant.isCurrentUser ? 'you' : participant.name} from this trip?`,
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
@@ -64,13 +70,17 @@ export function SharedTripMembersScreen({ trip, participants, onDismiss, onChang
               if (participant.isCurrentUser) onDismiss();
             } catch (e: any) {
               console.error('[SharedTripMembers] remove failed', e);
-              Alert.alert('Error', e?.message ?? 'Failed to remove member');
+              showPopup({
+                title: 'Error',
+                message: e?.message ?? 'Failed to remove member',
+                buttons: [{ text: 'OK', style: 'default' }],
+              });
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             }
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   const handleAddGuest = async () => {
@@ -92,7 +102,11 @@ export function SharedTripMembersScreen({ trip, participants, onDismiss, onChang
       });
     } catch (e: any) {
       console.error('[SharedTripMembers] add guest failed', e);
-      Alert.alert('Error', e?.message ?? 'Failed to add guest');
+      showPopup({
+        title: 'Error',
+        message: e?.message ?? 'Failed to add guest',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   };
@@ -103,7 +117,11 @@ export function SharedTripMembersScreen({ trip, participants, onDismiss, onChang
     try {
       const trimmed = editModal.name.trim();
       if (!trimmed) {
-        Alert.alert('Name required', 'Please enter a name.');
+        showPopup({
+          title: 'Name required',
+          message: 'Please enter a name.',
+          buttons: [{ text: 'OK', style: 'default' }],
+        });
         return;
       }
 
@@ -119,7 +137,11 @@ export function SharedTripMembersScreen({ trip, participants, onDismiss, onChang
       });
     } catch (e: any) {
       console.error('[SharedTripMembers] edit name failed', e);
-      Alert.alert('Error', e?.message ?? 'Failed to update name');
+      showPopup({
+        title: 'Error',
+        message: e?.message ?? 'Failed to update name',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   };
@@ -216,35 +238,37 @@ export function SharedTripMembersScreen({ trip, participants, onDismiss, onChang
         animationType="fade"
         onRequestClose={() => setEditModal({ visible: false, participantId: '', name: '' })}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit Name</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editModal.name}
-              onChangeText={(t) => setEditModal((s) => ({ ...s, name: t }))}
-              placeholder="Name"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              autoFocus
-            />
+        <CustomPopupProvider>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Edit Name</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editModal.name}
+                onChangeText={(t) => setEditModal((s) => ({ ...s, name: t }))}
+                placeholder="Name"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                autoFocus
+              />
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                onPress={() => setEditModal({ visible: false, participantId: '', name: '' })}
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-              >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
-              </TouchableOpacity>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  onPress={() => setEditModal({ visible: false, participantId: '', name: '' })}
+                  style={[styles.modalButton, styles.modalButtonSecondary]}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={handleEditName}
-                style={[styles.modalButton, styles.modalButtonPrimary]}
-              >
-                <Text style={styles.modalButtonTextPrimary}>Save</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleEditName}
+                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                >
+                  <Text style={styles.modalButtonTextPrimary}>Save</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </CustomPopupProvider>
       </Modal>
     </View>
   );

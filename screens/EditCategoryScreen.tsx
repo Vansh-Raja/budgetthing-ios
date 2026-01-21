@@ -2,28 +2,27 @@
  * Edit Category Screen - Create or Edit a Category
  */
 
-import React, { useState, useEffect } from 'react';
-import {
-    View,
-    StyleSheet,
-    TouchableOpacity,
-    ScrollView,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-} from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '../constants/theme';
-import { Category } from '../lib/logic/types';
-import { CategoryRepository } from '../lib/db/repositories';
-import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { Colors } from '../constants/theme';
+import { CategoryRepository } from '../lib/db/repositories';
 import { RECOMMENDED_CATEGORY_EMOJIS } from '../lib/emoji/recommendedEmojis';
+import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 
 interface EditCategoryScreenProps {
     categoryId?: string;
@@ -34,6 +33,7 @@ interface EditCategoryScreenProps {
 export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCategoryScreenProps) {
     const insets = useSafeAreaInsets();
     const router = useRouter();
+    const { showPopup } = useCustomPopup();
 
     const [name, setName] = useState('');
     const [emoji, setEmoji] = useState('🍔');
@@ -59,7 +59,11 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
             }
         } catch (e) {
             console.error("Failed to load category", e);
-            Alert.alert("Error", "Could not load category details");
+            showPopup({
+                title: 'Error',
+                message: 'Could not load category details',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         } finally {
             setLoading(false);
         }
@@ -67,7 +71,11 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
 
     const handleSave = async () => {
         if (name.trim().length === 0) {
-            Alert.alert("Missing Name", "Please enter a category name");
+            showPopup({
+                title: 'Missing Name',
+                message: 'Please enter a category name',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
             return;
         }
 
@@ -96,21 +104,25 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
 
         } catch (e) {
             console.error("Failed to save category", e);
-            Alert.alert("Error", "Failed to save category");
+            showPopup({
+                title: 'Error',
+                message: 'Failed to save category',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleDelete = async () => {
-        Alert.alert(
-            "Delete Category?",
-            "This will remove the category. Transactions will become uncategorized. This cannot be undone.",
-            [
-                { text: "Cancel", style: "cancel" },
+        showPopup({
+            title: 'Delete Category?',
+            message: 'This will remove the category. Transactions will become uncategorized. This cannot be undone.',
+            buttons: [
+                { text: 'Cancel', style: 'cancel' },
                 {
-                    text: "Delete",
-                    style: "destructive",
+                    text: 'Delete',
+                    style: 'destructive',
                     onPress: async () => {
                         try {
                             if (categoryId) {
@@ -121,12 +133,16 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
                                 else router.back();
                             }
                         } catch (e) {
-                            Alert.alert("Error", "Failed to delete category");
+                            showPopup({
+                                title: 'Error',
+                                message: 'Failed to delete category',
+                                buttons: [{ text: 'OK', style: 'default' }],
+                            });
                         }
                     }
                 }
-            ]
-        );
+            ],
+        });
     };
 
     if (loading) return <View style={styles.container} />;

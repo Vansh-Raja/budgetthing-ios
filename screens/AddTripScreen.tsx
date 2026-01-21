@@ -4,30 +4,28 @@
  * Pixel-perfect port of AddTripView.swift
  */
 
-import React, { useState } from 'react';
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Switch,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
+import * as Haptics from 'expo-haptics';
+import React, { useState } from 'react';
+import {
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '../constants/theme';
-import { Trip, TripParticipant } from '../lib/logic/types';
-import { getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { Actions } from '../lib/logic/actions';
 import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { Colors } from '../constants/theme';
 import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
+import { Actions } from '../lib/logic/actions';
+import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 
 interface AddTripScreenProps {
   onDismiss: () => void;
@@ -36,6 +34,7 @@ interface AddTripScreenProps {
 
 export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
   const insets = useSafeAreaInsets();
+  const { showPopup } = useCustomPopup();
 
   // State
   const [name, setName] = useState('');
@@ -101,7 +100,11 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
       onDismiss();
     } catch (e) {
       console.error("Failed to save trip", e);
-      Alert.alert("Error", "Failed to save trip. Please try again.");
+      showPopup({
+        title: 'Error',
+        message: 'Failed to save trip. Please try again.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
     } finally {
       setIsSaving(false);
     }

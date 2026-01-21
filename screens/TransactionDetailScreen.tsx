@@ -5,40 +5,39 @@
  * Matches Swift's TransactionDetailView design.
  */
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
+import { Text, TextInput } from '@/components/ui/LockedText';
+import { useAuth } from '@clerk/clerk-expo';
+import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Haptics from 'expo-haptics';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View,
+    ActivityIndicator,
+    Modal,
+    Platform,
+    ScrollView,
     StyleSheet,
     TouchableOpacity,
-    ScrollView,
-    Alert,
-    LayoutAnimation,
-    Platform,
-    Modal,
-    ActivityIndicator,
+    View
 } from 'react-native';
-import { Text, TextInput } from '@/components/ui/LockedText';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useAuth } from '@clerk/clerk-expo';
 
 import { Colors } from '../constants/theme';
-import { SplitType, Transaction, Trip, TripExpense } from '../lib/logic/types';
-import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { Actions } from '../lib/logic/actions';
 import { withTransaction } from '../lib/db/database';
 import { TransactionRepository, TripExpenseRepository, TripSettlementRepository } from '../lib/db/repositories';
-import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { SharedTripExpenseRepository, SharedTripSettlementRepository } from '../lib/db/sharedTripWriteRepositories';
-import { reconcileSharedTripDerivedTransactionsForExpense, reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
-import { derivedTripCashflowId } from '../lib/sync/sharedTripDerivedIds';
-import { useSyncStatus } from '../lib/sync/SyncProvider';
-import { useCategories, useAccounts } from '../lib/hooks/useData';
+import { useAccounts, useCategories } from '../lib/hooks/useData';
 import { useTrips } from '../lib/hooks/useTrips';
+import { Actions } from '../lib/logic/actions';
+import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
+import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import { SplitType, Transaction, Trip, TripExpense } from '../lib/logic/types';
 import { reconcileLocalTripDerivedTransactionsForTrip } from '../lib/sync/localTripReconcile';
+import { derivedTripCashflowId } from '../lib/sync/sharedTripDerivedIds';
+import { reconcileSharedTripDerivedTransactionsForExpense, reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { SplitEditorScreen } from './SplitEditorScreen';
 
 interface TransactionDetailScreenProps {
@@ -72,20 +71,21 @@ export function TransactionDetailScreen({
             isMountedRef.current = false;
         };
     }, []);
- 
+
     // Data
 
     const { data: categories } = useCategories();
     const { data: accounts } = useAccounts();
     const { trips } = useTrips(); // We need trips to find related trip info
     const { syncNow } = useSyncStatus();
+    const { showPopup } = useCustomPopup();
 
     const [transaction, setTransaction] = useState<Transaction | null>(null);
     const [tripExpense, setTripExpense] = useState<TripExpense | null>(null);
     const [relatedTrip, setRelatedTrip] = useState<Trip | null>(null);
     const [isSharedTripContext, setIsSharedTripContext] = useState(false);
     const [loading, setLoading] = useState(true);
- 
+
     const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
     const [isEditing, setIsEditing] = useState(!!initialEditMode);
 
@@ -120,7 +120,7 @@ export function TransactionDetailScreen({
 
     const effectiveTransactionId = sharedTripExpense?.expenseId ?? transactionId;
     const isSharedExpense = !!sharedTripExpense;
- 
+
     // Load Data
     useEffect(() => {
         loadData();
@@ -138,8 +138,11 @@ export function TransactionDetailScreen({
             setDerivedAccountTargetTxId(null);
 
             if (!effectiveTransactionId) {
-                Alert.alert("Error", "Missing transaction id");
-                onDismiss();
+                showPopup({
+                    title: 'Error',
+                    message: 'Missing transaction id',
+                    buttons: [{ text: 'OK', style: 'default', onPress: onDismiss }],
+                });
                 return;
             }
 
@@ -151,8 +154,11 @@ export function TransactionDetailScreen({
 
             if (isSharedExpense) {
                 if (!userId || !sharedTripExpense) {
-                    Alert.alert("Error", "You must be signed in");
-                    onDismiss();
+                    showPopup({
+                        title: 'Error',
+                        message: 'You must be signed in',
+                        buttons: [{ text: 'OK', style: 'default', onPress: onDismiss }],
+                    });
                     return;
                 }
 
@@ -160,8 +166,11 @@ export function TransactionDetailScreen({
                 const exp = hydrated?.expenses?.find(e => e.id === sharedTripExpense.expenseId) ?? null;
 
                 if (!hydrated || !exp) {
-                    Alert.alert("Error", "Expense not found");
-                    onDismiss();
+                    showPopup({
+                        title: 'Error',
+                        message: 'Expense not found',
+                        buttons: [{ text: 'OK', style: 'default', onPress: onDismiss }],
+                    });
                     return;
                 }
 
@@ -192,13 +201,16 @@ export function TransactionDetailScreen({
             } else {
                 tx = await TransactionRepository.getById(effectiveTransactionId);
                 if (!tx) {
-                    Alert.alert("Error", "Transaction not found");
-                    onDismiss();
+                    showPopup({
+                        title: 'Error',
+                        message: 'Transaction not found',
+                        buttons: [{ text: 'OK', style: 'default', onPress: onDismiss }],
+                    });
                     return;
                 }
 
                 const personalTx = tx;
- 
+
                 const isSharedTripShareTx = personalTx.systemType === 'trip_share' && !!personalTx.sourceTripExpenseId;
                 const isSharedTripCashflowTx = personalTx.systemType === 'trip_cashflow' && !!personalTx.sourceTripExpenseId;
 
@@ -300,7 +312,7 @@ export function TransactionDetailScreen({
                 setEditComputedSplits(nextTripExpense.computedSplits ?? {});
             }
 
- 
+
         } catch (e) {
             console.error(e);
         } finally {
@@ -340,7 +352,7 @@ export function TransactionDetailScreen({
         setTripExpense(foundExpense);
         setRelatedTrip(foundTrip);
     }, [transaction, trips, isSharedTripContext]);
- 
+
     // derived
 
     const category = categories.find(c => c.id === (isEditing ? editCategoryId : transaction?.categoryId));
@@ -446,7 +458,7 @@ export function TransactionDetailScreen({
         setEditPaidByParticipantId(fallback);
         return fallback;
     };
- 
+
     // Recent categories for the quick picker (top 5 + current)
     const quickCategories = useMemo(() => {
         const result = categories.filter(c => !c.isSystem).slice(0, 5);
@@ -464,7 +476,11 @@ export function TransactionDetailScreen({
 
         const newAmount = parseFloat(editAmountString);
         if (!Number.isFinite(newAmount) || newAmount < 0) {
-            Alert.alert("Invalid Amount", "Please enter a valid positive number");
+            showPopup({
+                title: 'Invalid Amount',
+                message: 'Please enter a valid positive number',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
             return;
         }
 
@@ -592,7 +608,11 @@ export function TransactionDetailScreen({
             onUpdate?.();
         } catch (e) {
             console.error(e);
-            Alert.alert("Error", "Failed to update transaction");
+            showPopup({
+                title: 'Error',
+                message: 'Failed to update transaction',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         }
     };
 
@@ -609,13 +629,13 @@ export function TransactionDetailScreen({
                 ? 'This will remove the settlement and restore the suggested settle-up.'
                 : 'This cannot be undone.';
 
-        Alert.alert(
+        showPopup({
             title,
             message,
-            [
-                { text: "Cancel", style: "cancel" },
+            buttons: [
+                { text: 'Cancel', style: 'cancel' },
                 {
-                    text: "Delete", style: "destructive", onPress: async () => {
+                    text: 'Delete', style: 'destructive', onPress: async () => {
                         try {
                             if (isSharedExpense && sharedTripExpense) {
                                 await SharedTripExpenseRepository.delete(sharedTripExpense.expenseId);
@@ -683,25 +703,29 @@ export function TransactionDetailScreen({
                             onDelete?.();
                             onDismiss();
                         } catch (e) {
-                            Alert.alert("Error", "Failed to delete");
+                            showPopup({
+                                title: 'Error',
+                                message: 'Failed to delete',
+                                buttons: [{ text: 'OK', style: 'default' }],
+                            });
                         }
                     }
                 }
-            ]
-        );
+            ],
+        });
     };
 
     const handleRemoveFromTrip = () => {
         if (isSharedTripContext || isTripShare) return;
         if (!relatedTrip || !tripExpense || !transaction) return;
 
-        Alert.alert(
-            "Remove from Trip?",
-            `This will keep the transaction but remove it from "${relatedTrip.name}".`,
-            [
-                { text: "Cancel", style: "cancel" },
+        showPopup({
+            title: 'Remove from Trip?',
+            message: `This will keep the transaction but remove it from "${relatedTrip.name}".`,
+            buttons: [
+                { text: 'Cancel', style: 'cancel' },
                 {
-                    text: "Remove", style: "destructive", onPress: async () => {
+                    text: 'Remove', style: 'destructive', onPress: async () => {
                         try {
                             await withTransaction(async () => {
                                 await TripExpenseRepository.delete(tripExpense.id);
@@ -715,12 +739,16 @@ export function TransactionDetailScreen({
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                             loadData();
                         } catch (e) {
-                            Alert.alert("Error", "Failed to remove from trip");
+                            showPopup({
+                                title: 'Error',
+                                message: 'Failed to remove from trip',
+                                buttons: [{ text: 'OK', style: 'default' }],
+                            });
                         }
                     }
                 }
-            ]
-        );
+            ],
+        });
     };
 
     if (loading || !transaction) {
@@ -1094,7 +1122,7 @@ export function TransactionDetailScreen({
                                 </View>
                             </View>
                         )}
- 
+
                     </View>
                 ) : (
                     /* VIEW MODE LAYOUT */
@@ -1153,16 +1181,16 @@ export function TransactionDetailScreen({
                                 <Text style={styles.sectionLabel}>Trip</Text>
 
                                 {/* Trip Badge Row */}
-                                    <View style={styles.tripBadge}>
-                                        <Text style={{ fontSize: 22, marginRight: 10 }}>{relatedTrip.emoji}</Text>
-                                        <Text style={styles.tripName}>{relatedTrip.name}</Text>
-                                        <View style={{ flex: 1 }} />
-                                        {!isSharedTripContext && (
-                                            <TouchableOpacity onPress={handleRemoveFromTrip}>
-                                                <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.5)" />
-                                            </TouchableOpacity>
-                                        )}
-                                    </View>
+                                <View style={styles.tripBadge}>
+                                    <Text style={{ fontSize: 22, marginRight: 10 }}>{relatedTrip.emoji}</Text>
+                                    <Text style={styles.tripName}>{relatedTrip.name}</Text>
+                                    <View style={{ flex: 1 }} />
+                                    {!isSharedTripContext && (
+                                        <TouchableOpacity onPress={handleRemoveFromTrip}>
+                                            <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.5)" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
 
                                 {/* Split Details Section - for group trips */}
                                 {tripExpense && relatedTrip.isGroup && (

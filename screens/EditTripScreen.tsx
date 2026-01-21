@@ -2,30 +2,29 @@
  * Edit Trip Screen - Update existing trip details
  */
 
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
+import { Text, TextInput } from '@/components/ui/LockedText';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { format } from 'date-fns';
+import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
 import {
-    View,
-    StyleSheet,
-    TouchableOpacity,
-    ScrollView,
-    Switch,
-    Alert,
     KeyboardAvoidingView,
     Platform,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { Text, TextInput } from '@/components/ui/LockedText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import * as Haptics from 'expo-haptics';
-import { format } from 'date-fns';
 
-import { Colors } from '../constants/theme';
-import { Trip } from '../lib/logic/types';
-import { getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { TripRepository } from '../lib/db/repositories';
 import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { Colors } from '../constants/theme';
+import { TripRepository } from '../lib/db/repositories';
 import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
+import { getCurrencySymbol } from '../lib/logic/currencyUtils';
+import { Trip } from '../lib/logic/types';
 
 interface EditTripScreenProps {
     trip: Trip;
@@ -35,6 +34,7 @@ interface EditTripScreenProps {
 
 export function EditTripScreen({ trip, onDismiss, onSave }: EditTripScreenProps) {
     const insets = useSafeAreaInsets();
+    const { showPopup } = useCustomPopup();
 
     // State
     const [name, setName] = useState(trip.name);
@@ -75,7 +75,11 @@ export function EditTripScreen({ trip, onDismiss, onSave }: EditTripScreenProps)
             onDismiss();
         } catch (e) {
             console.error("Failed to update trip", e);
-            Alert.alert("Error", "Failed to update trip.");
+            showPopup({
+                title: 'Error',
+                message: 'Failed to update trip.',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         } finally {
             setIsSaving(false);
         }

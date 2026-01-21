@@ -4,26 +4,27 @@
  * Lists all accounts and allows adding/editing.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-    View,
-    StyleSheet,
-    TouchableOpacity,
-    Modal,
-} from 'react-native';
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { Text } from '@/components/ui/LockedText';
-import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+    Modal,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 
+import { CustomPopupProvider } from '@/components/ui/CustomPopupProvider';
 import { Colors } from '../constants/theme';
-import { Account } from '../lib/logic/types';
+import { AccountRepository } from '../lib/db/repositories';
 import { useAccounts, useTransactions } from '../lib/hooks/useData';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
 import { computeAccountAvailableCents, computeAccountBalanceCents, getTransactionsForAccount } from '../lib/logic/accountBalance';
 import { formatCents } from '../lib/logic/currencyUtils';
-import { AccountRepository } from '../lib/db/repositories';
+import { Account } from '../lib/logic/types';
 import { EditAccountScreen } from './EditAccountScreen';
 
 export function ManageAccountsScreen() {
@@ -121,7 +122,7 @@ export function ManageAccountsScreen() {
                                 return <Text style={styles.subtitle}>Balance: {formatCents(balanceCents)}</Text>;
                             })()}
                         </View>
- 
+
                         {isDefault && (
                             <View style={styles.defaultBadge}>
                                 <Text style={styles.defaultBadgeText}>Default</Text>
@@ -188,11 +189,13 @@ export function ManageAccountsScreen() {
                 presentationStyle="pageSheet"
                 onRequestClose={handleEditorDismiss}
             >
-                <EditAccountScreen
-                    accountId={editingAccountId ?? undefined}
-                    onDismiss={handleEditorDismiss}
-                    onSave={handleEditorSave}
-                />
+                <CustomPopupProvider>
+                    <EditAccountScreen
+                        accountId={editingAccountId ?? undefined}
+                        onDismiss={handleEditorDismiss}
+                        onSave={handleEditorSave}
+                    />
+                </CustomPopupProvider>
             </Modal>
         </View>
     );

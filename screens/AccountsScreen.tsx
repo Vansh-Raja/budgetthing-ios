@@ -4,27 +4,26 @@
  * Pixel-perfect port of AccountsView.swift
  */
 
-import React, { useState, useCallback } from 'react';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
+import { Text } from '@/components/ui/LockedText';
+import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
+  RefreshControl,
   ScrollView,
   StatusBar,
-  Alert,
-  RefreshControl,
+  StyleSheet,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Text } from '@/components/ui/LockedText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 
-import { Colors } from '../constants/theme';
-import { formatCents } from '../lib/logic/currencyUtils';
-import { computeAccountTileValueCents, getTransactionsForAccount } from '../lib/logic/accountBalance';
-import { Account } from '../lib/logic/types';
 import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
 import { useAccounts, useTransactions } from '../lib/hooks/useData';
+import { computeAccountTileValueCents, getTransactionsForAccount } from '../lib/logic/accountBalance';
+import { formatCents } from '../lib/logic/currencyUtils';
+import { Account } from '../lib/logic/types';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 
 // ============================================================================
@@ -79,6 +78,7 @@ export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenP
   const { data: accounts, refresh: refreshAccounts } = useAccounts();
   const { data: transactions, refresh: refreshTransactions } = useTransactions();
   const { syncNow } = useSyncStatus();
+  const { showPopup } = useCustomPopup();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -158,7 +158,14 @@ export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenP
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No accounts yet</Text>
             <TouchableOpacity
-              onPress={() => { Haptics.selectionAsync(); Alert.alert("Add", "Go to Settings"); }}
+              onPress={() => {
+                Haptics.selectionAsync();
+                showPopup({
+                  title: 'Add',
+                  message: 'Go to Settings',
+                  buttons: [{ text: 'OK', style: 'default' }],
+                });
+              }}
               style={styles.manageButton}
             >
               <Text style={styles.manageButtonText}>Add in Settings</Text>

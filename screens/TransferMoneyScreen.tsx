@@ -4,28 +4,27 @@
  * Allows creating a transfer transaction between two accounts.
  */
 
-import React, { useState, useMemo } from 'react';
-import {
-    View,
-    StyleSheet,
-    TouchableOpacity,
-    ScrollView,
-    KeyboardAvoidingView,
-    Platform,
-    Alert,
-    Modal,
-} from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
-import { Stack, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { format } from 'date-fns';
+import { Stack, useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import {
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '../constants/theme';
+import { TransactionRepository } from '../lib/db/repositories';
 import { useAccounts } from '../lib/hooks/useData';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { TransactionRepository } from '../lib/db/repositories';
 import { Account } from '../lib/logic/types';
 
 interface TransferMoneyScreenProps {
@@ -35,6 +34,7 @@ interface TransferMoneyScreenProps {
 export function TransferMoneyScreen({ onDismiss }: TransferMoneyScreenProps) {
     const insets = useSafeAreaInsets();
     const router = useRouter();
+    const { showPopup } = useCustomPopup();
 
     // Data
     const { data: accounts } = useAccounts();
@@ -55,16 +55,28 @@ export function TransferMoneyScreen({ onDismiss }: TransferMoneyScreenProps) {
 
     const handleSave = async () => {
         if (!fromAccountId || !toAccountId) {
-            Alert.alert("Missing Accounts", "Please select source and destination accounts.");
+            showPopup({
+                title: 'Missing Accounts',
+                message: 'Please select source and destination accounts.',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
             return;
         }
         if (fromAccountId === toAccountId) {
-            Alert.alert("Invalid Transfer", "Source and destination accounts must be different.");
+            showPopup({
+                title: 'Invalid Transfer',
+                message: 'Source and destination accounts must be different.',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
             return;
         }
         const cents = Math.round(parseFloat(amountStr) * 100);
         if (isNaN(cents) || cents <= 0) {
-            Alert.alert("Invalid Amount", "Please enter a valid amount.");
+            showPopup({
+                title: 'Invalid Amount',
+                message: 'Please enter a valid amount.',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
             return;
         }
 
@@ -88,7 +100,11 @@ export function TransferMoneyScreen({ onDismiss }: TransferMoneyScreenProps) {
             onDismiss();
         } catch (e) {
             console.error("Failed to transfer", e);
-            Alert.alert("Error", "Failed to create transfer");
+            showPopup({
+                title: 'Error',
+                message: 'Failed to create transfer',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         } finally {
             setIsSaving(false);
         }

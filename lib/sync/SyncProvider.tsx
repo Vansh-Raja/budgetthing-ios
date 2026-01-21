@@ -1,17 +1,18 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, AppStateStatus, Alert } from 'react-native';
-import NetInfo from '@react-native-community/netinfo';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { useAuth } from '@clerk/clerk-expo';
+import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from 'convex/react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 
 import { clearAllData, waitForDatabase } from '../db/database';
 import { seedDatabaseIfNeeded } from '../db/seed';
 import { Events, GlobalEvents } from '../events';
+import { dedupeHighImpactCanonicalData } from '../logic/dedupe/highImpactDedupe';
 import { dedupeSeededDefaults, getLocalCounts } from './bootstrap';
-import { clearSyncStateForUser, getLastPullSeq, resetLastPullSeq, useSync } from './syncEngine';
 import { getLocalDbOwner, isOwnerCompatibleWithUser, setLocalDbOwner } from './localDbOwner';
 import { reconcileLocalTripDerivedTransactionsForAllGroupTrips } from './localTripReconcile';
-import { dedupeHighImpactCanonicalData } from '../logic/dedupe/highImpactDedupe';
+import { clearSyncStateForUser, getLastPullSeq, resetLastPullSeq, useSync } from './syncEngine';
 
 interface SyncContextValue {
   syncNow: (reason?: string) => Promise<void>;
@@ -27,6 +28,7 @@ const SyncContext = createContext<SyncContextValue | undefined>(undefined);
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, userId } = useAuth();
   const { sync, isSyncing, lastSyncAtMs, lastSyncError, lastSyncReason } = useSync();
+  const { showPopup } = useCustomPopup();
 
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const allowPushRef = useRef(false);
@@ -76,7 +78,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, [sync]);
 
   const syncNow = useCallback(async (reason = 'manual') => {
-        if (!isSignedIn || !userId) {
+    if (!isSignedIn || !userId) {
       // Guest mode: re-query local DB via events.
       GlobalEvents.emit(Events.transactionsChanged);
       GlobalEvents.emit(Events.accountsChanged);
@@ -105,21 +107,21 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         allowPushRef.current = false;
         clearPushDebounce();
 
-          try {
-            const owner = await getLocalDbOwner();
-            if (!owner) {
-              await setLocalDbOwner('guest');
-            }
-            await seedDatabaseIfNeeded();
-            await reconcileLocalTripDerivedTransactionsForAllGroupTrips();
-
-            // Conservative local repair: remove any accidental duplicates.
-            await dedupeHighImpactCanonicalData({ userId: null });
-          } catch (e) {
-            console.warn('[SyncProvider] Guest seed failed:', e);
+        try {
+          const owner = await getLocalDbOwner();
+          if (!owner) {
+            await setLocalDbOwner('guest');
           }
-          return;
+          await seedDatabaseIfNeeded();
+          await reconcileLocalTripDerivedTransactionsForAllGroupTrips();
+
+          // Conservative local repair: remove any accidental duplicates.
+          await dedupeHighImpactCanonicalData({ userId: null });
+        } catch (e) {
+          console.warn('[SyncProvider] Guest seed failed:', e);
         }
+        return;
+      }
 
       // Signed in: bootstrap once per user.
       if (bootstrappedUserRef.current === userId) {
@@ -150,10 +152,11 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
           await resetLastPullSeq(userId);
           await setLocalDbOwner(userId);
 
-          Alert.alert(
-            'Data Cleared',
-            'This device had data from a different account. For privacy, local data was cleared before signing in.'
-          );
+          showPopup({
+            title: 'Data Cleared',
+            message: 'This device had data from a different account. For privacy, local data was cleared before signing in.',
+            buttons: [{ text: 'OK', style: 'default' }],
+          });
         }
 
         // If SecureStore survived uninstall/reinstall, lastSeq may be >0 while DB is empty.

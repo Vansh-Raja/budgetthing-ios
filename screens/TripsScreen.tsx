@@ -4,36 +4,36 @@
  * Pixel-perfect port of TripsListView.swift
  */
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  StatusBar,
-  Alert,
-} from 'react-native';
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import { CustomPopupProvider, useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text } from '@/components/ui/LockedText';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  StatusBar,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '../constants/theme';
-import { Trip } from '../lib/logic/types';
-import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
-import { TripCard } from '../components/TripCard';
-import { SharedTripCard } from '../components/SharedTripCard';
-import { TripDetailScreen } from './TripDetailScreen';
-import { SharedTripDetailScreen } from './SharedTripDetailScreen';
-import { AddTripScreen } from './AddTripScreen';
-import { AddSharedTripScreen } from './AddSharedTripScreen';
-import { JoinSharedTripScreen } from './JoinSharedTripScreen';
-import { Modal } from 'react-native';
-import { useTrips } from '../lib/hooks/useTrips';
-import { useSharedTrips } from '../lib/hooks/useSharedTrips';
-import { useSyncStatus } from '../lib/sync/SyncProvider';
-import { TripRepository, TripParticipantRepository } from '../lib/db/repositories';
 import { useAuth } from '@clerk/clerk-expo';
+import { Modal } from 'react-native';
+import { SharedTripCard } from '../components/SharedTripCard';
+import { TripCard } from '../components/TripCard';
+import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
+import { Colors } from '../constants/theme';
+import { TripParticipantRepository, TripRepository } from '../lib/db/repositories';
+import { useSharedTrips } from '../lib/hooks/useSharedTrips';
+import { useTrips } from '../lib/hooks/useTrips';
+import { Trip } from '../lib/logic/types';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
+import { AddSharedTripScreen } from './AddSharedTripScreen';
+import { AddTripScreen } from './AddTripScreen';
+import { JoinSharedTripScreen } from './JoinSharedTripScreen';
+import { SharedTripDetailScreen } from './SharedTripDetailScreen';
+import { TripDetailScreen } from './TripDetailScreen';
 
 // ============================================================================
 // Types & Props
@@ -78,11 +78,7 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
   const [showAddSharedTrip, setShowAddSharedTrip] = useState(false);
   const [showJoinTrip, setShowJoinTrip] = useState(false);
 
-  useEffect(() => {
-    if (addTripRequestId <= 0) return;
-    setSelectedTripId(null);
-    setShowAddTrip(true);
-  }, [addTripRequestId]);
+
 
   const selectedTrip = useMemo(() => trips.find(t => t.id === selectedTripId) || null, [trips, selectedTripId]);
   const selectedSharedTripSummary = useMemo(
@@ -96,28 +92,38 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
     setOrderedTrips(trips);
   }, [trips]);
 
-  const handleAddTrip = () => {
+  const { showActionSheet, showPopup } = useCustomPopup();
+
+  const handleAddTrip = useCallback(() => {
     Haptics.selectionAsync();
 
     if (isSignedIn) {
-      Alert.alert(
-        'New Trip',
-        undefined,
-        [
-          { text: 'Local Trip', onPress: () => setShowAddTrip(true) },
-          { text: 'Shared Trip', onPress: () => setShowAddSharedTrip(true) },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+      showActionSheet({
+        title: 'New Trip',
+        actions: [
+          { text: 'Local Trip', icon: 'airplane-outline', onPress: () => setShowAddTrip(true) },
+          { text: 'Shared Trip', icon: 'people-outline', onPress: () => setShowAddSharedTrip(true) },
+        ],
+      });
       return;
     }
 
     setShowAddTrip(true);
-  };
+  }, [isSignedIn, showActionSheet]);
+
+  useEffect(() => {
+    if (addTripRequestId <= 0) return;
+    setSelectedTripId(null);
+    handleAddTrip();
+  }, [addTripRequestId, handleAddTrip]);
 
   const handleJoinTrip = () => {
     if (!isSignedIn) {
-      Alert.alert('Sign in required', 'Sign in to join shared trips.');
+      showPopup({
+        title: 'Sign in required',
+        message: 'Sign in to join shared trips.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       return;
     }
     Haptics.selectionAsync();
@@ -323,10 +329,12 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
         presentationStyle="pageSheet"
         onRequestClose={() => setShowAddTrip(false)}
       >
-        <AddTripScreen
-          onDismiss={() => setShowAddTrip(false)}
-          onSave={() => refresh()}
-        />
+        <CustomPopupProvider>
+          <AddTripScreen
+            onDismiss={() => setShowAddTrip(false)}
+            onSave={() => refresh()}
+          />
+        </CustomPopupProvider>
       </Modal>
 
       {/* Add Shared Trip Modal */}
@@ -336,13 +344,15 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
         presentationStyle="pageSheet"
         onRequestClose={() => setShowAddSharedTrip(false)}
       >
-        <AddSharedTripScreen
-          onDismiss={() => setShowAddSharedTrip(false)}
-          onCreated={(id) => {
-            setSelectedSharedTripId(id);
-            refreshSharedTrips();
-          }}
-        />
+        <CustomPopupProvider>
+          <AddSharedTripScreen
+            onDismiss={() => setShowAddSharedTrip(false)}
+            onCreated={(id) => {
+              setSelectedSharedTripId(id);
+              refreshSharedTrips();
+            }}
+          />
+        </CustomPopupProvider>
       </Modal>
 
       {/* Join Shared Trip Modal */}
@@ -352,13 +362,15 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
         presentationStyle="pageSheet"
         onRequestClose={() => setShowJoinTrip(false)}
       >
-        <JoinSharedTripScreen
-          onDismiss={() => setShowJoinTrip(false)}
-          onJoined={(id) => {
-            setSelectedSharedTripId(id);
-            refreshSharedTrips();
-          }}
-        />
+        <CustomPopupProvider>
+          <JoinSharedTripScreen
+            onDismiss={() => setShowJoinTrip(false)}
+            onJoined={(id) => {
+              setSelectedSharedTripId(id);
+              refreshSharedTrips();
+            }}
+          />
+        </CustomPopupProvider>
       </Modal>
 
     </View>

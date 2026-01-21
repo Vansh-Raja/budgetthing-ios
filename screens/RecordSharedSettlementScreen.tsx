@@ -1,16 +1,17 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
+import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAuth } from '@clerk/clerk-expo';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
-import { Colors } from '../constants/theme';
-import type { Trip, TripParticipant } from '../lib/logic/types';
-import { getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { SharedTripSettlementRepository } from '../lib/db/sharedTripWriteRepositories';
-import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
 import { useToast } from '@/components/ui/ToastProvider';
+import { Colors } from '../constants/theme';
+import { SharedTripSettlementRepository } from '../lib/db/sharedTripWriteRepositories';
+import { getCurrencySymbol } from '../lib/logic/currencyUtils';
+import type { Trip, TripParticipant } from '../lib/logic/types';
+import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
 
 interface RecordSharedSettlementScreenProps {
   trip: Trip;
@@ -33,6 +34,7 @@ export function RecordSharedSettlementScreen({
 }: RecordSharedSettlementScreenProps) {
   const { userId } = useAuth();
   const toast = useToast();
+  const { showActionSheet, showPopup } = useCustomPopup();
 
   const currentUserParticipantId = useMemo(
     () => participants.find((p) => p.isCurrentUser)?.id ?? null,
@@ -53,24 +55,27 @@ export function RecordSharedSettlementScreen({
   const canSave = payerId && receiverId && payerId !== receiverId && parseFloat(amountString) > 0;
 
   const pickParticipant = useCallback((title: string, onPick: (id: string) => void) => {
-    const actions: any[] = participants.map((p) => ({
+    const actions = participants.map((p) => ({
       text: p.isCurrentUser ? 'You' : p.name,
       onPress: () => {
         Haptics.selectionAsync();
         onPick(p.id);
       },
     }));
-    actions.push({ text: 'Cancel', style: 'cancel' });
 
-    Alert.alert(title, undefined, actions);
-  }, [participants]);
+    showActionSheet({ title, actions });
+  }, [participants, showActionSheet]);
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
 
     const amount = parseFloat(amountString);
     if (!payerId || !receiverId || payerId === receiverId || isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid', 'Please select payer/receiver and enter a valid amount.');
+      showPopup({
+        title: 'Invalid',
+        message: 'Please select payer/receiver and enter a valid amount.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       return;
     }
 
@@ -103,12 +108,16 @@ export function RecordSharedSettlementScreen({
       onDismiss();
     } catch (e) {
       console.error('[RecordSharedSettlement] Failed:', e);
-      Alert.alert('Error', 'Failed to record settlement.');
+      showPopup({
+        title: 'Error',
+        message: 'Failed to record settlement.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsSaving(false);
     }
-  }, [amountString, dateMs, isSaving, onDismiss, onRecorded, payerId, receiverId, trip.id, userId, toast]);
+  }, [amountString, dateMs, isSaving, onDismiss, onRecorded, payerId, receiverId, trip.id, userId, toast, showPopup]);
 
   return (
     <View style={styles.container}>

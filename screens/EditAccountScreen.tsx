@@ -4,31 +4,31 @@
  * Pixel-perfect port of EditAccountView.swift
  */
 
-import React, { useState, useEffect } from 'react';
-import {
-    View,
-    StyleSheet,
-    TouchableOpacity,
-    ScrollView,
-    Switch,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-} from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '../constants/theme';
-import { Account, AccountKind } from '../lib/logic/types';
-import { AccountRepository, CategoryRepository, TransactionRepository } from '../lib/db/repositories';
-import { getCurrencySymbol, parseToCents } from '../lib/logic/currencyUtils';
-import { computeAccountBalanceCents } from '../lib/logic/accountBalance';
-import { useUserSettings } from '../lib/hooks/useUserSettings';
 import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { Colors } from '../constants/theme';
+import { AccountRepository, CategoryRepository, TransactionRepository } from '../lib/db/repositories';
 import { RECOMMENDED_ACCOUNT_EMOJIS_BY_KIND } from '../lib/emoji/recommendedEmojis';
+import { useUserSettings } from '../lib/hooks/useUserSettings';
+import { computeAccountBalanceCents } from '../lib/logic/accountBalance';
+import { getCurrencySymbol, parseToCents } from '../lib/logic/currencyUtils';
+import { Account, AccountKind } from '../lib/logic/types';
 
 interface EditAccountScreenProps {
     accountId?: string; // If present, edit mode
@@ -46,6 +46,7 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { settings, updateSettings } = useUserSettings();
+    const { showPopup } = useCustomPopup();
 
     // Form State
     const [name, setName] = useState('');
@@ -109,7 +110,11 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
             }
         } catch (e) {
             console.error("Failed to load account", e);
-            Alert.alert("Error", "Could not load account details");
+            showPopup({
+                title: 'Error',
+                message: 'Could not load account details',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         } finally {
             setLoading(false);
         }
@@ -118,7 +123,11 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
     const handleSave = async () => {
         const trimmedName = name.trim();
         if (trimmedName.length === 0) {
-            Alert.alert("Missing Name", "Please enter an account name");
+            showPopup({
+                title: 'Missing Name',
+                message: 'Please enter an account name',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
             return;
         }
 
@@ -127,7 +136,11 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
         if (!accountId && kind !== 'card' && startingBalanceStr.trim().length > 0) {
             const parsed = parseToCents(startingBalanceStr);
             if (parsed === null) {
-                Alert.alert("Invalid Balance", "Please enter a valid starting balance.");
+                showPopup({
+                    title: 'Invalid Balance',
+                    message: 'Please enter a valid starting balance.',
+                    buttons: [{ text: 'OK', style: 'default' }],
+                });
                 return;
             }
             openingBalanceCents = parsed;
@@ -138,7 +151,11 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
         if (accountId && kind !== 'card' && currentBalanceStr.trim().length > 0) {
             const parsed = parseToCents(currentBalanceStr);
             if (parsed === null) {
-                Alert.alert("Invalid Balance", "Please enter a valid current balance.");
+                showPopup({
+                    title: 'Invalid Balance',
+                    message: 'Please enter a valid current balance.',
+                    buttons: [{ text: 'OK', style: 'default' }],
+                });
                 return;
             }
             targetBalanceCents = parsed;
@@ -149,7 +166,11 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
         if (kind === 'card' && limitEnabled && limitStr.trim().length > 0) {
             const parsed = parseToCents(limitStr);
             if (parsed === null) {
-                Alert.alert("Invalid Limit", "Please enter a valid credit limit.");
+                showPopup({
+                    title: 'Invalid Limit',
+                    message: 'Please enter a valid credit limit.',
+                    buttons: [{ text: 'OK', style: 'default' }],
+                });
                 return;
             }
             limitAmountCents = parsed;
@@ -160,7 +181,11 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
         if (kind === 'card' && billingDayStr.trim().length > 0) {
             const parsed = parseInt(billingDayStr, 10);
             if (!Number.isFinite(parsed) || parsed < 1 || parsed > 28) {
-                Alert.alert("Invalid Billing Day", "Billing cycle day must be between 1 and 28.");
+                showPopup({
+                    title: 'Invalid Billing Day',
+                    message: 'Billing cycle day must be between 1 and 28.',
+                    buttons: [{ text: 'OK', style: 'default' }],
+                });
                 return;
             }
             billingCycleDay = parsed;
@@ -206,7 +231,11 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
                 if (kind !== 'card' && targetBalanceCents !== null) {
                     const account = loadedAccount ?? (await AccountRepository.getById(accountId));
                     if (!account) {
-                        Alert.alert("Error", "Account not found");
+                        showPopup({
+                            title: 'Error',
+                            message: 'Account not found',
+                            buttons: [{ text: 'OK', style: 'default' }],
+                        });
                         return;
                     }
 
@@ -247,7 +276,11 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
         } catch (e) {
             console.error("Failed to save account", e);
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            Alert.alert("Error", "Failed to save account");
+            showPopup({
+                title: 'Error',
+                message: 'Failed to save account',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         } finally {
             setIsSaving(false);
         }
@@ -264,19 +297,23 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
         } catch (e) {
             console.error('[EditAccount] Failed to set default account:', e);
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            Alert.alert("Error", "Failed to set default account");
+            showPopup({
+                title: 'Error',
+                message: 'Failed to set default account',
+                buttons: [{ text: 'OK', style: 'default' }],
+            });
         }
     };
 
     const handleDelete = async () => {
-        Alert.alert(
-            "Delete Account?",
-            "This will remove the account but keep transactions (they will become account-less). This cannot be undone.",
-            [
-                { text: "Cancel", style: "cancel" },
+        showPopup({
+            title: 'Delete Account?',
+            message: 'This will remove the account but keep transactions (they will become account-less). This cannot be undone.',
+            buttons: [
+                { text: 'Cancel', style: 'cancel' },
                 {
-                    text: "Delete",
-                    style: "destructive",
+                    text: 'Delete',
+                    style: 'destructive',
                     onPress: async () => {
                         try {
                             if (accountId) {
@@ -303,12 +340,16 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
                                 else router.back();
                             }
                         } catch (e) {
-                            Alert.alert("Error", "Failed to delete account");
+                            showPopup({
+                                title: 'Error',
+                                message: 'Failed to delete account',
+                                buttons: [{ text: 'OK', style: 'default' }],
+                            });
                         }
                     }
                 }
-            ]
-        );
+            ],
+        });
     };
 
     if (loading) return <View style={styles.container} />;

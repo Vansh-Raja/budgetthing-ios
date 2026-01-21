@@ -1,24 +1,25 @@
-import 'react-native-get-random-values'; // Polyfill for uuid
+import { CustomPopupProvider } from '@/components/ui/CustomPopupProvider';
+import { ToastProvider } from '@/components/ui/ToastProvider';
+import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import React, { useEffect, useState } from 'react';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import 'react-native-reanimated';
-import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import { ConvexReactClient } from 'convex/react';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
+import { useFonts } from 'expo-font';
+import * as Linking from 'expo-linking';
+import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import React, { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import 'react-native-get-random-values'; // Polyfill for uuid
+import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { tokenCache } from '../lib/auth/tokenCache';
 import { SyncProvider } from '../lib/sync/SyncProvider';
-import * as Linking from 'expo-linking';
-import { ToastProvider } from '@/components/ui/ToastProvider';
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+  ErrorBoundary
 } from 'expo-router';
 
 const CLERK_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
@@ -72,7 +73,7 @@ export default function RootLayout() {
 }
 
 import { useRouter, useSegments } from 'expo-router';
-import { useUserSettings, UserSettingsProvider } from '../lib/hooks/useUserSettings';
+import { UserSettingsProvider, useUserSettings } from '../lib/hooks/useUserSettings';
 
 // ...
 
@@ -83,13 +84,15 @@ function RootLayoutNav() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <SafeAreaProvider>
             <ThemeProvider value={AppTheme}>
-              <SyncProvider>
-                <UserSettingsProvider>
-                  <ToastProvider>
-                    <InitialLayout />
-                  </ToastProvider>
-                </UserSettingsProvider>
-              </SyncProvider>
+              <CustomPopupProvider>
+                <SyncProvider>
+                  <UserSettingsProvider>
+                    <ToastProvider>
+                      <InitialLayout />
+                    </ToastProvider>
+                  </UserSettingsProvider>
+                </SyncProvider>
+              </CustomPopupProvider>
             </ThemeProvider>
           </SafeAreaProvider>
         </GestureHandlerRootView>

@@ -1,28 +1,29 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, StatusBar, Alert, Modal } from 'react-native';
+import { CustomPopupProvider, useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text } from '@/components/ui/LockedText';
+import { useAuth } from '@clerk/clerk-expo';
+import { Ionicons } from '@expo/vector-icons';
+import { useMutation, useQuery } from 'convex/react';
+import * as Haptics from 'expo-haptics';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { useAuth } from '@clerk/clerk-expo';
-import { useMutation, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
-import { Colors } from '../constants/theme';
-import type { Trip } from '../lib/logic/types';
-import { TripSummaryCalculator } from '../lib/logic/tripSummaryCalculator';
-import { TripHeaderCard } from '../components/trip/TripHeaderCard';
-import { ExpensesTab } from '../components/trip/ExpensesTab';
 import { BalancesTab } from '../components/trip/BalancesTab';
+import { ExpensesTab } from '../components/trip/ExpensesTab';
 import { SettleUpTab } from '../components/trip/SettleUpTab';
+import { TripHeaderCard } from '../components/trip/TripHeaderCard';
+import { Colors } from '../constants/theme';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
-import { RecordSharedSettlementScreen } from './RecordSharedSettlementScreen';
+import { Events, GlobalEvents } from '../lib/events';
+import { TripSummaryCalculator } from '../lib/logic/tripSummaryCalculator';
+import type { Trip } from '../lib/logic/types';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { EditSharedTripScreen } from './EditSharedTripScreen';
+import { RecordSharedSettlementScreen } from './RecordSharedSettlementScreen';
 import { SharedTripMembersScreen } from './SharedTripMembersScreen';
 import { TransactionDetailScreen } from './TransactionDetailScreen';
-import { Events, GlobalEvents } from '../lib/events';
-import { useSyncStatus } from '../lib/sync/SyncProvider';
 
 interface SharedTripDetailScreenProps {
   tripId: string;
@@ -94,6 +95,8 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
     }
   };
 
+  const { showActionSheet, showPopup, showInfo } = useCustomPopup();
+
   const handleMenu = useCallback(() => {
     Haptics.selectionAsync();
 
@@ -104,14 +107,19 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
     if (code) {
       actions.push({
         text: 'Show Join Code',
+        icon: 'qr-code-outline',
         onPress: () => {
-          Alert.alert('Join Code', code);
+          showInfo({
+            title: 'Join Code',
+            copyableContent: code,
+          });
         },
       });
     }
 
     actions.push({
       text: 'Members',
+      icon: 'people-outline',
       onPress: () => {
         setShowMembers(true);
       },
@@ -119,6 +127,7 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
 
     actions.push({
       text: 'Edit Trip',
+      icon: 'pencil-outline',
       onPress: () => {
         setShowEditTrip(true);
       },
@@ -126,25 +135,34 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
 
     actions.push({
       text: code ? 'Regenerate Join Code' : 'Generate Join Code',
+      icon: 'refresh-outline',
       onPress: async () => {
         try {
-           const next = await rotateInviteMutation({ tripId });
-           const newCode = next?.code;
-           Alert.alert('Join Code', String(newCode));
+          const next = await rotateInviteMutation({ tripId });
+          const newCode = next?.code;
+          showInfo({
+            title: 'Join Code',
+            copyableContent: String(newCode),
+          });
         } catch (e: any) {
-          Alert.alert('Error', e?.message ?? 'Failed to generate join code');
+          showPopup({
+            title: 'Error',
+            message: e?.message ?? 'Failed to generate join code',
+            buttons: [{ text: 'OK', style: 'default' }],
+          });
         }
       },
     });
 
     actions.push({
       text: 'Delete Trip',
+      icon: 'trash-outline',
       style: 'destructive',
       onPress: () => {
-        Alert.alert(
-          'Delete Trip?',
-          'This deletes the trip for everyone.',
-          [
+        showPopup({
+          title: 'Delete Trip?',
+          message: 'This deletes the trip for everyone.',
+          buttons: [
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Delete',
@@ -156,19 +174,24 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   onDismiss();
                 } catch (e: any) {
-                  Alert.alert('Error', e?.message ?? 'Failed to delete trip');
+                  showPopup({
+                    title: 'Error',
+                    message: e?.message ?? 'Failed to delete trip',
+                    buttons: [{ text: 'OK', style: 'default' }],
+                  });
                 }
               },
             },
-          ]
-        );
+          ],
+        });
       },
     });
 
-    actions.push({ text: 'Cancel', style: 'cancel' });
-
-    Alert.alert('Trip Options', undefined, actions);
-  }, [activeInvite, deleteTripMutation, onDismiss, rotateInviteMutation, syncNow, tripId]);
+    showActionSheet({
+      title: 'Trip Options',
+      actions,
+    });
+  }, [activeInvite, deleteTripMutation, onDismiss, rotateInviteMutation, syncNow, tripId, showActionSheet, showPopup, showInfo]);
 
   if (!trip || !summary) {
     return (
@@ -278,14 +301,16 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
         presentationStyle="pageSheet"
         onRequestClose={() => setShowMembers(false)}
       >
-        <SharedTripMembersScreen
-          trip={trip}
-          participants={trip.participants ?? []}
-          onDismiss={() => setShowMembers(false)}
-          onChanged={() => {
-            refresh();
-          }}
-        />
+        <CustomPopupProvider>
+          <SharedTripMembersScreen
+            trip={trip}
+            participants={trip.participants ?? []}
+            onDismiss={() => setShowMembers(false)}
+            onChanged={() => {
+              refresh();
+            }}
+          />
+        </CustomPopupProvider>
       </Modal>
 
       <Modal
@@ -294,13 +319,15 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
         presentationStyle="pageSheet"
         onRequestClose={() => setShowEditTrip(false)}
       >
-        <EditSharedTripScreen
-          trip={trip}
-          onDismiss={() => setShowEditTrip(false)}
-          onSaved={() => {
-            refresh();
-          }}
-        />
+        <CustomPopupProvider>
+          <EditSharedTripScreen
+            trip={trip}
+            onDismiss={() => setShowEditTrip(false)}
+            onSaved={() => {
+              refresh();
+            }}
+          />
+        </CustomPopupProvider>
       </Modal>
 
       <Modal
@@ -310,15 +337,17 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
         onRequestClose={() => setSelectedExpenseId(null)}
       >
         {selectedExpenseId && (
-          <TransactionDetailScreen
-            sharedTripExpense={{ tripId: trip.id, expenseId: selectedExpenseId }}
-            initialEditMode={selectedExpenseEditMode}
-            onDismiss={() => {
-              setSelectedExpenseId(null);
-              setSelectedExpenseEditMode(false);
-              refresh();
-            }}
-          />
+          <CustomPopupProvider>
+            <TransactionDetailScreen
+              sharedTripExpense={{ tripId: trip.id, expenseId: selectedExpenseId }}
+              initialEditMode={selectedExpenseEditMode}
+              onDismiss={() => {
+                setSelectedExpenseId(null);
+                setSelectedExpenseEditMode(false);
+                refresh();
+              }}
+            />
+          </CustomPopupProvider>
         )}
       </Modal>
 
@@ -328,17 +357,19 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
         presentationStyle="pageSheet"
         onRequestClose={() => setSettlementModal((s) => ({ ...s, visible: false }))}
       >
-        <RecordSharedSettlementScreen
-          trip={trip}
-          participants={trip.participants ?? []}
-          initialPayerId={settlementModal.payerId}
-          initialReceiverId={settlementModal.receiverId}
-          initialAmountCents={settlementModal.amountCents}
-          onDismiss={() => setSettlementModal((s) => ({ ...s, visible: false }))}
-          onRecorded={() => {
-            refresh();
-          }}
-        />
+        <CustomPopupProvider>
+          <RecordSharedSettlementScreen
+            trip={trip}
+            participants={trip.participants ?? []}
+            initialPayerId={settlementModal.payerId}
+            initialReceiverId={settlementModal.receiverId}
+            initialAmountCents={settlementModal.amountCents}
+            onDismiss={() => setSettlementModal((s) => ({ ...s, visible: false }))}
+            onRecorded={() => {
+              refresh();
+            }}
+          />
+        </CustomPopupProvider>
       </Modal>
 
     </View>

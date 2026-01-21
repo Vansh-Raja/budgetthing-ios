@@ -4,6 +4,7 @@
  * Uses Clerk's SSO integration for Apple Sign-In on iOS.
  */
 
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text } from '@/components/ui/LockedText';
 import { useSSO } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +13,6 @@ import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     StyleSheet,
     TouchableOpacity
 } from 'react-native';
@@ -33,6 +33,7 @@ export function AppleSignInButton({
 }: AppleSignInButtonProps) {
     const [isLoading, setIsLoading] = useState(false);
     const { startSSOFlow } = useSSO();
+    const { showPopup } = useCustomPopup();
 
     const handleSignIn = useCallback(async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -57,10 +58,11 @@ export function AppleSignInButton({
 
             // Don't show error for user cancellation
             if (error?.errors?.[0]?.code !== 'user_cancelled') {
-                Alert.alert(
-                    'Sign In Failed',
-                    error?.errors?.[0]?.message || 'An error occurred during sign in. Please try again.',
-                );
+                showPopup({
+                    title: 'Sign In Failed',
+                    message: error?.errors?.[0]?.message || 'An error occurred during sign in. Please try again.',
+                    buttons: [{ text: 'OK', style: 'default' }],
+                });
                 onSignInError?.(error);
             }
         } finally {

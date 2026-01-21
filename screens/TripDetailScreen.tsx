@@ -4,26 +4,27 @@
  * Pixel-perfect port of TripDetailView.swift
  */
 
-import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, StatusBar, Alert, Modal } from 'react-native';
+import { CustomPopupProvider, useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text } from '@/components/ui/LockedText';
-import PagerView from 'react-native-pager-view';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import React, { useMemo, useRef, useState } from 'react';
+import { Modal, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import PagerView from 'react-native-pager-view';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '../constants/theme';
-import { Trip } from '../lib/logic/types';
-import { TripSummaryCalculator } from '../lib/logic/tripSummaryCalculator';
-import { TripHeaderCard } from '../components/trip/TripHeaderCard';
-import { ExpensesTab } from '../components/trip/ExpensesTab';
 import { BalancesTab } from '../components/trip/BalancesTab';
+import { ExpensesTab } from '../components/trip/ExpensesTab';
 import { SettleUpTab } from '../components/trip/SettleUpTab';
+import { TripHeaderCard } from '../components/trip/TripHeaderCard';
+import { Colors } from '../constants/theme';
+import { TripSummaryCalculator } from '../lib/logic/tripSummaryCalculator';
+import { Trip } from '../lib/logic/types';
 import { AddExpenseScreen } from './AddExpenseScreen';
 import { RecordSettlementScreen } from './RecordSettlementScreen';
 
-import { EditTripScreen } from './EditTripScreen';
 import { TripRepository } from '../lib/db/repositories';
+import { EditTripScreen } from './EditTripScreen';
 import { TransactionDetailScreen } from './TransactionDetailScreen';
 
 interface TripDetailScreenProps {
@@ -81,60 +82,71 @@ export function TripDetailScreen({ trip, onDismiss, onTripUpdate }: TripDetailSc
     }
   };
 
+  const { showActionSheet, showPopup } = useCustomPopup();
+
   const handleMenu = () => {
     Haptics.selectionAsync();
-    Alert.alert(
-      "Trip Options",
-      undefined,
-      [
+    showActionSheet({
+      title: 'Trip Options',
+      actions: [
         {
-          text: "Edit Trip",
+          text: 'Edit Trip',
+          icon: 'pencil-outline',
           onPress: () => {
             setEditMode(true);
           }
         },
         {
-          text: trip.isArchived ? "Unarchive" : "Archive",
+          text: trip.isArchived ? 'Unarchive' : 'Archive',
+          icon: trip.isArchived ? 'archive-outline' : 'archive',
           onPress: async () => {
             try {
               await TripRepository.update(trip.id, { isArchived: !trip.isArchived });
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               if (onTripUpdate) onTripUpdate();
             } catch (e) {
-              Alert.alert("Error", "Failed to update trip");
+              showPopup({
+                title: 'Error',
+                message: 'Failed to update trip',
+                buttons: [{ text: 'OK', style: 'default' }],
+              });
             }
           }
         },
         {
-          text: "Delete Trip",
-          style: "destructive",
+          text: 'Delete Trip',
+          icon: 'trash-outline',
+          style: 'destructive',
           onPress: () => {
-            Alert.alert(
-              "Delete Trip?",
-              "This cannot be undone. All expenses will be deleted.",
-              [
-                { text: "Cancel", style: "cancel" },
+            showPopup({
+              title: 'Delete Trip?',
+              message: 'This cannot be undone. All expenses will be deleted.',
+              buttons: [
+                { text: 'Cancel', style: 'cancel' },
                 {
-                  text: "Delete",
-                  style: "destructive",
+                  text: 'Delete',
+                  style: 'destructive',
                   onPress: async () => {
                     try {
                       await TripRepository.delete(trip.id);
                       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                      onDismiss(); // Close detail
+                      onDismiss();
                       if (onTripUpdate) onTripUpdate();
                     } catch (e) {
-                      Alert.alert("Error", "Failed to delete trip");
+                      showPopup({
+                        title: 'Error',
+                        message: 'Failed to delete trip',
+                        buttons: [{ text: 'OK', style: 'default' }],
+                      });
                     }
                   }
                 }
-              ]
-            );
+              ],
+            });
           }
         },
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
+      ],
+    });
   };
 
   return (
@@ -243,13 +255,15 @@ export function TripDetailScreen({ trip, onDismiss, onTripUpdate }: TripDetailSc
         presentationStyle="pageSheet"
         onRequestClose={() => setShowAddExpense(false)}
       >
-        <AddExpenseScreen
-          tripId={trip.id}
-          onDismiss={() => {
-            setShowAddExpense(false);
-            if (onTripUpdate) onTripUpdate();
-          }}
-        />
+        <CustomPopupProvider>
+          <AddExpenseScreen
+            tripId={trip.id}
+            onDismiss={() => {
+              setShowAddExpense(false);
+              if (onTripUpdate) onTripUpdate();
+            }}
+          />
+        </CustomPopupProvider>
       </Modal>
 
       {/* Edit Trip Modal */}
@@ -259,13 +273,15 @@ export function TripDetailScreen({ trip, onDismiss, onTripUpdate }: TripDetailSc
         presentationStyle="pageSheet"
         onRequestClose={() => setEditMode(false)}
       >
-        <EditTripScreen
-          trip={trip}
-          onDismiss={() => setEditMode(false)}
-          onSave={() => {
-            if (onTripUpdate) onTripUpdate();
-          }}
-        />
+        <CustomPopupProvider>
+          <EditTripScreen
+            trip={trip}
+            onDismiss={() => setEditMode(false)}
+            onSave={() => {
+              if (onTripUpdate) onTripUpdate();
+            }}
+          />
+        </CustomPopupProvider>
       </Modal>
 
       {/* Record Settlement Modal */}
@@ -276,17 +292,19 @@ export function TripDetailScreen({ trip, onDismiss, onTripUpdate }: TripDetailSc
         onRequestClose={() => setSettlementModal(prev => ({ ...prev, visible: false }))}
       >
         {settlementModal.visible && (
-          <RecordSettlementScreen
-            trip={trip}
-            participants={trip.participants || []}
-            initialPayerId={settlementModal.payerId}
-            initialReceiverId={settlementModal.receiverId}
-            initialAmountCents={settlementModal.amount}
-            onDismiss={() => setSettlementModal(prev => ({ ...prev, visible: false }))}
-            onRecorded={() => {
-              if (onTripUpdate) onTripUpdate();
-            }}
-          />
+          <CustomPopupProvider>
+            <RecordSettlementScreen
+              trip={trip}
+              participants={trip.participants || []}
+              initialPayerId={settlementModal.payerId}
+              initialReceiverId={settlementModal.receiverId}
+              initialAmountCents={settlementModal.amount}
+              onDismiss={() => setSettlementModal(prev => ({ ...prev, visible: false }))}
+              onRecorded={() => {
+                if (onTripUpdate) onTripUpdate();
+              }}
+            />
+          </CustomPopupProvider>
         )}
       </Modal>
 
@@ -298,13 +316,15 @@ export function TripDetailScreen({ trip, onDismiss, onTripUpdate }: TripDetailSc
         onRequestClose={() => setSelectedTransactionId(null)}
       >
         {selectedTransactionId && (
-          <TransactionDetailScreen
-            transactionId={selectedTransactionId}
-            onDismiss={() => setSelectedTransactionId(null)}
-            onUpdate={() => {
-              if (onTripUpdate) onTripUpdate();
-            }}
-          />
+          <CustomPopupProvider>
+            <TransactionDetailScreen
+              transactionId={selectedTransactionId}
+              onDismiss={() => setSelectedTransactionId(null)}
+              onUpdate={() => {
+                if (onTripUpdate) onTripUpdate();
+              }}
+            />
+          </CustomPopupProvider>
         )}
       </Modal>
 

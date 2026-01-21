@@ -4,25 +4,25 @@
  * Pixel-perfect port of CategoryDetailView.swift
  */
 
-import React, { useState } from 'react';
-import {
-    View,
-    StyleSheet,
-    TouchableOpacity,
-    Modal,
-    Alert,
-} from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text } from '@/components/ui/LockedText';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+    Modal,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CustomPopupProvider } from '@/components/ui/CustomPopupProvider';
 import { Colors } from '../constants/theme';
-import { Category } from '../lib/logic/types';
-import { formatCents } from '../lib/logic/currencyUtils';
-import { useCategories } from '../lib/hooks/useData';
 import { CategoryRepository } from '../lib/db/repositories';
+import { useCategories } from '../lib/hooks/useData';
+import { formatCents } from '../lib/logic/currencyUtils';
 import { EditCategoryScreen } from './EditCategoryScreen';
 
 interface CategoryDetailScreenProps {
@@ -34,6 +34,7 @@ export function CategoryDetailScreen({ categoryId, onDismiss }: CategoryDetailSc
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { data: categories, refresh } = useCategories();
+    const { showPopup } = useCustomPopup();
 
     const [showEditor, setShowEditor] = useState(false);
     const [showDeletedToast, setShowDeletedToast] = useState(false);
@@ -52,10 +53,10 @@ export function CategoryDetailScreen({ categoryId, onDismiss }: CategoryDetailSc
 
     const handleDelete = () => {
         Haptics.selectionAsync();
-        Alert.alert(
-            'Delete Category?',
-            'This will also delete all transactions in this category. This cannot be undone.',
-            [
+        showPopup({
+            title: 'Delete Category?',
+            message: 'This will also delete all transactions in this category. This cannot be undone.',
+            buttons: [
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Delete',
@@ -73,8 +74,8 @@ export function CategoryDetailScreen({ categoryId, onDismiss }: CategoryDetailSc
                         }
                     },
                 },
-            ]
-        );
+            ],
+        });
     };
 
     const handleEditorSave = () => {
@@ -155,11 +156,13 @@ export function CategoryDetailScreen({ categoryId, onDismiss }: CategoryDetailSc
                 presentationStyle="pageSheet"
                 onRequestClose={() => setShowEditor(false)}
             >
-                <EditCategoryScreen
-                    categoryId={categoryId}
-                    onDismiss={() => setShowEditor(false)}
-                    onSave={handleEditorSave}
-                />
+                <CustomPopupProvider>
+                    <EditCategoryScreen
+                        categoryId={categoryId}
+                        onDismiss={() => setShowEditor(false)}
+                        onSave={handleEditorSave}
+                    />
+                </CustomPopupProvider>
             </Modal>
         </View>
     );

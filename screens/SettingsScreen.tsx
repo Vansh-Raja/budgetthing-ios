@@ -5,13 +5,13 @@
  * Now includes Account section with Sign In / Sign Out functionality
  */
 
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   ScrollView,
   StatusBar,
@@ -36,8 +36,8 @@ import { useAuthState } from '../lib/auth/useAuthHooks';
 import { clearAllData } from '../lib/db/database';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
-import { clearSyncStateForUser } from '../lib/sync/syncEngine';
 import { setLocalDbOwner } from '../lib/sync/localDbOwner';
+import { clearSyncStateForUser } from '../lib/sync/syncEngine';
 
 // ============================================================================
 // Types & Props
@@ -114,6 +114,7 @@ import { useRouter } from 'expo-router';
 export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { showPopup } = useCustomPopup();
 
   // Auth state
   const { isSignedIn, isLoaded, user, signOut } = useAuthState();
@@ -153,7 +154,11 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
       await updateSettings({ hapticsEnabled: value });
     } catch (error) {
       console.error('[Settings] Failed to update haptics:', error);
-      Alert.alert('Error', 'Failed to update setting.');
+      showPopup({
+        title: 'Error',
+        message: 'Failed to update setting.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
     }
   }, [updateSettings]);
 
@@ -164,7 +169,11 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
       await updateSettings({ syncTransactionFilters: value });
     } catch (error) {
       console.error('[Settings] Failed to update syncTransactionFilters:', error);
-      Alert.alert('Error', 'Failed to update setting.');
+      showPopup({
+        title: 'Error',
+        message: 'Failed to update setting.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
     }
   }, [updateSettings, resetTransactionFiltersOnReopen]);
 
@@ -185,7 +194,11 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
       }
     } catch (error) {
       console.error('[Settings] Failed to update resetTransactionFiltersOnReopen:', error);
-      Alert.alert('Error', 'Failed to update setting.');
+      showPopup({
+        title: 'Error',
+        message: 'Failed to update setting.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
     }
   }, [updateSettings]);
 
@@ -195,7 +208,11 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
 
     syncNow('manual_settings').catch((error) => {
       console.error('[Settings] Manual sync failed:', error);
-      Alert.alert('Sync Failed', 'Please try again.');
+      showPopup({
+        title: 'Sync Failed',
+        message: 'Please try again.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
     });
   }, [isSyncBusy, syncNow]);
 
@@ -227,7 +244,11 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
       setShowSignOutDialog(false);
     } catch (error) {
       console.error('[Settings] Sign out error:', error);
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
+      showPopup({
+        title: 'Error',
+        message: 'Failed to sign out. Please try again.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
     }
   }, [signOut, clerkUserId]);
 
@@ -257,7 +278,11 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
       setShowDeleteAccountDialog(false);
     } catch (error) {
       console.error('[Settings] Delete account error:', error);
-      Alert.alert('Error', 'Failed to delete account. Please try again.');
+      showPopup({
+        title: 'Error',
+        message: 'Failed to delete account. Please try again.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
     }
   }, [deleteMyAccountMutation, signOut, clerkUserId]);
 

@@ -4,40 +4,39 @@
  * A pixel-perfect port of ExpenseEntryView.swift with full calculator functionality.
  */
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
+import { Text, TextInput } from '@/components/ui/LockedText';
+import { useToast } from '@/components/ui/ToastProvider';
+import { useAuth } from '@clerk/clerk-expo';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
+  Dimensions,
+  Modal,
   Pressable,
   ScrollView,
-  Dimensions,
-  Platform,
   StatusBar,
-  Modal,
-  Alert,
+  StyleSheet,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { Text, TextInput } from '@/components/ui/LockedText';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import { Colors, Sizes, BorderRadius } from '../constants/theme';
-import { getCurrencySymbol } from '../lib/logic/currencyUtils';
-import { SplitEditorScreen } from './SplitEditorScreen';
-import { SplitType } from '../lib/logic/types';
-import { useCategories, useAccounts } from '../lib/hooks/useData';
-import { useUserSettings } from '../lib/hooks/useUserSettings';
-import { useTrips } from '../lib/hooks/useTrips';
-import { useSharedTrips } from '../lib/hooks/useSharedTrips';
-import { TransactionRepository, TripExpenseRepository, TripRepository } from '../lib/db/repositories';
-import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
-import { useAuth } from '@clerk/clerk-expo';
+import { Colors } from '../constants/theme';
+import { withTransaction } from '../lib/db/database';
+import { TransactionRepository, TripExpenseRepository } from '../lib/db/repositories';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
+import { useAccounts, useCategories } from '../lib/hooks/useData';
+import { useSharedTrips } from '../lib/hooks/useSharedTrips';
+import { useTrips } from '../lib/hooks/useTrips';
+import { useUserSettings } from '../lib/hooks/useUserSettings';
+import { getCurrencySymbol } from '../lib/logic/currencyUtils';
+import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
+import { SplitType } from '../lib/logic/types';
 import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
-import { withTransaction } from '../lib/db/database';
-import { useToast } from '@/components/ui/ToastProvider';
+import { SplitEditorScreen } from './SplitEditorScreen';
 
 // ============================================================================
 // Types
@@ -364,6 +363,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
   const { settings } = useUserSettings();
   const { width, height } = Dimensions.get('window');
   const toast = useToast();
+  const { showPopup } = useCustomPopup();
 
   // Calculator state
   const calculator = useCalculatorEngine();
@@ -606,7 +606,11 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
       setTimeout(() => setShowSavedToast(false), 1200);
     } catch (e) {
       console.error(e);
-      Alert.alert('Error', `Save failed: ${e}`);
+      showPopup({
+        title: 'Error',
+        message: `Save failed: ${e}`,
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       setErrorToast('Failed to save');
     }
   }, [calculator, mode, selectedCategoryId, selectedAccountId, noteText, selectedTripId, onSave, accounts, openTrips, selectedTripIsShared, selectedSharedTrip, isSignedIn, userId]);
@@ -928,7 +932,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
               </Text>
             </TouchableOpacity>
           </View>
- 
+
           {/* Save Button */}
           <TouchableOpacity
             style={[styles.saveButton, !canSave && { opacity: 0.4 }]}
@@ -1079,8 +1083,8 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
               tripSelectionDisabled
                 ? undefined
                 : () => {
-                    onRequestAddTrip?.();
-                  }
+                  onRequestAddTrip?.();
+                }
             )}
           </View>
         )}
@@ -1144,22 +1148,22 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
         onRequestClose={() => setShowSplitEditor(false)}
       >
         {pendingTransaction && (
-            <SplitEditorScreen
-              participants={
-                pendingTripKind === 'shared'
-                  ? (selectedSharedTrip?.participants ?? [])
-                  : (openTrips.find(t => t.id === pendingTransaction.tripId)?.participants ?? [])
-              }
-              totalAmountCents={Math.abs(pendingTransaction.amountCents)}
-              currencyCode={currencyCode}
-              payerId={selectedPayerId || undefined}
-              onPayerChange={(id) => setSelectedPayerId(id)}
-              onSave={handleSplitSave}
-              onCancel={() => {
-                setShowSplitEditor(false);
-                setPendingTripKind(null);
-              }}
-            />
+          <SplitEditorScreen
+            participants={
+              pendingTripKind === 'shared'
+                ? (selectedSharedTrip?.participants ?? [])
+                : (openTrips.find(t => t.id === pendingTransaction.tripId)?.participants ?? [])
+            }
+            totalAmountCents={Math.abs(pendingTransaction.amountCents)}
+            currencyCode={currencyCode}
+            payerId={selectedPayerId || undefined}
+            onPayerChange={(id) => setSelectedPayerId(id)}
+            onSave={handleSplitSave}
+            onCancel={() => {
+              setShowSplitEditor(false);
+              setPendingTripKind(null);
+            }}
+          />
         )}
       </Modal>
     </View>

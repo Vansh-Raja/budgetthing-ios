@@ -1,22 +1,23 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, Switch } from 'react-native';
+import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { useMutation } from 'convex/react';
-import { api } from '../convex/_generated/api';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useMutation } from 'convex/react';
 import { format } from 'date-fns';
+import * as Haptics from 'expo-haptics';
+import React, { useCallback, useState } from 'react';
+import { Platform, ScrollView, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
+import { api } from '../convex/_generated/api';
 
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 
-import { Colors } from '../constants/theme';
-import { useSyncStatus } from '../lib/sync/SyncProvider';
-import { useAuthState } from '../lib/auth/useAuthHooks';
-import { getDefaultTripNickname } from '../lib/auth/displayName';
-import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
-import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
 import { useToast } from '@/components/ui/ToastProvider';
+import { EmojiPickerModal } from '../components/emoji/EmojiPickerModal';
+import { Colors } from '../constants/theme';
+import { getDefaultTripNickname } from '../lib/auth/displayName';
+import { useAuthState } from '../lib/auth/useAuthHooks';
+import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 
 interface AddSharedTripScreenProps {
   onDismiss: () => void;
@@ -27,6 +28,7 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
   const { syncNow } = useSyncStatus();
   const { user } = useAuthState();
   const toast = useToast();
+  const { showInfo, showPopup } = useCustomPopup();
 
   const createTrip = useMutation(api.sharedTrips.create);
   const rotateInvite = useMutation(api.sharedTripInvites.rotate);
@@ -87,19 +89,28 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
         toast.show('Saved. Sync pending.');
       }
 
-      if (code) Alert.alert('Join Code', code);
+      if (code) {
+        showInfo({
+          title: 'Join Code',
+          copyableContent: code,
+        });
+      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onCreated?.(tripId);
       onDismiss();
     } catch (e: any) {
       console.error('[AddSharedTrip] Failed:', e);
-      Alert.alert('Error', e?.message ?? 'Failed to create trip');
+      showPopup({
+        title: 'Error',
+        message: e?.message ?? 'Failed to create trip',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsSaving(false);
     }
-   }, [canSave, createTrip, emoji, name, onCreated, onDismiss, rotateInvite, syncNow, startDate, endDate, hasBudget, budgetString, isSaving, toast, user]);
+  }, [canSave, createTrip, emoji, name, onCreated, onDismiss, rotateInvite, syncNow, startDate, endDate, hasBudget, budgetString, isSaving, toast, user, showInfo, showPopup]);
 
 
   return (
@@ -140,138 +151,138 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
             </View>
           </View>
 
-           <View style={styles.infoCard}>
-             <Text style={styles.infoTitle}>Shared trip</Text>
-             <Text style={styles.infoText}>
-               This trip syncs across members. Currency is locked to INR for v1.
-             </Text>
-           </View>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoTitle}>Shared trip</Text>
+            <Text style={styles.infoText}>
+              This trip syncs across members. Currency is locked to INR for v1.
+            </Text>
+          </View>
 
-           <View style={styles.sectionCard}>
-             <View style={styles.sectionRow}>
-               <Text style={styles.sectionLabel}>Start Date</Text>
-               {Platform.OS === 'ios' ? (
-                 <DateTimePicker
-                   value={startDate}
-                   mode="date"
-                   display="compact"
-                   themeVariant="dark"
-                   onChange={(_, d) => {
-                     if (!d) return;
-                     setStartDate(d);
-                     if (d > endDate) setEndDate(d);
-                   }}
-                   style={{ width: 120 }}
-                 />
-               ) : (
-                 <TouchableOpacity onPress={() => setShowStartPicker(true)}>
-                   <Text style={styles.sectionValue}>{format(startDate, 'MMM d, yyyy')}</Text>
-                 </TouchableOpacity>
-               )}
-             </View>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionLabel}>Start Date</Text>
+              {Platform.OS === 'ios' ? (
+                <DateTimePicker
+                  value={startDate}
+                  mode="date"
+                  display="compact"
+                  themeVariant="dark"
+                  onChange={(_, d) => {
+                    if (!d) return;
+                    setStartDate(d);
+                    if (d > endDate) setEndDate(d);
+                  }}
+                  style={{ width: 120 }}
+                />
+              ) : (
+                <TouchableOpacity onPress={() => setShowStartPicker(true)}>
+                  <Text style={styles.sectionValue}>{format(startDate, 'MMM d, yyyy')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-             <View style={styles.sectionDivider} />
+            <View style={styles.sectionDivider} />
 
-             <View style={styles.sectionRow}>
-               <Text style={styles.sectionLabel}>End Date</Text>
-               {Platform.OS === 'ios' ? (
-                 <DateTimePicker
-                   value={endDate}
-                   mode="date"
-                   display="compact"
-                   themeVariant="dark"
-                   minimumDate={startDate}
-                   onChange={(_, d) => {
-                     if (!d) return;
-                     setEndDate(d);
-                     if (d < startDate) setStartDate(d);
-                   }}
-                   style={{ width: 120 }}
-                 />
-               ) : (
-                 <TouchableOpacity onPress={() => setShowEndPicker(true)}>
-                   <Text style={styles.sectionValue}>{format(endDate, 'MMM d, yyyy')}</Text>
-                 </TouchableOpacity>
-               )}
-             </View>
-           </View>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionLabel}>End Date</Text>
+              {Platform.OS === 'ios' ? (
+                <DateTimePicker
+                  value={endDate}
+                  mode="date"
+                  display="compact"
+                  themeVariant="dark"
+                  minimumDate={startDate}
+                  onChange={(_, d) => {
+                    if (!d) return;
+                    setEndDate(d);
+                    if (d < startDate) setStartDate(d);
+                  }}
+                  style={{ width: 120 }}
+                />
+              ) : (
+                <TouchableOpacity onPress={() => setShowEndPicker(true)}>
+                  <Text style={styles.sectionValue}>{format(endDate, 'MMM d, yyyy')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
-           <View style={styles.sectionCard}>
-             <View style={styles.sectionRow}>
-               <Text style={styles.sectionLabel}>Total Budget</Text>
-               <Switch
-                 value={hasBudget}
-                 onValueChange={(v) => {
-                   Haptics.selectionAsync();
-                   setHasBudget(v);
-                   if (!v) setBudgetString('');
-                 }}
-                 trackColor={{ false: '#3a3a3c', true: Colors.accent }}
-                 thumbColor="#FFFFFF"
-                 ios_backgroundColor="#3a3a3c"
-               />
-             </View>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionLabel}>Total Budget</Text>
+              <Switch
+                value={hasBudget}
+                onValueChange={(v) => {
+                  Haptics.selectionAsync();
+                  setHasBudget(v);
+                  if (!v) setBudgetString('');
+                }}
+                trackColor={{ false: '#3a3a3c', true: Colors.accent }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#3a3a3c"
+              />
+            </View>
 
-             {hasBudget && (
-               <>
-                 <View style={styles.sectionDivider} />
-                 <View style={styles.sectionRow}>
-                   <Text style={styles.sectionLabel}>Amount</Text>
-                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                     <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
-                     <TextInput
-                       style={styles.budgetInput}
-                       value={budgetString}
-                       onChangeText={setBudgetString}
-                       keyboardType="decimal-pad"
-                       placeholder="0"
-                       placeholderTextColor="rgba(255, 255, 255, 0.3)"
-                     />
-                   </View>
-                 </View>
-               </>
-             )}
-           </View>
+            {hasBudget && (
+              <>
+                <View style={styles.sectionDivider} />
+                <View style={styles.sectionRow}>
+                  <Text style={styles.sectionLabel}>Amount</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
+                    <TextInput
+                      style={styles.budgetInput}
+                      value={budgetString}
+                      onChangeText={setBudgetString}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                    />
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
 
         </View>
       </ScrollView>
 
-       {/* Android Pickers */}
-       {Platform.OS === 'android' && showStartPicker && (
-         <DateTimePicker
-           value={startDate}
-           mode="date"
-           display="default"
-           onChange={(_, d) => {
-             setShowStartPicker(false);
-             if (!d) return;
-             setStartDate(d);
-             if (d > endDate) setEndDate(d);
-           }}
-         />
-       )}
-       {Platform.OS === 'android' && showEndPicker && (
-         <DateTimePicker
-           value={endDate}
-           mode="date"
-           display="default"
-           onChange={(_, d) => {
-             setShowEndPicker(false);
-             if (!d) return;
-             setEndDate(d);
-             if (d < startDate) setStartDate(d);
-           }}
-         />
-       )}
-
-        <EmojiPickerModal
-          visible={showEmojiPicker}
-          title="Choose Icon"
-          value={emoji}
-          recommendedEmojis={RECOMMENDED_TRIP_EMOJIS}
-          onSelect={setEmoji}
-          onClose={() => setShowEmojiPicker(false)}
+      {/* Android Pickers */}
+      {Platform.OS === 'android' && showStartPicker && (
+        <DateTimePicker
+          value={startDate}
+          mode="date"
+          display="default"
+          onChange={(_, d) => {
+            setShowStartPicker(false);
+            if (!d) return;
+            setStartDate(d);
+            if (d > endDate) setEndDate(d);
+          }}
         />
+      )}
+      {Platform.OS === 'android' && showEndPicker && (
+        <DateTimePicker
+          value={endDate}
+          mode="date"
+          display="default"
+          onChange={(_, d) => {
+            setShowEndPicker(false);
+            if (!d) return;
+            setEndDate(d);
+            if (d < startDate) setStartDate(d);
+          }}
+        />
+      )}
+
+      <EmojiPickerModal
+        visible={showEmojiPicker}
+        title="Choose Icon"
+        value={emoji}
+        recommendedEmojis={RECOMMENDED_TRIP_EMOJIS}
+        onSelect={setEmoji}
+        onClose={() => setShowEmojiPicker(false)}
+      />
     </View>
   );
 }
