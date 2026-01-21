@@ -1,4 +1,5 @@
 import { mutation } from "./_generated/server";
+import { recordTripChange } from "./sharedTripSeq";
 
 /**
  * Delete all data for the authenticated user.
@@ -62,12 +63,16 @@ export const deleteMyAccount = mutation({
         // Do NOT delete shared trip data; other members keep it.
         const now = Date.now();
 
+        const touchedTripIds = new Set<string>();
+
         const memberships = await ctx.db
             .query("sharedTripMembers")
             .withIndex("by_user", (q) => q.eq("userId", userId))
             .collect();
 
         for (const member of memberships) {
+            touchedTripIds.add(member.tripId as string);
+
             // Soft-remove membership
             await ctx.db.patch(member._id, {
                 deletedAtMs: now,
@@ -87,7 +92,37 @@ export const deleteMyAccount = mutation({
                     updatedAtMs: now,
                     syncVersion: (participant.syncVersion ?? 1) + 1,
                 });
+
+                // Notify other members so they stop treating this participant as a linked user.
+                await recordTripChange(ctx, member.tripId, "sharedTripParticipants", participant.id, now, "upsert");
             }
+        }
+
+        // If a shared trip has no remaining active members (e.g. the last member deleted
+        // their account), mark the trip deleted to prevent future joins and to allow cleanup.
+        for (const tripId of touchedTripIds) {
+            const remaining = await ctx.db
+                .query("sharedTripMembers")
+                .withIndex("by_trip", (q: any) => q.eq("tripId", tripId))
+                .collect();
+
+            const hasActiveMember = remaining.some((m: any) => m.deletedAtMs === undefined);
+            if (hasActiveMember) continue;
+
+            const trip = await ctx.db
+                .query("sharedTrips")
+                .withIndex("by_client_id", (q: any) => q.eq("id", tripId))
+                .first();
+
+            if (!trip || trip.deletedAtMs !== undefined) continue;
+
+            await ctx.db.patch(trip._id, {
+                deletedAtMs: now,
+                updatedAtMs: now,
+                syncVersion: (trip.syncVersion ?? 1) + 1,
+            });
+
+            await recordTripChange(ctx, tripId, "sharedTrips", tripId, now, "delete");
         }
 
         return {
