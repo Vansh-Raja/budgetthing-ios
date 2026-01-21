@@ -34,9 +34,9 @@ Additional:
 
 ### Current State (as of January 2026)
 
-- **Production app**: Native iOS SwiftUI with SwiftData (local-only storage)
-- **Migration in progress**: Expo + Convex rewrite on branch `feature/expo-convex-migration`
-- **Target platforms**: iOS only for v1 (Android planned for future)
+- **Production app**: Expo (React Native) + Convex (Cross-platform)
+- **Migration Status**: **Complete** ✅
+- **Target platforms**: iOS (v1 released), Android (tech preview)
 
 ---
 

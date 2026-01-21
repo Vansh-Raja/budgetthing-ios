@@ -51,13 +51,16 @@ Rewrite the existing native iOS SwiftUI budget tracker as an **Expo (React Nativ
 
 ---
 
-## Current Codebase Status (2026-01-08)
+## Current Codebase Status (2026-01-21)
 
-This section reflects what’s actually present in the repo today (not just the intended target state).
+This section reflects what’s actually present in the repo today.
 
-### Implemented (Expo app)
+### Migration Complete ✅
 
-- **Pager-based navigation**: `expo-app/app/(tabs)/index.tsx`
+- **Core Functionality**: Fully implemented in Expo (Calculator, Transactions, Accounts, Trips, Settings).
+- **Backend**: Convex Schema deployed and syncing correctly (Auth + Sync Engine).
+- **Parity**: Swift feature parity achieved (including Shared Trips and Emoji Picker).
+- **Navigation**: Pager-based navigation implemented matching Swift.
 - **Core screens exist**: `expo-app/screens/CalculatorScreen.tsx`, `expo-app/screens/TransactionsScreen.tsx`, `expo-app/screens/AccountsScreen.tsx`, `expo-app/screens/TripsScreen.tsx`, `expo-app/screens/TripDetailScreen.tsx`, `expo-app/screens/SettingsScreen.tsx`, `expo-app/screens/OnboardingScreen.tsx`
 - **SQLite schema + migrations**: `expo-app/lib/db/schema.ts` and `expo-app/lib/db/database.ts`
 - **Repository layer (CRUD)**: `expo-app/lib/db/repositories.ts`
