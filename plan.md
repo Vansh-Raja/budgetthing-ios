@@ -100,8 +100,8 @@ Note: Some older sections of this plan still reference an `expo-app/` subfolder.
 - Categories: recommended grid + “More…” (no big grouped catalog)
 - Trips (local + shared): compact recommended list + “More…”
 - Accounts: recommended list depends on account kind (`cash` | `card` | `savings`)
-- “More…” uses `react-native-emoji-popup` (system emoji picker UI). The system picker may present as a popup/sheet; that is acceptable.
-- Running in Expo Go will not support the system picker (native module). In Expo Go, “More…” is disabled and we rely on recommended emojis.
+- “More…” uses `rn-emoji-keyboard` (in-app emoji picker UI with search).
+- “More…” works in Expo Go and dev builds (no native module required).
 - The *recommended emoji selector screen* must be full-screen.
 - Selecting an emoji auto-dismisses the selector.
 - No “Recently used” row for this build.
@@ -147,7 +147,7 @@ Categories (~24; high-signal/common personal finance categories + matches seeds)
 
 #### 1) Dependency + iOS Sanity Check
 
-- [x] Add dependency: `react-native-emoji-popup`
+- [x] Add dependency: `rn-emoji-keyboard`
 - [ ] Verify iOS behavior from inside existing modal flows (pageSheet)
 - [ ] Confirm selected emoji returns correctly (including multi-codepoint emojis like ✈️)
 

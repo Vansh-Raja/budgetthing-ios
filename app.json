@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.Vansh.BudgetThing",
-      "buildNumber": "203",
+      "buildNumber": "204",
       "icon": "./assets/images/app-icon-1024.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -38,8 +38,7 @@
     },
     "plugins": [
       "expo-router",
-      "@react-native-community/datetimepicker",
-      "./plugins/withMcEmojiPickerCategoryIconsFix"
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

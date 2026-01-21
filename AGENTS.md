@@ -202,7 +202,7 @@ This repo uses two Convex deployments:
 
 ### Expo Note
 
-- Some features require a native dev build/TestFlight build (e.g. `react-native-emoji-popup`). Expo Go will not include those native modules.
+- Some features require a native dev build/TestFlight build. The emoji picker uses `rn-emoji-keyboard` and does not require a native module.
 
 ---
 
@@ -319,6 +319,10 @@ When starting work on a feature, read these files:
 Build/Release workflow rule:
 - Do not run EAS build/submit commands automatically.
 - Provide the exact commands for the maintainer to run (EAS builds, submits, and any App Store Connect steps are executed by the maintainer).
+
+Git workflow rule:
+- Never create commits or push to GitHub unless the user explicitly asks.
+- For UI/native-facing changes, always ask the user to test locally (e.g. `npx expo run:ios`) before committing.
 
 ---
 
