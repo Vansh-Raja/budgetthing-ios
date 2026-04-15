@@ -10,6 +10,7 @@ import * as Linking from 'expo-linking';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
+import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-get-random-values'; // Polyfill for uuid
 import 'react-native-reanimated';
@@ -30,10 +31,6 @@ if (!__DEV__) {
   if (!CLERK_KEY) throw new Error('Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY');
   if (!CONVEX_URL) throw new Error('Missing EXPO_PUBLIC_CONVEX_URL');
 }
-
-const convex = new ConvexReactClient(CONVEX_URL, {
-  unsavedChangesWarning: false,
-});
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -78,6 +75,32 @@ import { UserSettingsProvider, useUserSettings } from '../lib/hooks/useUserSetti
 // ...
 
 function RootLayoutNav() {
+  if (!CLERK_KEY || !CONVEX_URL) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', padding: 24 }}>
+        <Text style={{ color: '#fff', fontSize: 18, marginBottom: 12, fontWeight: '600' }}>
+          Missing environment variables
+        </Text>
+        <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14, lineHeight: 20 }}>
+          Create a .env.local file in the project root and set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY and
+          EXPO_PUBLIC_CONVEX_URL, then restart Expo.
+        </Text>
+      </View>
+    );
+  }
+
+  return <RootLayoutProviders />;
+}
+
+function RootLayoutProviders() {
+  const convex = React.useMemo(
+    () =>
+      new ConvexReactClient(CONVEX_URL, {
+        unsavedChangesWarning: false,
+      }),
+    []
+  );
+
   return (
     <ClerkProvider publishableKey={CLERK_KEY} tokenCache={tokenCache}>
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
