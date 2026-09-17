@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.Vansh.BudgetThing",
-      "buildNumber": "204",
+      "buildNumber": "205",
       "icon": "./assets/images/app-icon-1024.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

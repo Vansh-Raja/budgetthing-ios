@@ -2,6 +2,61 @@
 
 ---
 
+## Agent Import API + Minimal Inbox (2026-05-24)
+
+Goal: Expose a signed-in-only REST API so agents/scripts can submit structured expense/income candidates into a synced inbox. API imports never create ledger transactions directly; the user confirms or edits them in a minimal swipe inbox.
+
+### Decisions
+
+- Structured JSON only. No raw emails, raw messages, screenshots, OCR dumps, attachments, or files in v1.
+- Accepted transaction kinds: `expense` and `income` only.
+- API payloads must include `currencyCode`, and it must match the user's BudgetThing currency.
+- `accountId` and `categoryId` are optional, with a safe metadata endpoint for agents to discover active accounts/categories.
+- Pending imports live in a separate `importInboxItems` table, not in `transactions`.
+- API-created rows sync through the existing user `changeLog`.
+- Inbox opens once per app launch when pending rows exist.
+- Right swipe confirms; left swipe opens edit; confirmed/ignored rows disappear from the active inbox.
+- Confirmed API imports create normal transactions tagged with `sourceType = "api_import"` and `sourceImportInboxItemId`.
+- Public agent docs ship as website-hosted `SKILL.md` and `openapi.json`.
+
+### Checklist
+
+Backend + API
+- [x] Add Convex `apiImportKeys`, `apiImportRequests`, `importInboxItems`, `apiImportAuditEvents`, and rate limit tables
+- [x] Add API key create/list/revoke mutations with one-time raw key reveal
+- [x] Add Convex HTTP routes:
+  - [x] `GET /v1/health`
+  - [x] `GET /v1/import/metadata`
+  - [x] `POST /v1/imports`
+  - [x] `GET /v1/imports/status`
+- [x] Enforce API key auth, expiry, revocation, idempotency, request size, batch size, currency matching, and structured-only payload validation
+- [x] Add fuzzy duplicate flags without blocking confirmation
+- [x] Add audit logging without raw API keys or raw payloads
+
+Sync + local data
+- [x] Extract shared Convex user changeLog sequence helpers
+- [x] Add local schema version 7 with transaction provenance and `importInboxItems`
+- [x] Add `importInboxItems` to local/remote sync push and pull
+- [x] Add `ImportInboxRepository` with atomic confirm/ignore flows
+- [x] Ensure confirmed imports create deterministic `api_import` transaction IDs
+
+App UI
+- [x] Port the smart-import inbox card/edit sheet into a minimal API inbox
+- [x] Remove AI suggestion chips and screenshot/LLM dependencies from the inbox scope
+- [x] Add app-launch auto-open once per launch
+- [x] Add Transactions badge/button and Settings entry
+- [x] Add Settings API key management screen
+
+Docs + verification
+- [x] Add `Website/agents/budgetthing/SKILL.md`
+- [x] Add `Website/agents/budgetthing/openapi.json`
+- [x] Add minimal website docs page and `llms.txt`
+- [x] Add focused tests for import validation/idempotency helpers
+- [x] Run `npm test -- --runInBand`
+- [x] Push Convex dev only with `CONVEX_DEPLOYMENT=dev:adjoining-gnat-886 npx convex dev --once`
+
+---
+
 ## Data Consistency Hardening (2026-01-21)
 
 Goal: Prevent “write succeeded but UI showed failure” and eliminate accidental duplicates/corruption, especially for high-impact entities (settlements/expenses/transfers). Enforce canonical-vs-derived rules so derived rows never permanently break totals.

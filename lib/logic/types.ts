@@ -13,6 +13,12 @@ export type TransactionType = 'expense' | 'income';
 // Note: "trip_*" types are local-only derived rows for shared trips.
 export type SystemType = 'transfer' | 'adjustment' | 'trip_share' | 'trip_cashflow' | 'trip_settlement' | null;
 
+// Transaction provenance. API imports are confirmed by the user from the inbox
+// before they become ledger transactions.
+export type TransactionSourceType = 'manual' | 'api_import';
+
+export type ImportInboxStatus = 'pending' | 'confirmed' | 'ignored';
+
 // Account kinds
 export type AccountKind = 'cash' | 'card' | 'savings';
 
@@ -80,6 +86,41 @@ export interface Transaction {
   tripExpenseId?: string;
   sourceTripExpenseId?: string;
   sourceTripSettlementId?: string;
+  sourceType?: TransactionSourceType;
+  sourceImportInboxItemId?: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  deletedAtMs?: number;
+}
+
+/**
+ * A structured API import candidate awaiting user review.
+ *
+ * Rows in this table do not affect balances or reports until confirmed into
+ * a real Transaction.
+ */
+export interface ImportInboxItem {
+  id: string;
+  source: string;
+  externalIdHash: string;
+  externalIdLabel?: string | null;
+  apiKeyId?: string | null;
+  idempotencyKeyHash?: string | null;
+  payloadHash?: string | null;
+  status: ImportInboxStatus;
+  type: TransactionType;
+  amountCents: number;
+  currencyCode: string;
+  dateMs: number;
+  merchantName?: string | null;
+  note?: string | null;
+  accountId?: string | null;
+  categoryId?: string | null;
+  possibleDuplicate: boolean;
+  duplicateSignals?: string[] | null;
+  confirmedTransactionId?: string | null;
+  confirmedAtMs?: number | null;
+  ignoredAtMs?: number | null;
   createdAtMs: number;
   updatedAtMs: number;
   deletedAtMs?: number;

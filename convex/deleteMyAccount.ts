@@ -33,6 +33,10 @@ export const deleteMyAccount = mutation({
             "tripExpenses",
             "tripSettlements",
             "userSettings",
+            "apiImportKeys",
+            "apiImportRequests",
+            "importInboxItems",
+            "apiImportAuditEvents",
         ] as const;
 
         // Delete all records from tables with by_user index

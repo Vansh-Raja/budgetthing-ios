@@ -6,7 +6,7 @@
  */
 
 // Schema version - increment when adding new migrations
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Initial schema creation - version 1
@@ -288,6 +288,54 @@ export const MIGRATIONS: Record<number, string[]> = {
     `ALTER TABLE userSettings ADD COLUMN transactionsFiltersJson TEXT`,
     `ALTER TABLE userSettings ADD COLUMN transactionsFiltersUpdatedAtMs INTEGER`,
   ],
+
+  6: [
+    // Transactions: provenance for rows created from external import review.
+    // This version number intentionally avoids the WIP smart-import branch's
+    // pending-import transaction model; installs that already ran that branch
+    // will skip to v7 and already have sourceType.
+    `ALTER TABLE transactions ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'manual'`,
+  ],
+
+  7: [
+    // Transactions: link confirmed API imports back to the inbox item.
+    `ALTER TABLE transactions ADD COLUMN sourceImportInboxItemId TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_transactions_sourceImportInboxItemId ON transactions(sourceImportInboxItemId)`,
+
+    // API import inbox. These rows are review candidates and do not affect the
+    // ledger until the user confirms them.
+    `CREATE TABLE IF NOT EXISTS importInboxItems (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      externalIdHash TEXT NOT NULL,
+      externalIdLabel TEXT,
+      apiKeyId TEXT,
+      idempotencyKeyHash TEXT,
+      payloadHash TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      type TEXT NOT NULL,
+      amountCents INTEGER NOT NULL,
+      currencyCode TEXT NOT NULL,
+      dateMs INTEGER NOT NULL,
+      merchantName TEXT,
+      note TEXT,
+      accountId TEXT,
+      categoryId TEXT,
+      possibleDuplicate INTEGER NOT NULL DEFAULT 0,
+      duplicateSignalsJson TEXT,
+      confirmedTransactionId TEXT,
+      confirmedAtMs INTEGER,
+      ignoredAtMs INTEGER,
+      createdAtMs INTEGER NOT NULL,
+      updatedAtMs INTEGER NOT NULL,
+      deletedAtMs INTEGER,
+      syncVersion INTEGER NOT NULL DEFAULT 1,
+      needsSync INTEGER NOT NULL DEFAULT 0
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_importInboxItems_status ON importInboxItems(status, createdAtMs) WHERE deletedAtMs IS NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_importInboxItems_needsSync ON importInboxItems(needsSync) WHERE needsSync = 1`,
+    `CREATE INDEX IF NOT EXISTS idx_importInboxItems_external ON importInboxItems(source, externalIdHash)`,
+  ],
 };
 
 /**
@@ -306,6 +354,7 @@ export const TABLES = {
   SHARED_TRIP_PARTICIPANTS: 'sharedTripParticipants',
   SHARED_TRIP_EXPENSES: 'sharedTripExpenses',
   SHARED_TRIP_SETTLEMENTS: 'sharedTripSettlements',
+  IMPORT_INBOX_ITEMS: 'importInboxItems',
   USER_SETTINGS: 'userSettings',
   SCHEMA_VERSION: '_schema_version',
 } as const;

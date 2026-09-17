@@ -25,11 +25,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@clerk/clerk-expo';
+import { useRouter } from 'expo-router';
 import { TransactionsFilterSheet } from '../components/transactions/TransactionsFilterSheet';
 import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
 import { Colors, Tabs } from '../constants/theme';
-import { TransactionRepository, TripExpenseRepository, TripSettlementRepository } from '../lib/db/repositories';
+import { ImportInboxRepository, TransactionRepository, TripExpenseRepository, TripSettlementRepository } from '../lib/db/repositories';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
+import { Events, GlobalEvents } from '../lib/events';
 import { useAccounts, useCategories, useTransactions } from '../lib/hooks/useData';
 import { useSharedTrips } from '../lib/hooks/useSharedTrips';
 import { useTrips } from '../lib/hooks/useTrips';
@@ -152,6 +154,7 @@ function SelectionActionsPill({
 // ============================================================================
 
 export function TransactionsScreen({ selectedIndex, onSelectIndex }: TransactionsScreenProps) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const { data: transactions, refresh } = useTransactions();
@@ -168,11 +171,30 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
 
   const [filters, setFilters] = useState(DEFAULT_TRANSACTIONS_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
+  const [pendingImportCount, setPendingImportCount] = useState(0);
 
   const filtersActive = useMemo(() => isTransactionsFiltersActive(filters), [filters]);
 
   const resetFiltersOnReopen = settings?.resetTransactionFiltersOnReopen ?? false;
   const syncFiltersEnabled = settings?.syncTransactionFilters ?? false;
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPending = async () => {
+      try {
+        const count = await ImportInboxRepository.countPending();
+        if (mounted) setPendingImportCount(count);
+      } catch (error) {
+        console.warn('[Transactions] Failed to count import inbox items:', error);
+      }
+    };
+    loadPending();
+    const unsub = GlobalEvents.on(Events.importInboxChanged, loadPending);
+    return () => {
+      mounted = false;
+      unsub();
+    };
+  }, []);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -795,6 +817,21 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
           <Text style={styles.headerTitle}>Transactions</Text>
           <View style={{ flex: 1 }} />
           <TouchableOpacity
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push('/import-inbox' as any);
+            }}
+            style={[styles.inboxButton, pendingImportCount === 0 && styles.inboxButtonIdle]}
+            activeOpacity={0.75}
+          >
+            <Ionicons
+              name={pendingImportCount > 0 ? 'file-tray-full-outline' : 'file-tray-outline'}
+              size={17}
+              color={pendingImportCount > 0 ? Colors.accent : 'rgba(255,255,255,0.62)'}
+            />
+            {pendingImportCount > 0 ? <Text style={styles.inboxCount}>{pendingImportCount}</Text> : null}
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={toggleSelectionMode}
             style={[
               styles.selectButton,
@@ -1118,6 +1155,31 @@ const styles = StyleSheet.create({
     fontFamily: 'AvenirNextCondensed-DemiBold',
     fontSize: 18,
     color: 'rgba(255, 255, 255, 0.9)',
+  },
+  inboxButton: {
+    minWidth: 44,
+    height: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    marginRight: 8,
+    backgroundColor: 'rgba(255, 149, 0, 0.12)',
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 149, 0, 0.22)',
+  },
+  inboxButtonIdle: {
+    minWidth: 34,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+  },
+  inboxCount: {
+    fontFamily: 'AvenirNextCondensed-DemiBold',
+    fontSize: 16,
+    color: Colors.accent,
   },
 
   // Month Chips

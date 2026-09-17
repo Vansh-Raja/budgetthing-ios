@@ -21,9 +21,12 @@ import {
   TransactionType,
   SystemType,
   AccountKind,
+  ImportInboxItem,
+  ImportInboxStatus,
 } from '../logic/types';
 import { Events, GlobalEvents } from '../events';
 import { pickSingleCurrentUserParticipantId } from '../logic/tripAccounting/currentUserParticipant';
+import { hashStringToBase36 } from '../logic/hash';
 import {
   idempotentAdjustmentTransactionId,
   idempotentTransferTransactionId,
@@ -304,6 +307,8 @@ interface TransactionRow {
   tripExpenseId: string | null;
   sourceTripExpenseId: string | null;
   sourceTripSettlementId: string | null;
+  sourceType: string | null;
+  sourceImportInboxItemId: string | null;
   createdAtMs: number;
   updatedAtMs: number;
   deletedAtMs: number | null;
@@ -324,6 +329,8 @@ function rowToTransaction(row: TransactionRow): Transaction {
     tripExpenseId: row.tripExpenseId ?? undefined,
     sourceTripExpenseId: row.sourceTripExpenseId ?? undefined,
     sourceTripSettlementId: row.sourceTripSettlementId ?? undefined,
+    sourceType: (row.sourceType as Transaction['sourceType']) ?? 'manual',
+    sourceImportInboxItemId: row.sourceImportInboxItemId ?? undefined,
     createdAtMs: row.createdAtMs,
     updatedAtMs: row.updatedAtMs,
     deletedAtMs: row.deletedAtMs ?? undefined,
@@ -398,11 +405,12 @@ export const TransactionRepository = {
     const insert = async () => {
       await run(
         `INSERT INTO ${TABLES.TRANSACTIONS} 
-         (id, amountCents, date, note, type, systemType, accountId, categoryId, 
+         (id, amountCents, date, note, type, systemType, accountId, categoryId,
           transferFromAccountId, transferToAccountId, tripExpenseId, sourceTripExpenseId, sourceTripSettlementId,
-          createdAtMs, updatedAtMs, 
-          syncVersion, needsSync, deletedAtMs) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          sourceType, sourceImportInboxItemId,
+          createdAtMs, updatedAtMs,
+          syncVersion, needsSync, deletedAtMs)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           tx.amountCents,
@@ -417,6 +425,8 @@ export const TransactionRepository = {
           tx.tripExpenseId ?? null,
           tx.sourceTripExpenseId ?? null,
           tx.sourceTripSettlementId ?? null,
+          tx.sourceType ?? 'manual',
+          tx.sourceImportInboxItemId ?? null,
           now,
           now,
           1, // syncVersion
@@ -446,7 +456,7 @@ export const TransactionRepository = {
       if (existing) return existing;
     }
 
-    return { ...tx, id, createdAtMs: now, updatedAtMs: now };
+    return { ...tx, id, sourceType: tx.sourceType ?? 'manual', createdAtMs: now, updatedAtMs: now };
   },
 
   async update(
@@ -472,6 +482,8 @@ export const TransactionRepository = {
     if (updates.tripExpenseId !== undefined) { fields.push('tripExpenseId = ?'); values.push(updates.tripExpenseId); }
     if (updates.sourceTripExpenseId !== undefined) { fields.push('sourceTripExpenseId = ?'); values.push(updates.sourceTripExpenseId); }
     if (updates.sourceTripSettlementId !== undefined) { fields.push('sourceTripSettlementId = ?'); values.push(updates.sourceTripSettlementId); }
+    if (updates.sourceType !== undefined) { fields.push('sourceType = ?'); values.push(updates.sourceType); }
+    if (updates.sourceImportInboxItemId !== undefined) { fields.push('sourceImportInboxItemId = ?'); values.push(updates.sourceImportInboxItemId); }
 
     values.push(id);
     await run(`UPDATE ${TABLES.TRANSACTIONS} SET ${fields.join(', ')} WHERE id = ?`, values);
@@ -640,6 +652,243 @@ export const TransactionRepository = {
       sourceIds
     );
     return rows.map(rowToTransaction);
+  },
+};
+
+// =============================================================================
+// Import Inbox Repository
+// =============================================================================
+
+interface ImportInboxItemRow {
+  id: string;
+  source: string;
+  externalIdHash: string;
+  externalIdLabel: string | null;
+  apiKeyId: string | null;
+  idempotencyKeyHash: string | null;
+  payloadHash: string | null;
+  status: string;
+  type: string;
+  amountCents: number;
+  currencyCode: string;
+  dateMs: number;
+  merchantName: string | null;
+  note: string | null;
+  accountId: string | null;
+  categoryId: string | null;
+  possibleDuplicate: number;
+  duplicateSignalsJson: string | null;
+  confirmedTransactionId: string | null;
+  confirmedAtMs: number | null;
+  ignoredAtMs: number | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+  deletedAtMs: number | null;
+  syncVersion: number;
+  needsSync: number;
+}
+
+function parseJsonArray(value: string | null): string[] | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+function rowToImportInboxItem(row: ImportInboxItemRow): ImportInboxItem {
+  return {
+    id: row.id,
+    source: row.source,
+    externalIdHash: row.externalIdHash,
+    externalIdLabel: row.externalIdLabel,
+    apiKeyId: row.apiKeyId,
+    idempotencyKeyHash: row.idempotencyKeyHash,
+    payloadHash: row.payloadHash,
+    status: row.status as ImportInboxStatus,
+    type: row.type as TransactionType,
+    amountCents: row.amountCents,
+    currencyCode: row.currencyCode,
+    dateMs: row.dateMs,
+    merchantName: row.merchantName,
+    note: row.note,
+    accountId: row.accountId,
+    categoryId: row.categoryId,
+    possibleDuplicate: row.possibleDuplicate === 1,
+    duplicateSignals: parseJsonArray(row.duplicateSignalsJson),
+    confirmedTransactionId: row.confirmedTransactionId,
+    confirmedAtMs: row.confirmedAtMs,
+    ignoredAtMs: row.ignoredAtMs,
+    createdAtMs: row.createdAtMs,
+    updatedAtMs: row.updatedAtMs,
+    deletedAtMs: row.deletedAtMs ?? undefined,
+  };
+}
+
+function deterministicImportTransactionId(importInboxItemId: string) {
+  return `api_import_${hashStringToBase36(importInboxItemId)}`;
+}
+
+export const ImportInboxRepository = {
+  async getPending(): Promise<ImportInboxItem[]> {
+    const rows = await queryAll<ImportInboxItemRow>(
+      `SELECT * FROM ${TABLES.IMPORT_INBOX_ITEMS}
+       WHERE status = 'pending' AND deletedAtMs IS NULL
+       ORDER BY createdAtMs DESC`
+    );
+    return rows.map(rowToImportInboxItem);
+  },
+
+  async countPending(): Promise<number> {
+    const row = await queryFirst<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM ${TABLES.IMPORT_INBOX_ITEMS}
+       WHERE status = 'pending' AND deletedAtMs IS NULL`
+    );
+    return row?.c ?? 0;
+  },
+
+  async getById(id: string): Promise<ImportInboxItem | null> {
+    const row = await queryFirst<ImportInboxItemRow>(
+      `SELECT * FROM ${TABLES.IMPORT_INBOX_ITEMS} WHERE id = ? AND deletedAtMs IS NULL`,
+      [id]
+    );
+    return row ? rowToImportInboxItem(row) : null;
+  },
+
+  async ignore(id: string): Promise<void> {
+    const now = Date.now();
+    await run(
+      `UPDATE ${TABLES.IMPORT_INBOX_ITEMS}
+       SET status = 'ignored',
+           ignoredAtMs = ?,
+           updatedAtMs = ?,
+           needsSync = 1,
+           syncVersion = syncVersion + 1
+       WHERE id = ? AND status = 'pending' AND deletedAtMs IS NULL`,
+      [now, now, id]
+    );
+    GlobalEvents.emit(Events.importInboxChanged);
+  },
+
+  async confirm(
+    id: string,
+    overrides: {
+      amountCents?: number;
+      dateMs?: number;
+      note?: string | null;
+      accountId?: string | null;
+      categoryId?: string | null;
+      type?: TransactionType;
+    } = {}
+  ): Promise<Transaction> {
+    let confirmedTxId: string | null = null;
+
+    await withTransaction(async () => {
+      const itemRow = await queryFirst<ImportInboxItemRow>(
+        `SELECT * FROM ${TABLES.IMPORT_INBOX_ITEMS} WHERE id = ? AND deletedAtMs IS NULL`,
+        [id]
+      );
+      if (!itemRow) throw new Error('Import inbox item not found');
+
+      if (itemRow.status === 'confirmed' && itemRow.confirmedTransactionId) {
+        confirmedTxId = itemRow.confirmedTransactionId;
+        return;
+      }
+      if (itemRow.status !== 'pending') {
+        throw new Error('Import inbox item is no longer pending');
+      }
+
+      const now = Date.now();
+      const txId = deterministicImportTransactionId(itemRow.id);
+      const accountId = overrides.accountId !== undefined ? overrides.accountId : itemRow.accountId;
+      const categoryId = overrides.categoryId !== undefined ? overrides.categoryId : itemRow.categoryId;
+      const amountCents = overrides.amountCents ?? itemRow.amountCents;
+      const dateMs = overrides.dateMs ?? itemRow.dateMs;
+      const type = overrides.type ?? (itemRow.type as TransactionType);
+      const note = overrides.note !== undefined ? overrides.note : itemRow.note;
+
+      if (!accountId) {
+        throw new Error('Account is required to confirm this import');
+      }
+
+      const account = await queryFirst<AccountRow>(
+        `SELECT * FROM ${TABLES.ACCOUNTS} WHERE id = ? AND deletedAtMs IS NULL`,
+        [accountId]
+      );
+      if (!account) {
+        throw new Error('Selected account no longer exists');
+      }
+
+      let safeCategoryId: string | null = categoryId ?? null;
+      if (safeCategoryId) {
+        const category = await queryFirst<CategoryRow>(
+          `SELECT * FROM ${TABLES.CATEGORIES} WHERE id = ? AND deletedAtMs IS NULL`,
+          [safeCategoryId]
+        );
+        if (!category) safeCategoryId = null;
+      }
+
+      const existingTx = await queryFirst<TransactionRow>(
+        `SELECT * FROM ${TABLES.TRANSACTIONS} WHERE id = ? AND deletedAtMs IS NULL`,
+        [txId]
+      );
+
+      if (!existingTx) {
+        await run(
+          `INSERT INTO ${TABLES.TRANSACTIONS}
+           (id, amountCents, date, note, type, systemType, accountId, categoryId,
+            transferFromAccountId, transferToAccountId, tripExpenseId, sourceTripExpenseId, sourceTripSettlementId,
+            sourceType, sourceImportInboxItemId,
+            createdAtMs, updatedAtMs, deletedAtMs, syncVersion, needsSync)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            txId,
+            amountCents,
+            dateMs,
+            note ?? null,
+            type,
+            null,
+            accountId,
+            safeCategoryId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            'api_import',
+            itemRow.id,
+            now,
+            now,
+            null,
+            1,
+            1,
+          ]
+        );
+      }
+
+      await run(
+        `UPDATE ${TABLES.IMPORT_INBOX_ITEMS}
+         SET status = 'confirmed',
+             confirmedTransactionId = ?,
+             confirmedAtMs = ?,
+             updatedAtMs = ?,
+             needsSync = 1,
+             syncVersion = syncVersion + 1
+         WHERE id = ?`,
+        [txId, now, now, itemRow.id]
+      );
+
+      confirmedTxId = txId;
+    });
+
+    GlobalEvents.emit(Events.transactionsChanged);
+    GlobalEvents.emit(Events.importInboxChanged);
+
+    const tx = confirmedTxId ? await TransactionRepository.getById(confirmedTxId) : null;
+    if (!tx) throw new Error('Confirmed transaction not found');
+    return tx;
   },
 };
 

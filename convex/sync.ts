@@ -1,40 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-
-async function getLastSeqFromChangeLog(ctx: any, userId: string): Promise<number> {
-  const lastEntry = await ctx.db
-    .query("changeLog")
-    .withIndex("by_user_seq", (q: any) => q.eq("userId", userId))
-    .order("desc")
-    .first();
-  return lastEntry?.seq ?? 0;
-}
-
-async function getOrCreateUserSyncState(ctx: any, userId: string) {
-  // Always pick the oldest state doc if duplicates exist.
-  const existing = await ctx.db
-    .query("userSyncState")
-    .withIndex("by_client_id", (q: any) => q.eq("id", userId))
-    .order("asc")
-    .first();
-  if (existing) return existing;
-
-  const lastSeq = await getLastSeqFromChangeLog(ctx, userId);
-  await ctx.db.insert("userSyncState", { id: userId, userId, lastSeq });
-
-  return ctx.db
-    .query("userSyncState")
-    .withIndex("by_client_id", (q: any) => q.eq("id", userId))
-    .order("asc")
-    .first();
-}
-
-async function allocateUserSeq(ctx: any, userId: string): Promise<number> {
-  const state = await getOrCreateUserSyncState(ctx, userId);
-  const nextSeq = ((state?.lastSeq as number | undefined) ?? 0) + 1;
-  await ctx.db.patch(state._id, { lastSeq: nextSeq });
-  return nextSeq;
-}
+import { getLastSeqFromChangeLog, recordUserChange } from "./userSyncSeq";
 
 const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
   accounts: new Set(["openingBalanceCents", "limitAmountCents", "billingCycleDay", "deletedAtMs"]),
@@ -47,6 +13,23 @@ const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
     "transferFromAccountId",
     "transferToAccountId",
     "tripExpenseId",
+    "sourceType",
+    "sourceImportInboxItemId",
+    "deletedAtMs",
+  ]),
+  importInboxItems: new Set([
+    "externalIdLabel",
+    "apiKeyId",
+    "idempotencyKeyHash",
+    "payloadHash",
+    "merchantName",
+    "note",
+    "accountId",
+    "categoryId",
+    "duplicateSignalsJson",
+    "confirmedTransactionId",
+    "confirmedAtMs",
+    "ignoredAtMs",
     "deletedAtMs",
   ]),
   trips: new Set(["startDate", "endDate", "budgetCents", "deletedAtMs"]),
@@ -62,6 +45,137 @@ const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
   ]),
 };
 
+const ALLOWED_FIELDS_BY_TABLE: Record<string, Set<string>> = {
+  accounts: new Set([
+    "name",
+    "emoji",
+    "kind",
+    "sortIndex",
+    "openingBalanceCents",
+    "limitAmountCents",
+    "billingCycleDay",
+    "createdAtMs",
+    "updatedAtMs",
+    "deletedAtMs",
+    "syncVersion",
+  ]),
+  categories: new Set([
+    "name",
+    "emoji",
+    "sortIndex",
+    "monthlyBudgetCents",
+    "isSystem",
+    "createdAtMs",
+    "updatedAtMs",
+    "deletedAtMs",
+    "syncVersion",
+  ]),
+  transactions: new Set([
+    "amountCents",
+    "date",
+    "note",
+    "type",
+    "systemType",
+    "accountId",
+    "categoryId",
+    "transferFromAccountId",
+    "transferToAccountId",
+    "tripExpenseId",
+    "sourceType",
+    "sourceImportInboxItemId",
+    "createdAtMs",
+    "updatedAtMs",
+    "deletedAtMs",
+    "syncVersion",
+  ]),
+  trips: new Set([
+    "name",
+    "emoji",
+    "sortIndex",
+    "isGroup",
+    "isArchived",
+    "startDate",
+    "endDate",
+    "budgetCents",
+    "createdAtMs",
+    "updatedAtMs",
+    "deletedAtMs",
+    "syncVersion",
+  ]),
+  tripParticipants: new Set([
+    "tripId",
+    "name",
+    "isCurrentUser",
+    "colorHex",
+    "createdAtMs",
+    "updatedAtMs",
+    "deletedAtMs",
+    "syncVersion",
+  ]),
+  tripExpenses: new Set([
+    "tripId",
+    "transactionId",
+    "paidByParticipantId",
+    "splitType",
+    "splitDataJson",
+    "computedSplitsJson",
+    "createdAtMs",
+    "updatedAtMs",
+    "deletedAtMs",
+    "syncVersion",
+  ]),
+  tripSettlements: new Set([
+    "tripId",
+    "fromParticipantId",
+    "toParticipantId",
+    "amountCents",
+    "date",
+    "note",
+    "createdAtMs",
+    "updatedAtMs",
+    "deletedAtMs",
+    "syncVersion",
+  ]),
+  importInboxItems: new Set([
+    "source",
+    "externalIdHash",
+    "externalIdLabel",
+    "apiKeyId",
+    "idempotencyKeyHash",
+    "payloadHash",
+    "status",
+    "type",
+    "amountCents",
+    "currencyCode",
+    "dateMs",
+    "merchantName",
+    "note",
+    "accountId",
+    "categoryId",
+    "possibleDuplicate",
+    "duplicateSignalsJson",
+    "confirmedTransactionId",
+    "confirmedAtMs",
+    "ignoredAtMs",
+    "createdAtMs",
+    "updatedAtMs",
+    "deletedAtMs",
+    "syncVersion",
+  ]),
+  userSettings: new Set([
+    "currencyCode",
+    "hapticsEnabled",
+    "defaultAccountId",
+    "hasSeenOnboarding",
+    "syncTransactionFilters",
+    "resetTransactionFiltersOnReopen",
+    "transactionsFiltersJson",
+    "transactionsFiltersUpdatedAtMs",
+    "updatedAtMs",
+    "syncVersion",
+  ]),
+};
+
 /**
  * Helper: Sanitize incoming SQLite records for Convex.
  * - Removes local-only fields.
@@ -72,8 +186,10 @@ function sanitizeRecord(tableName: string, input: Record<string, unknown>) {
   const output: Record<string, unknown> = {};
   const unsetKeys: string[] = [];
   const nullClears = NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE[tableName] ?? new Set<string>();
+  const allowed = ALLOWED_FIELDS_BY_TABLE[tableName];
 
   for (const [key, value] of Object.entries(rest)) {
+    if (allowed && !allowed.has(key)) continue;
     if (value === undefined) continue;
 
     if (value === null) {
@@ -103,6 +219,7 @@ export const push = mutation({
     tripParticipants: v.optional(v.array(v.any())),
     tripExpenses: v.optional(v.array(v.any())),
     tripSettlements: v.optional(v.array(v.any())),
+    importInboxItems: v.optional(v.array(v.any())),
     userSettings: v.optional(v.array(v.any())),
   },
   handler: async (ctx, args) => {
@@ -153,17 +270,8 @@ export const push = mutation({
 
         // Record in changeLog if we made a change
         if (didChange) {
-          const seq = await allocateUserSeq(ctx, userId);
           const isDelete = data.deletedAtMs !== undefined && data.deletedAtMs !== null;
-
-          await ctx.db.insert("changeLog", {
-            userId,
-            entityType: tableName,
-            entityId: id,
-            action: isDelete ? "delete" : "upsert",
-            updatedAtMs: incomingUpdatedAtMs,
-            seq,
-          });
+          await recordUserChange(ctx, userId, tableName, id, incomingUpdatedAtMs, isDelete ? "delete" : "upsert");
         }
       }
     };
@@ -175,6 +283,7 @@ export const push = mutation({
     await processTable("tripParticipants", args.tripParticipants);
     await processTable("tripExpenses", args.tripExpenses);
     await processTable("tripSettlements", args.tripSettlements);
+    await processTable("importInboxItems", args.importInboxItems);
     await processTable("userSettings", args.userSettings);
 
     return { status: "ok" };
@@ -211,6 +320,7 @@ export const pull = query({
         tripParticipants: [],
         tripExpenses: [],
         tripSettlements: [],
+        importInboxItems: [],
         userSettings: [],
         latestSeq: args.lastSeq,
       };
@@ -251,6 +361,7 @@ export const pull = query({
       tripParticipants: entityMap.tripParticipants ? await fetchEntities("tripParticipants", entityMap.tripParticipants) : [],
       tripExpenses: entityMap.tripExpenses ? await fetchEntities("tripExpenses", entityMap.tripExpenses) : [],
       tripSettlements: entityMap.tripSettlements ? await fetchEntities("tripSettlements", entityMap.tripSettlements) : [],
+      importInboxItems: entityMap.importInboxItems ? await fetchEntities("importInboxItems", entityMap.importInboxItems) : [],
       userSettings: entityMap.userSettings ? await fetchEntities("userSettings", entityMap.userSettings) : [],
       latestSeq,
     };

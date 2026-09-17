@@ -401,6 +401,24 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
           <SectionHeader title="Transactions" />
 
           <SettingsItem
+            label="Import Inbox"
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push('/import-inbox' as any);
+            }}
+            rightElement={<Chevron />}
+          />
+
+          <SettingsItem
+            label="Agent Import API"
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push('/settings/api-import' as any);
+            }}
+            rightElement={<Chevron />}
+          />
+
+          <SettingsItem
             label="Sync transaction filters"
             rightElement={
               <Switch

@@ -56,6 +56,8 @@ export default defineSchema({
     transferFromAccountId: v.optional(v.string()),
     transferToAccountId: v.optional(v.string()),
     tripExpenseId: v.optional(v.string()),
+    sourceType: v.optional(v.string()),
+    sourceImportInboxItemId: v.optional(v.string()),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
     deletedAtMs: v.optional(v.number()),
@@ -158,6 +160,97 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_client_id", ["id"]),
+
+  apiImportKeys: defineTable({
+    id: v.string(),
+    userId: v.string(),
+    name: v.string(),
+    keyId: v.string(),
+    keyHash: v.string(),
+    hashVersion: v.number(),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    lastUsedAtMs: v.optional(v.number()),
+    expiresAtMs: v.optional(v.number()),
+    revokedAtMs: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_client_id", ["id"])
+    .index("by_key_id", ["keyId"]),
+
+  apiImportRequests: defineTable({
+    id: v.string(),
+    userId: v.string(),
+    apiKeyId: v.string(),
+    idempotencyKeyHash: v.string(),
+    requestHash: v.string(),
+    responseJson: v.string(),
+    statusCode: v.number(),
+    createdAtMs: v.number(),
+    expiresAtMs: v.number(),
+  })
+    .index("by_client_id", ["id"])
+    .index("by_user", ["userId"])
+    .index("by_key_idempotency", ["apiKeyId", "idempotencyKeyHash"]),
+
+  importInboxItems: defineTable({
+    id: v.string(),
+    userId: v.string(),
+    source: v.string(),
+    externalIdHash: v.string(),
+    externalIdLabel: v.optional(v.string()),
+    apiKeyId: v.optional(v.string()),
+    idempotencyKeyHash: v.optional(v.string()),
+    payloadHash: v.optional(v.string()),
+    status: v.string(),
+    type: v.string(),
+    amountCents: v.number(),
+    currencyCode: v.string(),
+    dateMs: v.number(),
+    merchantName: v.optional(v.string()),
+    note: v.optional(v.string()),
+    accountId: v.optional(v.string()),
+    categoryId: v.optional(v.string()),
+    possibleDuplicate: v.number(),
+    duplicateSignalsJson: v.optional(v.string()),
+    confirmedTransactionId: v.optional(v.string()),
+    confirmedAtMs: v.optional(v.number()),
+    ignoredAtMs: v.optional(v.number()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    deletedAtMs: v.optional(v.number()),
+    syncVersion: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_client_id", ["id"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_user_external", ["userId", "source", "externalIdHash"])
+    .index("by_user_date", ["userId", "dateMs"]),
+
+  apiImportAuditEvents: defineTable({
+    id: v.string(),
+    userId: v.optional(v.string()),
+    apiKeyId: v.optional(v.string()),
+    eventType: v.string(),
+    status: v.string(),
+    requestId: v.optional(v.string()),
+    detailJson: v.optional(v.string()),
+    ipHash: v.optional(v.string()),
+    userAgentHash: v.optional(v.string()),
+    createdAtMs: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_api_key", ["apiKeyId"]),
+
+  apiImportRateLimits: defineTable({
+    id: v.string(),
+    bucketKey: v.string(),
+    windowStartMs: v.number(),
+    count: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_client_id", ["id"])
+    .index("by_bucket", ["bucketKey"]),
 
   // Monotonic sequence state for user-scoped changeLog.
   // Used to allocate unique seq values under concurrent pushes.
