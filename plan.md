@@ -1,3 +1,17 @@
+## Mobile-first Expo PWA execution plan (published 2026-09-18)
+
+Planning-only artifact for the approved mobile-first, online-only Expo PWA. Implementation, worktree creation, production deployment, hosting/DNS, EAS actions, commits, and pushes remain separately authorized. [Human plan](https://plans.vanshraja.me/p/PszNYhnX7vY5) · [Agent execution](https://plans.vanshraja.me/agent/PszNYhnX7vY5) · [Structured JSON](https://plans.vanshraja.me/raw/PszNYhnX7vY5)
+
+- [ ] Phase 0 — Preserve the dirty checkout and establish the PWA baseline.
+- [ ] Phase 1 — Prove the universal web runtime and auth shell.
+- [ ] Phase 2 — Add compatible direct Convex read and write APIs.
+- [ ] Phase 3 — Adapt navigation and shared chrome for phone web.
+- [ ] Phase 4 — Connect core ledger screens to direct Convex data.
+- [ ] Phase 5 — Deliver local and shared trip parity on web.
+- [ ] Phase 6 — Finish import inbox and cross-client compatibility.
+- [ ] Phase 7 — Make the web app installable and operationally honest.
+- [ ] Phase 8 — Audit the mobile PWA and prepare a maintainer-controlled release.
+
 # BudgetThing: SwiftUI to Expo + Convex Migration Plan
 
 ---
