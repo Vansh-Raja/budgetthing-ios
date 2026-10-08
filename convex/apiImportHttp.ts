@@ -163,12 +163,19 @@ async function authenticate(ctx: any, rawKey: string, ipHash?: string, userAgent
     return null;
   }
 
-  await ctx.db.patch(row._id, { lastUsedAtMs: now, updatedAtMs: now });
+  // Usage is recorded by touchKey only after the endpoint's rate limit admits the request,
+  // so throttled calls never write to the key row.
   return {
     userId: row.userId as string,
     apiKeyId: row.id as string,
     keyId: row.keyId as string,
+    keyDocId: row._id,
   };
+}
+
+async function touchKey(ctx: any, auth: { keyDocId: any }) {
+  const now = Date.now();
+  await ctx.db.patch(auth.keyDocId, { lastUsedAtMs: now, updatedAtMs: now });
 }
 
 async function getCurrencyCode(ctx: any, userId: string) {
@@ -293,6 +300,7 @@ export const metadataForToken = internalMutation({
       await audit(ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, eventType: "metadata_read", status: "rate_limited" });
       return json(429, { error: "rate_limited" }, { "Retry-After": "60" });
     }
+    await touchKey(ctx, auth);
 
     const [accounts, categories, settings] = await Promise.all([
       ctx.db.query("accounts").withIndex("by_user", (q: any) => q.eq("userId", auth.userId)).collect(),
@@ -328,6 +336,12 @@ export const statusForToken = internalMutation({
   handler: async (ctx, args): Promise<ApiResult> => {
     const auth = await authenticate(ctx, args.rawKey, args.ipHash, args.userAgentHash);
     if (!auth) return json(401, { error: "unauthorized" });
+
+    // Status polling is limited per key before any lookup or write.
+    if (!await checkRateLimit(ctx, `status:${auth.apiKeyId}`, 60_000, 120)) {
+      return json(429, { error: "rate_limited" }, { "Retry-After": "60" });
+    }
+    await touchKey(ctx, auth);
 
     const externalIdHash = await sha256Hex(`${args.source}:${args.externalId}`);
     const item = await ctx.db
@@ -369,6 +383,7 @@ export const createImportsForToken = internalMutation({
       await audit(ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, eventType: "import_create", status: "rate_limited" });
       return json(429, { error: "rate_limited" }, { "Retry-After": "60" });
     }
+    await touchKey(ctx, auth);
 
     const forbidden = containsForbiddenKey(args.body);
     if (forbidden) return json(400, { error: "raw_payload_not_allowed", field: forbidden });

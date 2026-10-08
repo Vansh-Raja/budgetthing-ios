@@ -236,10 +236,19 @@ export default function ImportInboxScreen() {
   }, [closeIfCleared, showPopup, toast]);
 
   const handleIgnore = useCallback(async (id: string) => {
-    await ImportInboxRepository.ignore(id);
+    try {
+      await ImportInboxRepository.ignore(id);
+    } catch (error: any) {
+      showPopup({
+        title: 'Could not ignore',
+        message: error?.message ?? 'Please try again.',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
+      return;
+    }
     toast.show('Ignored', { kind: 'info' });
     await closeIfCleared();
-  }, [closeIfCleared, toast]);
+  }, [closeIfCleared, showPopup, toast]);
 
   const renderItem = useCallback(({ item }: { item: ImportInboxItem }) => {
     const account = item.accountId ? accountMap.get(item.accountId) : null;
