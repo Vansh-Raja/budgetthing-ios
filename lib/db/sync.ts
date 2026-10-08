@@ -153,7 +153,14 @@ function sanitizeLocalChange(table: string, row: any) {
   return out;
 }
 
-function normalizeOptionalFields(table: string, data: any) {
+/** Columns that are NOT NULL locally but may be absent on older server rows. */
+const DEFAULTS_BY_TABLE: Record<string, Record<string, unknown>> = {
+  // Server transactions written before provenance existed have no sourceType;
+  // SQLite's column DEFAULT does not apply to an explicit NULL, so supply it here.
+  [TABLES.TRANSACTIONS]: { sourceType: 'manual' },
+};
+
+export function normalizeOptionalFields(table: string, data: any) {
   if (!data || typeof data !== 'object') return data;
 
   const optionalByTable: Record<string, string[]> = {
@@ -167,7 +174,6 @@ function normalizeOptionalFields(table: string, data: any) {
       'transferFromAccountId',
       'transferToAccountId',
       'tripExpenseId',
-      'sourceType',
       'sourceImportInboxItemId',
       'deletedAtMs',
     ],
@@ -204,6 +210,9 @@ function normalizeOptionalFields(table: string, data: any) {
   for (const col of optionalCols) {
     if (!(col in out)) out[col] = null;
     if (out[col] === undefined) out[col] = null;
+  }
+  for (const [col, value] of Object.entries(DEFAULTS_BY_TABLE[table] ?? {})) {
+    if (out[col] === undefined || out[col] === null) out[col] = value;
   }
   return out;
 }

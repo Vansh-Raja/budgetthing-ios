@@ -127,9 +127,13 @@ async function checkRateLimit(ctx: any, bucketKey: string, windowMs: number, lim
 
 async function authenticate(ctx: any, rawKey: string, ipHash?: string, userAgentHash?: string) {
   const parsed = parseRawApiKey(rawKey);
+  // Failed auth is rate-limited per client: past the limit the request is still
+  // rejected, but no further audit rows are written (bounds unauthenticated writes).
+  const failedAuthAllowed = () => checkRateLimit(ctx, `invalid:${ipHash ?? "unknown"}`, 60_000, 20);
   if (!parsed) {
-    await checkRateLimit(ctx, `invalid:${ipHash ?? "unknown"}`, 60_000, 20);
-    await audit(ctx, { eventType: "auth_failed", status: "bad_key_format", ipHash, userAgentHash });
+    if (await failedAuthAllowed()) {
+      await audit(ctx, { eventType: "auth_failed", status: "bad_key_format", ipHash, userAgentHash });
+    }
     return null;
   }
 
@@ -139,13 +143,15 @@ async function authenticate(ctx: any, rawKey: string, ipHash?: string, userAgent
     .first();
 
   if (!row || row.keyHash !== await hashApiKey(rawKey)) {
-    await checkRateLimit(ctx, `invalid:${ipHash ?? "unknown"}`, 60_000, 20);
-    await audit(ctx, { eventType: "auth_failed", status: "key_not_found", ipHash, userAgentHash });
+    if (await failedAuthAllowed()) {
+      await audit(ctx, { eventType: "auth_failed", status: "key_not_found", ipHash, userAgentHash });
+    }
     return null;
   }
 
   const now = Date.now();
   if (row.revokedAtMs !== undefined || (row.expiresAtMs !== undefined && row.expiresAtMs <= now)) {
+    if (!(await failedAuthAllowed())) return null;
     await audit(ctx, {
       userId: row.userId,
       apiKeyId: row.id,
@@ -405,15 +411,18 @@ export const createImportsForToken = internalMutation({
     const currencyCode = await getCurrencyCode(ctx, auth.userId);
     const responseItems: any[] = [];
 
+    // Validate the whole batch before writing anything: a 400 must leave no partial inbox rows.
+    const normalizedItems: Array<Awaited<ReturnType<typeof validateAndNormalizeItem>>> = [];
     for (const rawItem of args.body.items) {
-      let normalized;
       try {
-        normalized = await validateAndNormalizeItem(ctx, auth.userId, currencyCode, rawItem);
+        normalizedItems.push(await validateAndNormalizeItem(ctx, auth.userId, currencyCode, rawItem));
       } catch (e: any) {
         await audit(ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, requestId, eventType: "import_create", status: "rejected", detail: { message: e.message } });
         return json(400, { error: "invalid_item", message: e.message });
       }
+    }
 
+    for (const normalized of normalizedItems) {
       const externalIdHash = await sha256Hex(`${source}:${normalized.externalId}`);
       const existing = await ctx.db
         .query("importInboxItems")

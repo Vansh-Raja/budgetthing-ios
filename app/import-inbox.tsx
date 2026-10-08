@@ -128,25 +128,27 @@ export default function ImportInboxScreen() {
     };
   }, [accountMap, accounts, defaultAccountId, hasValidApiAccount, hasValidApiCategory, reviewCategories]);
 
+  // Start from the item's current (or default) selection and replace only the changed
+  // field, so the first account pick never drops the API-provided category (and vice versa).
+  const baseSelection = useCallback((current: Record<string, { accountId: string | null; categoryId: string | null }>, id: string) => {
+    if (current[id]) return current[id];
+    const item = items.find((candidate) => candidate.id === id);
+    return item ? getDefaultReviewSelection(item) : { accountId: null, categoryId: null };
+  }, [getDefaultReviewSelection, items]);
+
   const handleReviewAccountChange = useCallback((id: string, accountId: string) => {
     setReviewSelections((current) => ({
       ...current,
-      [id]: {
-        accountId,
-        categoryId: current[id]?.categoryId ?? null,
-      },
+      [id]: { ...baseSelection(current, id), accountId },
     }));
-  }, []);
+  }, [baseSelection]);
 
   const handleReviewCategoryChange = useCallback((id: string, categoryId: string | null) => {
     setReviewSelections((current) => ({
       ...current,
-      [id]: {
-        accountId: current[id]?.accountId ?? null,
-        categoryId,
-      },
+      [id]: { ...baseSelection(current, id), categoryId },
     }));
-  }, []);
+  }, [baseSelection]);
 
   const getSelectionForConfirm = useCallback((item: ImportInboxItem) => {
     return reviewSelections[item.id] ?? getDefaultReviewSelection(item);

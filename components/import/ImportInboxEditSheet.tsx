@@ -79,7 +79,15 @@ export function ImportInboxEditSheet({ item, accounts, categories, onClose, onCo
     setSaving(false);
     setShowDatePicker(false);
     setPicker(null);
-  }, [item?.id, accounts]);
+    // Re-initialise only when a different item opens: the parent refreshes `accounts`
+    // on every inbox event, and that must not wipe edits in progress.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
+
+  // Accounts may load after the sheet opens; fill a missing account without touching other fields.
+  useEffect(() => {
+    if (item && accountId === null && accounts.length > 0) setAccountId(item.accountId ?? accounts[0].id);
+  }, [item, accountId, accounts]);
 
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === accountId) ?? null,
