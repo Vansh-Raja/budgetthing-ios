@@ -7,7 +7,7 @@
 import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import { format } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
@@ -227,7 +227,7 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
                     placeholderTextColor="rgba(255, 255, 255, 0.3)"
                     onSubmitEditing={addParticipant}
                   />
-                  <TouchableOpacity onPress={addParticipant} disabled={!newParticipantName.trim()}>
+                  <TouchableOpacity onPress={addParticipant} disabled={!newParticipantName.trim()} accessibilityRole="button" accessibilityLabel="Add participant">
                     <Ionicons
                       name="add-circle"
                       size={24}

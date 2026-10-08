@@ -413,7 +413,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
   // Prepare data for UI
   const categoryItems = useMemo(
-    () => categoriesData.filter(c => !c.isSystem).map(c => ({ id: c.id, emoji: c.emoji })),
+    () => categoriesData.filter(c => !c.isSystem).map(c => ({ id: c.id, emoji: c.emoji, name: c.name })),
     [categoriesData]
   );
 
@@ -430,9 +430,9 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
   const tripEmojiItems = useMemo(() => {
     if (tripItemsOverride) return tripItemsOverride;
 
-    const localItems = openTrips.map((t) => ({ id: t.id, emoji: t.emoji }));
+    const localItems = openTrips.map((t) => ({ id: t.id, emoji: t.emoji, name: t.name }));
     const sharedItems = isSignedIn
-      ? sharedTrips.map((t) => ({ id: t.id, emoji: t.emoji }))
+      ? sharedTrips.map((t) => ({ id: t.id, emoji: t.emoji, name: t.name }))
       : [];
 
     // Shared first, then local.
@@ -797,7 +797,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
   };
 
   const renderEmojiRow = (
-    items: Array<{ id: string; emoji: string }>,
+    items: Array<{ id: string; emoji: string; name?: string }>,
     selectedId: string | null,
     onSelect: (id: string | null) => void,
     maxVisible = 7,
@@ -824,6 +824,9 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
             }}
             activeOpacity={0.7}
             disabled={mode === 'income'}
+            accessibilityRole="button"
+            accessibilityLabel={item.name ?? item.emoji}
+            accessibilityState={{ selected: selectedId === item.id }}
           >
             <Text style={[styles.emojiText, { fontSize: 24 * scale }]}>
               {item.emoji}
@@ -939,6 +942,8 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
             onPress={handleSave}
             activeOpacity={canSave ? 0.7 : 1}
             disabled={!canSave}
+            accessibilityRole="button"
+            accessibilityLabel="Save"
           >
             <Ionicons name="checkmark" size={16} color={Colors.textPrimary} />
           </TouchableOpacity>

@@ -1,6 +1,6 @@
 import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import { format } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import React, { useMemo, useState } from 'react';

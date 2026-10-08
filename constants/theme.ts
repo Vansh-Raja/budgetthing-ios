@@ -32,11 +32,22 @@ export const Colors = {
   success: '#34C759',
 };
 
+import { Platform } from 'react-native';
+
+// On web the family string is passed straight to CSS, so we can append a
+// documented fallback stack (Avenir Next Condensed ships with iOS/macOS; Android
+// and Windows browsers fall back to a condensed system face). Native keeps the
+// exact PostScript names.
+const webStack = (postScriptName: string, cssFamily: string, weight: string) =>
+  Platform.OS === 'web'
+    ? `"${postScriptName}", "${cssFamily}", "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif`
+    : postScriptName;
+
 export const Fonts = {
   // Font families (these need to be loaded via expo-font)
-  heavy: 'AvenirNextCondensed-Heavy',
-  demiBold: 'AvenirNextCondensed-DemiBold',
-  medium: 'AvenirNextCondensed-Medium',
+  heavy: webStack('AvenirNextCondensed-Heavy', 'Avenir Next Condensed Heavy', '900'),
+  demiBold: webStack('AvenirNextCondensed-DemiBold', 'Avenir Next Condensed Demi Bold', '600'),
+  medium: webStack('AvenirNextCondensed-Medium', 'Avenir Next Condensed Medium', '500'),
 
   // Fallbacks for development
   heavyFallback: 'System',

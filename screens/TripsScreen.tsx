@@ -198,6 +198,7 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
             <TouchableOpacity
               onPress={handleJoinTrip}
               style={styles.addButton}
+              accessibilityRole="button" accessibilityLabel="Join trip"
             >
               <Ionicons name="log-in" size={22} color={Colors.accent} />
             </TouchableOpacity>
@@ -205,6 +206,7 @@ export function TripsScreen({ selectedIndex, onSelectIndex, addTripRequestId = 0
           <TouchableOpacity
             onPress={handleAddTrip}
             style={styles.addButton}
+            accessibilityRole="button" accessibilityLabel="New trip"
           >
             <Ionicons name="add" size={24} color={Colors.accent} />
           </TouchableOpacity>

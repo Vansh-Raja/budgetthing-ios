@@ -165,7 +165,7 @@ export function ManageAccountsScreen() {
                     </TouchableOpacity>
                 ),
                 headerRight: () => (
-                    <TouchableOpacity onPress={handleAdd} style={{ padding: 8 }}>
+                    <TouchableOpacity onPress={handleAdd} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel="Add account">
                         <Ionicons name="add" size={24} color={Colors.accent} />
                     </TouchableOpacity>
                 ),

@@ -6,7 +6,7 @@ import { useMutation, useQuery } from 'convex/react';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
-import PagerView from 'react-native-pager-view';
+import { Pager as PagerView, type PagerHandle } from '@/components/ui/Pager';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../convex/_generated/api';
 
@@ -40,7 +40,7 @@ const TABS: { key: TabType; label: string; icon: any }[] = [
 
 export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailScreenProps) {
   const insets = useSafeAreaInsets();
-  const pagerRef = useRef<PagerView>(null);
+  const pagerRef = useRef<PagerHandle>(null);
   const { userId } = useAuth();
   const { syncNow } = useSyncStatus();
 

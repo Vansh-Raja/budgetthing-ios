@@ -182,7 +182,7 @@ export function ManageCategoriesScreen() {
                     </TouchableOpacity>
                 ),
                 headerRight: () => (
-                    <TouchableOpacity onPress={handleAdd} style={{ padding: 8 }}>
+                    <TouchableOpacity onPress={handleAdd} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel="Add category">
                         <Ionicons name="add" size={24} color={Colors.accent} />
                     </TouchableOpacity>
                 ),

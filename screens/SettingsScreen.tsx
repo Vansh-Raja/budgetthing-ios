@@ -19,6 +19,7 @@ import {
   Switch,
   TouchableOpacity,
   View,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -31,6 +32,7 @@ import {
   UserProfileCard,
 } from '../components/auth';
 import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
+import { WebRuntimeStatusSlot } from '../components/web/WebRuntimeStatusSlot';
 import { api } from '../convex/_generated/api';
 import { useAuthState } from '../lib/auth/useAuthHooks';
 import { clearAllData } from '../lib/db/database';
@@ -326,7 +328,10 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
         {/* Sync Section */}
         <View style={styles.section}>
           <SectionHeader title="Sync" />
+          <WebRuntimeStatusSlot />
 
+          {Platform.OS !== 'web' && (
+          <>
           <SettingsItem
             label="Status"
             rightElement={
@@ -363,6 +368,8 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
           {isSignedIn && lastSyncError ? (
             <Text style={styles.syncErrorText}>Last sync failed. Try again later.</Text>
           ) : null}
+          </>
+          )}
         </View>
 
         {/* Basics Section */}
