@@ -72,6 +72,8 @@ curl -s \
   https://ceaseless-mandrill-733.convex.site/v1/imports
 ```
 
+`INR` above is only an example: set `currencyCode` to the `currencyCode` returned by `/v1/import/metadata`. The server rejects items whose currency does not match the user's current BudgetThing currency.
+
 BudgetThing will place the item in the user's import inbox. The user must confirm or edit it in the app before it affects balances.
 
 ## Check Status
