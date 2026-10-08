@@ -6,6 +6,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { deterministicImportTransactionId } from '../logic/importProvenance';
 import { queryAll, queryFirst, run, withTransaction, SQLiteBindValue } from './database';
 import { TABLES } from './schema';
 import {
@@ -727,9 +728,6 @@ function rowToImportInboxItem(row: ImportInboxItemRow): ImportInboxItem {
   };
 }
 
-function deterministicImportTransactionId(importInboxItemId: string) {
-  return `api_import_${hashStringToBase36(importInboxItemId)}`;
-}
 
 export const ImportInboxRepository = {
   async getPending(): Promise<ImportInboxItem[]> {

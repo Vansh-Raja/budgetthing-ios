@@ -252,6 +252,22 @@ export default defineSchema({
     .index("by_client_id", ["id"])
     .index("by_bucket", ["bucketKey"]),
 
+  // PWA-only: per-user account choice for virtual derived trip rows.
+  // Native keeps this choice device-local; this table is never emitted through
+  // the legacy changeLog/sync protocol until a versioned native adapter exists.
+  derivedAccountOverrides: defineTable({
+    userId: v.string(),
+    sourceKind: v.string(), // "trip_expense" | "trip_settlement" | "shared_trip_expense" | "shared_trip_settlement"
+    sourceId: v.string(),
+    direction: v.string(), // "cashflow" | "in" | "out"
+    accountId: v.string(),
+    updatedAtMs: v.number(),
+    deletedAtMs: v.optional(v.number()),
+    revision: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_source", ["userId", "sourceKind", "sourceId", "direction"]),
+
   // Monotonic sequence state for user-scoped changeLog.
   // Used to allocate unique seq values under concurrent pushes.
   userSyncState: defineTable({
