@@ -795,7 +795,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         </View>
       </TouchableOpacity>
     );
-  }, [isSelecting, selectedIds, toggleItemSelection, categoryMap, getEffectiveDisplayInfo, tripExpenseMap, sharedExpenseMeta]);
+  }, [isSelecting, selectedIds, toggleItemSelection, categoryMap, getEffectiveDisplayInfo, tripExpenseMap, sharedExpenseMeta, localExpenseMeta, sharedSettlementMeta, localSettlementMeta]);
 
   // Render Header
   const renderSectionHeader = useCallback(({ section: { title, totalCents } }: { section: MonthSection }) => (
