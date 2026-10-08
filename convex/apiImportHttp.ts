@@ -129,7 +129,12 @@ async function authenticate(ctx: any, rawKey: string, ipHash?: string, userAgent
   const parsed = parseRawApiKey(rawKey);
   // Failed auth is rate-limited per client: past the limit the request is still
   // rejected, but no further audit rows are written (bounds unauthenticated writes).
-  const failedAuthAllowed = () => checkRateLimit(ctx, `invalid:${ipHash ?? "unknown"}`, 60_000, 20);
+  // The client identity comes from proxy headers a caller may be able to vary, so a
+  // global bucket is checked first: once it is exhausted nothing per-client is written
+  // (no new per-IP rate rows, no audits), keeping storage bounded regardless of headers.
+  const failedAuthAllowed = async () =>
+    (await checkRateLimit(ctx, "invalid:global", 60_000, 300)) &&
+    (await checkRateLimit(ctx, `invalid:${ipHash ?? "unknown"}`, 60_000, 20));
   if (!parsed) {
     if (await failedAuthAllowed()) {
       await audit(ctx, { eventType: "auth_failed", status: "bad_key_format", ipHash, userAgentHash });
