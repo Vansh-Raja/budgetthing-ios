@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getLastSeqFromChangeLog, recordUserChange } from "./userSyncSeq";
 import { isDerivedTripSystemType } from "../lib/logic/syncGuards";
+import { pinDerivedAccountsIfDefaultChanges } from "./pwaDerived";
 
 const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
   accounts: new Set(["openingBalanceCents", "limitAmountCents", "billingCycleDay", "deletedAtMs"]),
@@ -288,6 +289,9 @@ export const push = mutation({
     await processTable("tripExpenses", args.tripExpenses);
     await processTable("tripSettlements", args.tripSettlements);
     await processTable("importInboxItems", args.importInboxItems);
+    // A native default-account change must not re-home past web-projected trip payments.
+    const incomingDefault = (args.userSettings ?? []).find((r: any) => r && r.deletedAtMs == null && "defaultAccountId" in r);
+    if (incomingDefault) await pinDerivedAccountsIfDefaultChanges(ctx, userId, incomingDefault.defaultAccountId ?? null);
     await processTable("userSettings", args.userSettings);
 
     return { status: "ok" };

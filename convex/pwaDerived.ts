@@ -199,6 +199,43 @@ function parseJson(value: string | null | undefined): Record<string, number> | n
 }
 
 /** Defensive: drop any legacy/malformed persisted derived row before merging the virtual projection. */
+/**
+ * Native keeps a derived cashflow/settlement row's account once it is assigned
+ * (upsertDerivedBatch preserves accountId), so changing the default account only
+ * affects new trip payments. The web projection recomputes on every read, so before
+ * the default changes we pin every not-yet-overridden row to the account it charges
+ * now. Writes only PWA-only overrides; nothing enters the changeLog.
+ */
+export async function pinDerivedAccounts(ctx: any, userId: string): Promise<number> {
+  const rows = await computeVirtualDerivedRows(ctx, userId);
+  const overrides = await loadOverrideMap(ctx, userId);
+  const now = serverNow();
+  let pinned = 0;
+  for (const row of rows) {
+    const key = overrideKeyFor(row, row.origin);
+    if (!key || !row.accountId || overrides.has(keyString(key))) continue;
+    const existing = await ctx.db
+      .query("derivedAccountOverrides")
+      .withIndex("by_user_source", (q: any) => q.eq("userId", userId).eq("sourceKind", key.sourceKind).eq("sourceId", key.sourceId).eq("direction", key.direction))
+      .first();
+    if (existing) {
+      // A cleared override: re-pin to the account currently charged.
+      await ctx.db.patch(existing._id, { accountId: row.accountId, updatedAtMs: now, deletedAtMs: undefined, revision: existing.revision + 1 });
+    } else {
+      await ctx.db.insert("derivedAccountOverrides", { userId, ...key, accountId: row.accountId, updatedAtMs: now, revision: 1 });
+    }
+    overrides.set(keyString(key), row.accountId);
+    pinned++;
+  }
+  return pinned;
+}
+
+/** Pin derived accounts only when the effective default account is about to change. */
+export async function pinDerivedAccountsIfDefaultChanges(ctx: any, userId: string, nextDefaultAccountId: string | null): Promise<void> {
+  const current = await resolveDefaultAccountId(ctx, userId);
+  if (current && current !== nextDefaultAccountId) await pinDerivedAccounts(ctx, userId);
+}
+
 export function excludePersistedDerivedRows<T extends { systemType?: string | null }>(rows: T[]): T[] {
   return rows.filter((r) => !isDerivedTripSystemType(r.systemType ?? null));
 }

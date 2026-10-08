@@ -21,17 +21,23 @@ test.describe('Personal ledger: income, adjustment, filters', () => {
 
     const amt = uniqueAmount();
     await openTab(page, 0);
-    await activePage(page).getByRole('button', { name: 'Income mode' }).click();
+    // Wait until the calculator has loaded this test's default account, then switch mode and confirm it stuck.
+    await expect(activePage(page).getByText(`Inc ${run}`)).toBeVisible({ timeout: 15_000 });
+    const incomeMode = activePage(page).getByRole('button', { name: 'Income mode' });
+    await incomeMode.click();
     await activePage(page).getByLabel('C', { exact: true }).first().click();
     await pressKeys(page, amt.keys);
     await activePage(page).getByRole('button', { name: 'Save', exact: true }).first().click();
     await expect(page.getByText('Added', { exact: true })).toBeVisible({ timeout: 10_000 });
 
-    await expect.poll(async () => (await convexQuery(page, 'pwaPersonal:listAccounts')).find((a: any) => a.id === accountId).balanceCents, { timeout: 15_000 })
-      .toBe(before + amt.cents);
-    const txs: any[] = (await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions;
-    const income = txs.find((t) => t.amountCents === amt.cents && t.type === 'income' && t.accountId === accountId);
-    expect(income).toBeTruthy();
+    // Exactly one transaction on this fresh account: the income we typed.
+    const accountTxs = async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[])
+      .filter((t) => t.accountId === accountId)
+      .map((t) => ({ id: t.id, type: t.type, amountCents: t.amountCents, systemType: t.systemType ?? null, categoryId: t.categoryId }));
+    await expect.poll(accountTxs, { timeout: 15_000 }).toHaveLength(1);
+    const [income] = await accountTxs();
+    expect(income, JSON.stringify(await accountTxs())).toMatchObject({ type: 'income', amountCents: amt.cents, systemType: null });
+    expect((await convexQuery(page, 'pwaPersonal:listAccounts')).find((a: any) => a.id === accountId).balanceCents).toBe(before + amt.cents);
     expect(income.categoryId).toBeUndefined(); // income never carries a category
     await convexMutation(page, 'pwaLedger:deleteTransaction', { id: income.id });
     await convexMutation(page, 'pwaPersonal:updateSettings', { defaultAccountId: prevDefault });

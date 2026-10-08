@@ -10,7 +10,7 @@ import {
   assertBillingCycleDay, assertCents, assertCurrencyCode, assertEmoji, assertOwnedRef, assertText,
   optionalText, vAccountKind, vExpectedVersion, vNullableNumber, vNullableString,
 } from "./pwaValidation";
-import { computeVirtualDerivedRows, excludePersistedDerivedRows } from "./pwaDerived";
+import { computeVirtualDerivedRows, excludePersistedDerivedRows, pinDerivedAccountsIfDefaultChanges } from "./pwaDerived";
 import { computeAccountBalanceCents, computeAccountAvailableCents, computeAccountTileValueCents, getTransactionsForAccount } from "../lib/logic/accountBalance";
 
 // ---------------------------------------------------------------------------
@@ -300,6 +300,9 @@ export const updateSettings = mutation({
     }
     if (args.transactionsFiltersUpdatedAtMs !== undefined) patch.transactionsFiltersUpdatedAtMs = args.transactionsFiltersUpdatedAtMs;
 
+    if (patch.defaultAccountId !== undefined) {
+      await pinDerivedAccountsIfDefaultChanges(ctx, userId, (patch.defaultAccountId as string | null) ?? null);
+    }
     const existing = await getSettingsRow(ctx, userId);
     if (existing) return patchOwned(ctx, userId, "userSettings", existing, patch);
     const base = { currencyCode: "INR", hapticsEnabled: 1, hasSeenOnboarding: 1, syncTransactionFilters: 0, resetTransactionFiltersOnReopen: 0 };
