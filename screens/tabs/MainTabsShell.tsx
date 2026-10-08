@@ -24,12 +24,13 @@ export default function MainTabsScreen() {
   const initialIndex = clampTabIndex(params.tab);
   const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 
-  // Web: keep the selected tab in the URL so reload/back/deep links land on the same tab.
-  useEffect(() => {
+  // Web: the URL mirrors the selected tab so reload/back/deep links land on the same tab.
+  // Only user actions (tap, swipe) write ?tab=; URL changes (back/forward) only read it,
+  // so the two directions never race.
+  const writeTabToUrl = useCallback((index: number) => {
     if (Platform.OS !== 'web') return;
-    const current = clampTabIndex(params.tab);
-    if (current !== selectedIndex) router.setParams({ tab: String(selectedIndex) });
-  }, [selectedIndex, params.tab, router]);
+    if (clampTabIndex(params.tab) !== index) router.setParams({ tab: String(index) });
+  }, [params.tab, router]);
 
   // Web: respond to browser back/forward changing ?tab=.
   useEffect(() => {
@@ -47,11 +48,13 @@ export default function MainTabsScreen() {
   const handleSelectIndex = useCallback((index: number) => {
     setSelectedIndex(index);
     pagerRef.current?.setPage(index);
-  }, []);
+    writeTabToUrl(index);
+  }, [writeTabToUrl]);
 
   const handlePageSelected = useCallback((e: { nativeEvent: { position: number } }) => {
     setSelectedIndex(e.nativeEvent.position);
-  }, []);
+    writeTabToUrl(e.nativeEvent.position);
+  }, [writeTabToUrl]);
 
   const handleRequestAddTrip = useCallback(() => {
     const tripsIndex = Tabs.findIndex((tab) => tab.key === 4);

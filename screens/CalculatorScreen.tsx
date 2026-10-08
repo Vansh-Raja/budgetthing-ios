@@ -24,8 +24,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../constants/theme';
-import { withTransaction } from '../lib/db/database';
-import { TransactionRepository, TripExpenseRepository } from '../lib/db/repositories';
+import { TransactionRepository } from '../lib/db/repositories';
+import { Actions } from '../lib/logic/actions';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
 import { useAccounts, useCategories } from '../lib/hooks/useData';
@@ -572,30 +572,21 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
     // Save solo transaction
     try {
-      await withTransaction(async () => {
-        const tx = await TransactionRepository.create({
-          amountCents,
-          date: Date.now(),
-          note: data.note ?? undefined,
-          type: mode,
-          categoryId: categoryId ?? undefined,
-          accountId: accountId ?? undefined,
-        });
-
-        // Link to trip if selected (solo trip)
-        if (trip && mode === 'expense') {
-          const me = trip.participants?.find(p => p.isCurrentUser);
-
-          const tripExpense = await TripExpenseRepository.create({
-            tripId: trip.id,
-            transactionId: tx.id,
-            splitType: 'equal',
-            paidByParticipantId: me?.id,
-          });
-
-          await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
-        }
-      });
+      const txData = {
+        amountCents,
+        date: Date.now(),
+        note: data.note ?? undefined,
+        type: mode,
+        categoryId: categoryId ?? undefined,
+        accountId: accountId ?? undefined,
+      };
+      if (trip && mode === 'expense') {
+        // Solo trip: expense + trip link in one write.
+        const me = trip.participants?.find(p => p.isCurrentUser);
+        await Actions.saveCalculatorTripExpense(txData, trip.id, { splitType: 'equal', paidByParticipantId: me?.id });
+      } else {
+        await TransactionRepository.create(txData);
+      }
 
       calculator.clearAll();
       setNoteText('');
@@ -692,15 +683,15 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
         return;
       }
 
-      // Local group trip flow
-      const tx = await TransactionRepository.create({
+      // Local group trip flow: expense + trip link in one write.
+      const txData = {
         amountCents: pendingTransaction.amountCents,
         date: now,
         note: pendingTransaction.note ?? undefined,
         type: pendingTransaction.type,
         categoryId: pendingTransaction.categoryId ?? undefined,
         accountId: pendingTransaction.accountId ?? undefined,
-      });
+      };
 
       const trip = openTrips.find(t => t.id === pendingTransaction.tripId);
       const me = trip?.participants?.find(p => p.isCurrentUser);
@@ -712,17 +703,14 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
           trip.participants || [],
           splitData
         );
-
-        const tripExpense = await TripExpenseRepository.create({
-          tripId: trip.id,
-          transactionId: tx.id,
+        await Actions.saveCalculatorTripExpense(txData, trip.id, {
           paidByParticipantId: selectedPayerId || me?.id,
           splitType,
           splitData,
           computedSplits: computed,
         });
-
-        await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
+      } else {
+        await TransactionRepository.create(txData);
       }
 
       setShowSplitEditor(false);

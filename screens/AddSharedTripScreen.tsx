@@ -161,7 +161,7 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
           <View style={styles.sectionCard}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionLabel}>Start Date</Text>
-              {Platform.OS === 'ios' ? (
+              {Platform.OS !== 'android' ? (
                 <DateTimePicker
                   value={startDate}
                   mode="date"
@@ -185,7 +185,7 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
 
             <View style={styles.sectionRow}>
               <Text style={styles.sectionLabel}>End Date</Text>
-              {Platform.OS === 'ios' ? (
+              {Platform.OS !== 'android' ? (
                 <DateTimePicker
                   value={endDate}
                   mode="date"

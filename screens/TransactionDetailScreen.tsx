@@ -1293,7 +1293,7 @@ export function TransactionDetailScreen({
             {/* Modals for Editing */}
 
             {/* Date Picker (Platform specific) */}
-            {showDatePicker && Platform.OS === 'ios' && (
+            {showDatePicker && Platform.OS !== 'android' && (
                 <Modal transparent animationType="fade">
                     <View style={styles.dateModalBg}>
                         <View style={styles.datePickerContainer}>

@@ -146,7 +146,7 @@ export function EditTripScreen({ trip, onDismiss, onSave }: EditTripScreenProps)
                 <View style={styles.formSection}>
                     <View style={styles.row}>
                         <Text style={styles.label}>Start Date</Text>
-                        {Platform.OS === 'ios' ? (
+                        {Platform.OS !== 'android' ? (
                             <DateTimePicker
                                 value={startDate}
                                 mode="date"
@@ -164,7 +164,7 @@ export function EditTripScreen({ trip, onDismiss, onSave }: EditTripScreenProps)
                     <View style={styles.divider} />
                     <View style={styles.row}>
                         <Text style={styles.label}>End Date</Text>
-                        {Platform.OS === 'ios' ? (
+                        {Platform.OS !== 'android' ? (
                             <DateTimePicker
                                 value={endDate}
                                 mode="date"

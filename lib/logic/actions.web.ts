@@ -30,6 +30,22 @@ export const Actions = {
     return { ...trip, participants: trip.participants ?? [] };
   },
 
+  /** Calculator save into a local trip: one atomic server command (no partial writes on failure). */
+  async saveCalculatorTripExpense(
+    transactionData: Omit<Transaction, 'id' | 'createdAtMs' | 'updatedAtMs'>,
+    tripId: string,
+    link: { paidByParticipantId?: string; splitType: SplitType; splitData?: Record<string, number>; computedSplits?: Record<string, number> }
+  ): Promise<Transaction> {
+    const result: any = await webMutation(api.pwaTrips.createExpense, {
+      tripId, amountCents: Math.abs(transactionData.amountCents), date: transactionData.date, note: transactionData.note ?? null,
+      categoryId: transactionData.categoryId ?? null, accountId: transactionData.accountId ?? null,
+      paidByParticipantId: link.paidByParticipantId ?? null, splitType: link.splitType, splitData: link.splitData ?? null,
+    });
+    GlobalEvents.emit(Events.transactionsChanged);
+    GlobalEvents.emit(Events.tripExpensesChanged);
+    return toTransaction(result.transaction);
+  },
+
   async createGroupExpense(
     transactionData: Omit<Transaction, 'id' | 'createdAtMs' | 'updatedAtMs'>,
     tripId: string,

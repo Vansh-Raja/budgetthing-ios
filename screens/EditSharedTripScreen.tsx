@@ -148,7 +148,7 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
         <View style={styles.formSection}>
           <View style={styles.row}>
             <Text style={styles.label}>Start Date</Text>
-            {Platform.OS === 'ios' ? (
+            {Platform.OS !== 'android' ? (
               <DateTimePicker
                 value={startDate}
                 mode="date"
@@ -166,7 +166,7 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
           <View style={styles.divider} />
           <View style={styles.row}>
             <Text style={styles.label}>End Date</Text>
-            {Platform.OS === 'ios' ? (
+            {Platform.OS !== 'android' ? (
               <DateTimePicker
                 value={endDate}
                 mode="date"

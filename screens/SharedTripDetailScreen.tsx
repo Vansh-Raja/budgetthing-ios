@@ -17,6 +17,7 @@ import { TripHeaderCard } from '../components/trip/TripHeaderCard';
 import { Colors } from '../constants/theme';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { Events, GlobalEvents } from '../lib/events';
+import { useLiveSharedTrip } from '../lib/hooks/useLiveSharedTrip';
 import { TripSummaryCalculator } from '../lib/logic/tripSummaryCalculator';
 import type { Trip } from '../lib/logic/types';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
@@ -76,6 +77,12 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
     const unsub = GlobalEvents.on(Events.tripsChanged, refresh);
     return () => unsub();
   }, [refresh]);
+
+  // Web: live server subscription (native relies on the sync event above).
+  const liveTrip = useLiveSharedTrip(tripId);
+  useEffect(() => {
+    if (liveTrip !== undefined) setTrip(liveTrip);
+  }, [liveTrip]);
 
   const summary = useMemo(() => {
     if (!trip) return null;
