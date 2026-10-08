@@ -877,6 +877,8 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
                 disabled={isSelecting}
                 activeOpacity={0.7}
                 style={[styles.filterButton, { opacity: isSelecting ? 0.4 : 1 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Filter transactions"
               >
                 <Ionicons name="funnel" size={16} color="#FFFFFF" />
                 {filtersActive ? <View style={styles.filterDot} /> : null}

@@ -110,6 +110,21 @@ describe('PWA ledger rules', () => {
     expect((await a.query(api.pwaPersonal.listAccounts, {}))[0].balanceCents).toBe(700);
   });
 
+  it('adjustment keeps the system adjustment category like native, and rejects foreign categories', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const b = t.withIdentity(USER_B);
+    const acct = await a.mutation(api.pwaPersonal.createAccount, { name: 'A', emoji: '💵', kind: 'cash', openingBalanceCents: 1000 });
+    const sys = await a.mutation(api.pwaPersonal.createCategory, { name: 'System · Adjustment', emoji: '🛠', isSystem: true });
+    const adj = await a.mutation(api.pwaLedger.createAdjustment, { accountId: acct.id, amountCents: 250, date: 1_700_000_000_000, categoryId: sys.id });
+    expect(sys.isSystem).toBe(1);
+    expect(sys.sortIndex).toBe(9999);
+    expect(adj.categoryId).toBe(sys.id);
+    expect(adj.type).toBe('income');
+    const foreign = await b.mutation(api.pwaPersonal.createCategory, { name: 'Other', emoji: '❓' });
+    await expectConvexError(a.mutation(api.pwaLedger.createAdjustment, { accountId: acct.id, amountCents: 100, date: 1_700_000_000_001, categoryId: foreign.id }), 'VALIDATION');
+  });
+
   it('rejects non-integer cents, derived system types cannot be written, bulk ops skip derived', async () => {
     const t = setup();
     const a = t.withIdentity(USER_A);

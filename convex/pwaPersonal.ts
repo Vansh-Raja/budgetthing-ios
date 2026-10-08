@@ -225,17 +225,18 @@ async function reorderOwned(ctx: any, userId: string, table: "accounts" | "categ
 // ---------------------------------------------------------------------------
 
 export const createCategory = mutation({
-  args: { name: v.string(), emoji: v.string(), monthlyBudgetCents: v.optional(vNullableNumber) },
+  args: { name: v.string(), emoji: v.string(), monthlyBudgetCents: v.optional(vNullableNumber), isSystem: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const existing = await listOwnedLive(ctx, userId, "categories");
-    const sortIndex = existing.reduce((m: number, c: any) => Math.max(m, c.sortIndex ?? -1), -1) + 1;
+    // System categories (e.g. "System · Adjustment") sit at 9999 like native and the first-run seed.
+    const sortIndex = args.isSystem ? 9999 : existing.reduce((m: number, c: any) => Math.max(m, c.sortIndex ?? -1), -1) + 1;
     return insertOwned(ctx, userId, "categories", newId(), {
       name: assertText(args.name, "name", { min: 1, max: 80 }),
       emoji: assertEmoji(args.emoji),
       sortIndex,
       monthlyBudgetCents: args.monthlyBudgetCents == null ? undefined : assertCents(args.monthlyBudgetCents, "monthlyBudgetCents", { allowZero: true }),
-      isSystem: 0,
+      isSystem: args.isSystem ? 1 : 0,
     });
   },
 });

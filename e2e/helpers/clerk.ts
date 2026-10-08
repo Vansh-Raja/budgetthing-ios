@@ -46,6 +46,20 @@ async function fillEmailCode(page: Page) {
   const codeInput = page.locator('input[name="code"], input[autocomplete="one-time-code"]').first();
   await expect(codeInput).toBeVisible({ timeout: 20_000 });
   await codeInput.fill(CLERK_TEST_CODE);
+  // Clerk's "new device" check can reject a code typed before its own send finished.
+  // Recover by resending once the resend countdown allows it, then re-entering the code.
+  const notSent = page.getByText(/need to send a verification code/i);
+  const shell = page.getByTestId('web-shell');
+  const result = await Promise.race([
+    shell.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'shell' as const),
+    notSent.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'resend' as const),
+  ]).catch(() => 'unknown' as const);
+  if (result !== 'resend') return;
+  const resend = page.getByRole('button', { name: /resend/i });
+  await expect(resend).toBeEnabled({ timeout: 60_000 });
+  await resend.click();
+  await codeInput.fill('');
+  await codeInput.fill(CLERK_TEST_CODE);
 }
 
 /** Signs in with email (+ password if Clerk shows it), creating the test user via sign-up on first use. */
