@@ -4,6 +4,7 @@
  */
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { setLocalTripCashflowAccount } from "./pwaDerived";
 import { assertExpectedVersion, getOwned, newId, pwaError, requireOwnedLive, requireUser, serverNow, toWire } from "./pwaAuth";
 import { insertOwned, patchOwned, softDeleteOwned } from "./pwaWrite";
 import { assertCents, assertDateMs, assertOwnedRef, optionalText, vExpectedVersion, vNullableString, vTransactionType } from "./pwaValidation";
@@ -48,10 +49,18 @@ export const updateTransaction = mutation({
       patch.type = args.type;
     }
     if (args.note !== undefined) patch.note = args.note === null ? null : optionalText(args.note, "note") ?? null;
-    if (args.accountId !== undefined) {
-      if (row.systemType === "transfer") throw pwaError("STATE", "Transfers use from/to accounts");
-      if (row.tripExpenseId) throw pwaError("STATE", "Trip expenses are ledger entries and do not have an account");
-      patch.accountId = args.accountId === null ? null : await assertOwnedRef(ctx, userId, "accounts", args.accountId, "accountId");
+    if (args.accountId !== undefined && row.systemType !== "transfer") {
+      // Transfers use from/to accounts, so a generic accountId is ignored (the detail
+      // screen always sends one). Local group-trip expenses stay account-less ledger
+      // rows; like native, a chosen account becomes their "you paid" cashflow account.
+      const accountId = args.accountId === null ? null : await assertOwnedRef(ctx, userId, "accounts", args.accountId, "accountId");
+      const link = row.tripExpenseId ? await getOwned(ctx, userId, "tripExpenses", row.tripExpenseId) : null;
+      const trip = link && link.deletedAtMs === undefined ? await getOwned(ctx, userId, "trips", link.tripId) : null;
+      if (trip && trip.deletedAtMs === undefined && trip.isGroup === 1) {
+        if (accountId) await setLocalTripCashflowAccount(ctx, userId, link.id, accountId);
+      } else {
+        patch.accountId = accountId;
+      }
     }
     if (args.categoryId !== undefined) patch.categoryId = args.categoryId === null ? null : await assertOwnedRef(ctx, userId, "categories", args.categoryId, "categoryId");
     return patchOwned(ctx, userId, "transactions", row, patch);

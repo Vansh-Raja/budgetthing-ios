@@ -143,6 +143,10 @@ export function computeAndValidateSplits(args: {
       throw pwaError("VALIDATION", "Percentages must total 100");
     }
   } else if (args.splitType === "exact") {
+    // Exact splits are cents: fractional values would leak fractional trip_share amounts.
+    if (splitData && Object.values(splitData).some((value) => !Number.isInteger(value))) {
+      throw pwaError("VALIDATION", "Exact amounts must be whole cents");
+    }
     if (!splitData || !TripSplitCalculator.validateExactAmounts(splitData, args.amountCents)) {
       throw pwaError("VALIDATION", "Exact amounts must total the expense amount");
     }

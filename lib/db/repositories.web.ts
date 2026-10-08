@@ -225,7 +225,7 @@ export const TripRepository = {
   },
   async update(id: string, updates: Partial<Omit<Trip, 'id' | 'createdAtMs'>>): Promise<void> {
     await webMutation(api.pwaTrips.updateTrip, {
-      id, name: updates.name, emoji: updates.emoji, isArchived: updates.isArchived,
+      id, name: updates.name, emoji: updates.emoji, isArchived: updates.isArchived, isGroup: updates.isGroup,
       startDate: 'startDate' in updates ? updates.startDate ?? null : undefined, endDate: 'endDate' in updates ? updates.endDate ?? null : undefined,
       budgetCents: 'budgetCents' in updates ? updates.budgetCents ?? null : undefined,
     });

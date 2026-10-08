@@ -5,6 +5,7 @@
  */
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { setLocalTripCashflowAccount } from "./pwaDerived";
 import { assertExpectedVersion, getOwned, listOwnedLive, newId, pwaError, requireOwnedLive, requireUser, serverNow, toWire } from "./pwaAuth";
 import { insertOwned, patchOwned, softDeleteOwned } from "./pwaWrite";
 import { assertCents, assertDateMs, assertEmoji, assertOwnedRef, assertText, computeAndValidateSplits, optionalText, vExpectedVersion, vNullableNumber, vNullableString, vSplitMap, vSplitType } from "./pwaValidation";
@@ -121,7 +122,7 @@ export const createTrip = mutation({
 export const updateTrip = mutation({
   args: {
     id: v.string(), expectedSyncVersion: vExpectedVersion,
-    name: v.optional(v.string()), emoji: v.optional(v.string()), isArchived: v.optional(v.boolean()),
+    name: v.optional(v.string()), emoji: v.optional(v.string()), isArchived: v.optional(v.boolean()), isGroup: v.optional(v.boolean()),
     startDate: v.optional(vNullableNumber), endDate: v.optional(vNullableNumber), budgetCents: v.optional(vNullableNumber),
   },
   handler: async (ctx, args) => {
@@ -129,13 +130,17 @@ export const updateTrip = mutation({
     const row = await requireOwnedLive(ctx, userId, "trips", args.id);
     assertExpectedVersion(row, args.expectedSyncVersion);
     const patch: Record<string, unknown> = {};
+    if (args.isGroup !== undefined) patch.isGroup = args.isGroup ? 1 : 0;
     if (args.name !== undefined) patch.name = assertText(args.name, "name", { min: 1, max: 80 });
     if (args.emoji !== undefined) patch.emoji = assertEmoji(args.emoji);
     if (args.isArchived !== undefined) patch.isArchived = args.isArchived ? 1 : 0;
     if (args.startDate !== undefined) patch.startDate = args.startDate === null ? null : assertDateMs(args.startDate, "startDate");
     if (args.endDate !== undefined) patch.endDate = args.endDate === null ? null : assertDateMs(args.endDate, "endDate");
     if (args.budgetCents !== undefined) patch.budgetCents = args.budgetCents === null ? null : assertCents(args.budgetCents, "budgetCents", { allowZero: true });
-    return patchOwned(ctx, userId, "trips", row, patch);
+    const updated = await patchOwned(ctx, userId, "trips", row, patch);
+    // Becoming a group trip: keep the "exactly one current user" invariant (as on create).
+    if (args.isGroup && row.isGroup !== 1) await ensureExactlyOneCurrentUser(ctx, userId, row.id, serverNow());
+    return updated;
   },
 });
 
@@ -283,7 +288,7 @@ export const createExpense = mutation({
   args: {
     tripId: v.string(), amountCents: v.number(), date: v.number(), note: v.optional(vNullableString), categoryId: v.optional(vNullableString),
     paidByParticipantId: v.optional(vNullableString), splitType: vSplitType, splitData: v.optional(v.union(vSplitMap, v.null())),
-    accountId: v.optional(vNullableString), // solo trips only
+    accountId: v.optional(vNullableString), // solo: charged account; group: "you paid" cashflow account
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
@@ -312,6 +317,11 @@ export const createExpense = mutation({
       tripId: trip.id, transactionId: txId, paidByParticipantId: isGroup ? args.paidByParticipantId ?? undefined : undefined,
       splitType: args.splitType, splitDataJson: splitData ? JSON.stringify(splitData) : undefined, computedSplitsJson: computedSplits ? JSON.stringify(computedSplits) : undefined,
     }, now);
+    // Group trip: the chosen account becomes the "you paid" cashflow account (native parity).
+    if (isGroup && args.accountId) {
+      const chosen = await assertOwnedRef(ctx, userId, "accounts", args.accountId, "accountId");
+      if (chosen) await setLocalTripCashflowAccount(ctx, userId, linkId, chosen);
+    }
     const tx = await getOwned(ctx, userId, "transactions", txId);
     return { transaction: toWire(tx), tripExpense: { ...link, splitData, computedSplits } };
   },
@@ -350,6 +360,8 @@ export const linkExpense = mutation({
       tripId: trip.id, transactionId: tx.id, paidByParticipantId: isGroup ? args.paidByParticipantId ?? undefined : undefined,
       splitType: args.splitType, splitDataJson: splitData ? JSON.stringify(splitData) : undefined, computedSplitsJson: computedSplits ? JSON.stringify(computedSplits) : undefined,
     }, now);
+    // Group trips are ledger-only; keep the account the user picked as the cashflow account.
+    if (isGroup && tx.accountId) await setLocalTripCashflowAccount(ctx, userId, linkId, tx.accountId);
     await patchOwned(ctx, userId, "transactions", tx, { tripExpenseId: linkId, ...(isGroup ? { accountId: null } : {}) }, now);
     return { ...link, splitData, computedSplits };
   },

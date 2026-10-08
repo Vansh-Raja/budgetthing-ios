@@ -249,7 +249,7 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
             <View style={styles.datesRow}>
               <View>
                 <Text style={styles.label}>Start</Text>
-                {Platform.OS === 'ios' ? (
+                {Platform.OS !== 'android' ? (
                   <DateTimePicker
                     value={startDate}
                     mode="date"
@@ -268,7 +268,7 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
 
               <View>
                 <Text style={styles.label}>End</Text>
-                {Platform.OS === 'ios' ? (
+                {Platform.OS !== 'android' ? (
                   <DateTimePicker
                     value={endDate}
                     mode="date"
