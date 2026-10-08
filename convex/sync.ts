@@ -281,6 +281,13 @@ export const push = mutation({
       }
     };
 
+    // A native default-account change must not re-home past web-projected trip payments.
+    // Pin BEFORE applying any table from this push (so newly uploaded payments and account
+    // deletions don't get pinned to the old/fallback account), and only when the incoming
+    // settings row will actually win last-write-wins.
+    const nextDefault = await acceptedIncomingDefaultAccount(ctx, userId, args.userSettings);
+    if (nextDefault !== undefined) await pinDerivedAccountsIfDefaultChanges(ctx, userId, nextDefault);
+
     await processTable("accounts", args.accounts);
     await processTable("categories", args.categories);
     await processTable("transactions", args.transactions);
@@ -289,9 +296,6 @@ export const push = mutation({
     await processTable("tripExpenses", args.tripExpenses);
     await processTable("tripSettlements", args.tripSettlements);
     await processTable("importInboxItems", args.importInboxItems);
-    // A native default-account change must not re-home past web-projected trip payments.
-    const incomingDefault = (args.userSettings ?? []).find((r: any) => r && r.deletedAtMs == null && "defaultAccountId" in r);
-    if (incomingDefault) await pinDerivedAccountsIfDefaultChanges(ctx, userId, incomingDefault.defaultAccountId ?? null);
     await processTable("userSettings", args.userSettings);
 
     return { status: "ok" };
@@ -410,3 +414,27 @@ export const whoami = query({
     return identity;
   },
 });
+
+/**
+ * The defaultAccountId an incoming settings row will set, if that row wins the same
+ * last-write-wins rule processTable applies; undefined when nothing will change it.
+ */
+async function acceptedIncomingDefaultAccount(ctx: any, userId: string, rows?: any[]): Promise<string | null | undefined> {
+  let result: string | null | undefined = undefined;
+  for (const record of rows ?? []) {
+    if (!record || typeof record !== "object" || !record.id || !("defaultAccountId" in record)) continue;
+    if (record.deletedAtMs !== undefined && record.deletedAtMs !== null) continue;
+    const existing = await ctx.db
+      .query("userSettings")
+      .withIndex("by_client_id", (q: any) => q.eq("id", record.id))
+      .filter((q: any) => q.eq(q.field("userId"), userId))
+      .first();
+    const incomingUpdatedAtMs = (record.updatedAtMs as number | undefined) ?? 0;
+    const incomingSyncVersion = (record.syncVersion as number | undefined) ?? 0;
+    const wins = !existing
+      || incomingUpdatedAtMs > ((existing.updatedAtMs as number) ?? 0)
+      || (incomingUpdatedAtMs === ((existing.updatedAtMs as number) ?? 0) && incomingSyncVersion > ((existing.syncVersion as number) ?? 0));
+    if (wins) result = record.defaultAccountId ?? null;
+  }
+  return result;
+}

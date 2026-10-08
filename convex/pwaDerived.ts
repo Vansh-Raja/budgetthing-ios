@@ -74,6 +74,11 @@ export async function computeVirtualDerivedRows(ctx: Ctx, userId: string, opts?:
   const categories = opts?.categories ?? (await listOwnedLive(ctx, userId, "categories"));
   const defaultAccountId = await resolveDefaultAccountId(ctx, userId, accounts);
   const overrides = await loadOverrideMap(ctx, userId);
+  // Overrides may point at an archived account: native keeps a derived row on the account it
+  // was assigned even after that account is deleted, so the web must not re-home it either.
+  const ownedAccountIds = new Set(
+    (await ctx.db.query("accounts").withIndex("by_user", (q: any) => q.eq("userId", userId)).collect()).map((a: any) => a.id)
+  );
   const liveAccountIds = new Set(accounts.map((a: any) => a.id));
   const catMap = new Map(categories.map((c: any) => [c.id, c]));
   const out: VirtualDerivedRow[] = [];
@@ -83,7 +88,7 @@ export async function computeVirtualDerivedRows(ctx: Ctx, userId: string, opts?:
       const key = overrideKeyFor(row, origin);
       if (key) {
         const chosen = overrides.get(keyString(key));
-        if (chosen && liveAccountIds.has(chosen)) row.accountId = chosen;
+        if (chosen && ownedAccountIds.has(chosen)) row.accountId = chosen;
       }
       out.push({ ...row, createdAtMs: stampMs, updatedAtMs: stampMs, virtual: true, origin, tripId });
     }
