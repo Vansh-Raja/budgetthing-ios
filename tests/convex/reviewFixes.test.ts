@@ -32,6 +32,20 @@ describe('Import API (PR #1 review)', () => {
   });
 });
 
+describe('Import API failed-auth bound (PR #1 security review)', () => {
+  it('varying the client IP cannot exceed the global failed-auth write cap', async () => {
+    const t = setup();
+    for (let i = 0; i < 400; i++) {
+      const res: any = await t.mutation(internal.apiImportHttp.metadataForToken, { rawKey: 'not-a-token', ipHash: `forged-${i}` });
+      expect(res.statusCode).toBe(401);
+    }
+    const audits = await t.run(async (ctx) => (await ctx.db.query('apiImportAuditEvents').collect()).filter((e: any) => e.eventType === 'auth_failed'));
+    const rateRows = await t.run(async (ctx) => ctx.db.query('apiImportRateLimits').collect());
+    expect(audits.length).toBeLessThanOrEqual(300);
+    expect(rateRows.length).toBeLessThanOrEqual(301); // one global bucket + at most 300 per-IP rows
+  });
+});
+
 describe('PWA ledger/trip edits (PR #2 review)', () => {
   async function seed(a: any) {
     const cash = await a.mutation(api.pwaPersonal.createAccount, { name: 'Cash', emoji: '💵', kind: 'cash', openingBalanceCents: 100_000 });
