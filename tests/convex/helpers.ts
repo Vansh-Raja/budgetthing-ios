@@ -2,6 +2,9 @@
 import { convexTest } from 'convex-test';
 import schema from '../../convex/schema';
 
+// API keys are hashed with a required pepper (the server fails closed without one).
+process.env.IMPORT_API_KEY_PEPPER ??= 'test-pepper';
+
 // Modules must include convex/_generated so convex-test can find the root.
 const modules = import.meta.glob('../../convex/**/*.*s');
 

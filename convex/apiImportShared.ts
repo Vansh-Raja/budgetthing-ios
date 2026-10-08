@@ -54,7 +54,9 @@ export function parseRawApiKey(rawKey: string): { keyId: string } | null {
 }
 
 export async function hashApiKey(rawKey: string): Promise<string> {
-  const pepper = process.env.IMPORT_API_KEY_PEPPER ?? "development-import-api-pepper-change-me";
+  // Fail closed: never hash API keys with a public fallback secret.
+  const pepper = process.env.IMPORT_API_KEY_PEPPER;
+  if (!pepper) throw new Error("IMPORT_API_KEY_PEPPER is not configured");
   return sha256Hex(`v${HASH_VERSION}:${pepper}:${rawKey}`);
 }
 
