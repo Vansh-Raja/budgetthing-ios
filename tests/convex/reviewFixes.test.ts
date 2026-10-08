@@ -187,4 +187,20 @@ describe('Default-account pinning edge cases (PR #3 review)', () => {
     const travel = await a.mutation(api.pwaPersonal.createCategory, { name: 'Travel', emoji: '✈️' });
     expect(travel.sortIndex).toBe(1);
   });
+
+  it('archiving the last account keeps pinned trip payments and settlements (no live default left)', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const only = await a.mutation(api.pwaPersonal.createAccount, { name: 'Only', emoji: '💵', kind: 'cash', openingBalanceCents: 0 });
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: only.id });
+    const trip = await a.mutation(api.pwaTrips.createTrip, { name: 'Goa', emoji: '🏝️', isGroup: true, participants: [{ name: 'You', isCurrentUser: true }, { name: 'Sam', isCurrentUser: false }] });
+    const me = trip.participants.find((p: any) => p.isCurrentUser);
+    const sam = trip.participants.find((p: any) => !p.isCurrentUser);
+    const exp: any = await a.mutation(api.pwaTrips.createExpense, { tripId: trip.id, amountCents: 3000, date: 1_700_000_000_000, paidByParticipantId: me.id, splitType: 'equal' });
+    await a.mutation(api.pwaTrips.createSettlement, { tripId: trip.id, fromParticipantId: sam.id, toParticipantId: me.id, amountCents: 1500, date: 1_700_000_100_000 });
+    await a.mutation(api.pwaPersonal.archiveAccount, { id: only.id });
+    const rows: any[] = (await a.query(api.pwaPersonal.getSnapshot, {})).derivedRows;
+    expect(rows.find((r) => r.systemType === 'trip_cashflow' && r.sourceTripExpenseId === exp.tripExpense.id)?.accountId).toBe(only.id);
+    expect(rows.filter((r) => r.systemType === 'trip_settlement').map((r) => r.accountId)).toEqual([only.id]);
+  });
 });

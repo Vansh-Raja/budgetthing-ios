@@ -79,7 +79,10 @@ test.describe('Local group trips', () => {
     // ---- Transactions tab shows the share row as "share · total" and hides payer cashflow ----
     await openTab(page, 1);
     // rules.md UI_TRIP_SHARE_AMOUNT_FORMAT: the share row reads "share · total" with the trip emoji.
-    await expect(activePage(page).getByText(/15\.00\s*·\s*₹?30\.00/).first()).toBeVisible({ timeout: 15_000 });
+    const shareAmount = activePage(page).getByText(/15\.00\s*·\s*₹?30\.00/).first();
+    await expect(shareAmount).toBeVisible({ timeout: 15_000 });
+    // Same row (amount + subtitle share one text container): the subtitle carries the trip emoji.
+    await expect(shareAmount.locator('xpath=..').getByText(new RegExp(`·\\s*${trip.emoji}`))).toBeVisible();
 
     // ---- Settlement: Sam pays me → income on my account (SETTLEMENT_MOVES_MONEY) ----
     // A retry resends the same payload (same date); ids are bucketed by fixed time windows.
@@ -155,20 +158,26 @@ test.describe('Split editor (local group trip)', () => {
       // ---- Exact 25 / 5 ----
       await addExpense(async () => {
         await page.getByText('Exact', { exact: true }).click();
-        const inputs = page.getByPlaceholder('0.00');
-        await inputs.nth(0).fill('25');
-        await inputs.nth(1).fill('5');
+        // Pick each amount input by its participant row, not by position.
+        const amountFor = (name: string) => page.locator('div')
+          .filter({ has: page.getByText(name, { exact: true }) })
+          .filter({ has: page.getByPlaceholder('0.00') })
+          .last()
+          .getByPlaceholder('0.00');
+        await amountFor('You').fill('25');
+        await amountFor('Sam').fill('5');
       });
       await expect.poll(async () => (await linksFor()).length, { timeout: 20_000 }).toBe(2);
       const exactLink = (await linksFor()).find((l) => l.splitType === 'exact');
       expect(exactLink).toBeTruthy();
-      expect(Object.values(exactLink.computedSplits).sort((x: any, y: any) => x - y)).toEqual([500, 2500]);
+      expect(exactLink.computedSplits).toEqual({ [me.id]: 2500, [sam.id]: 500 });
+      expect(exactLink.splitData).toEqual({ [me.id]: 2500, [sam.id]: 500 });
 
       // My ledger shares mirror computedSplits[me]; cashflow charges the full amount twice.
       const snap: any = await convexQuery(page, 'pwaPersonal:getSnapshot');
       const mine = snap.derivedRows.filter((r: any) => r.tripId === trip.id);
       expect(mine.filter((r: any) => r.systemType === 'trip_share').map((r: any) => r.amountCents).sort((x: number, y: number) => x - y))
-        .toEqual([exactLink.computedSplits[me.id], 2000].sort((x, y) => x - y));
+        .toEqual([2000, 2500]); // shares 2:1 → 20.00, exact → 25.00
       expect(mine.filter((r: any) => r.systemType === 'trip_cashflow').map((r: any) => r.amountCents)).toEqual([3000, 3000]);
     } finally {
       // Runs even when an assertion fails, so the shared test user is left clean.

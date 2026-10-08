@@ -69,10 +69,15 @@ export async function resolveDefaultAccountId(ctx: Ctx, userId: string, accounts
  * Compute every virtual derived row for the user across local group trips and
  * shared trips. Applies PWA account overrides. Pure read; no writes.
  */
+const NO_DEFAULT_ACCOUNT = "__no_default_account__";
+
 export async function computeVirtualDerivedRows(ctx: Ctx, userId: string, opts?: { accounts?: any[]; categories?: any[] }): Promise<VirtualDerivedRow[]> {
   const accounts = opts?.accounts ?? (await listOwnedLive(ctx, userId, "accounts"));
   const categories = opts?.categories ?? (await listOwnedLive(ctx, userId, "categories"));
-  const defaultAccountId = await resolveDefaultAccountId(ctx, userId, accounts);
+  // With no live account there is no default, but saved overrides (e.g. to an archived account)
+  // must still apply. Compute with a placeholder default, apply overrides, then drop only the
+  // cashflow/settlement rows still on the placeholder, matching the no-default behaviour.
+  const defaultAccountId = (await resolveDefaultAccountId(ctx, userId, accounts)) ?? NO_DEFAULT_ACCOUNT;
   const overrides = await loadOverrideMap(ctx, userId);
   // Overrides may point at an archived account: native keeps a derived row on the account it
   // was assigned even after that account is deleted, so the web must not re-home it either.
@@ -90,6 +95,7 @@ export async function computeVirtualDerivedRows(ctx: Ctx, userId: string, opts?:
         const chosen = overrides.get(keyString(key));
         if (chosen && ownedAccountIds.has(chosen)) row.accountId = chosen;
       }
+      if (row.accountId === NO_DEFAULT_ACCOUNT) continue;
       out.push({ ...row, createdAtMs: stampMs, updatedAtMs: stampMs, virtual: true, origin, tripId });
     }
   };
@@ -142,9 +148,6 @@ export async function computeVirtualDerivedRows(ctx: Ctx, userId: string, opts?:
           id: s.id, tripId: s.tripId, fromParticipantId: s.fromParticipantId, toParticipantId: s.toParticipantId,
           amountCents: Math.abs(s.amountCents), dateMs: s.date, note: s.note ?? null, updatedAtMs: s.updatedAtMs ?? 0,
         }));
-      if (!defaultAccountId && !legacyPaidFrom.size) {
-        // Ledger-only rows (trip_share) still apply without an account.
-      }
       const rows = computeTripDerivedRowsForUser({
         derivedKey: userId, defaultAccountId, tripLabel: `${trip.emoji} ${trip.name}`,
         participants, meParticipantId: me.id, expenses, settlements,
