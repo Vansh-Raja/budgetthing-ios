@@ -199,6 +199,30 @@ function parseJson(value: string | null | undefined): Record<string, number> | n
 }
 
 /** Defensive: drop any legacy/malformed persisted derived row before merging the virtual projection. */
+/** Insert or update (and un-delete) one PWA-only derived-account override. */
+export async function upsertDerivedOverride(ctx: any, userId: string, key: OverrideKey, accountId: string): Promise<number> {
+  const now = serverNow();
+  const existing = await ctx.db
+    .query("derivedAccountOverrides")
+    .withIndex("by_user_source", (q: any) => q.eq("userId", userId).eq("sourceKind", key.sourceKind).eq("sourceId", key.sourceId).eq("direction", key.direction))
+    .first();
+  if (existing) {
+    await ctx.db.patch(existing._id, { accountId, updatedAtMs: now, deletedAtMs: undefined, revision: existing.revision + 1 });
+    return existing.revision + 1;
+  }
+  await ctx.db.insert("derivedAccountOverrides", { userId, ...key, accountId, updatedAtMs: now, revision: 1 });
+  return 1;
+}
+
+/**
+ * Native treats an account set on a local group-trip base transaction as the
+ * account its "you paid" cashflow row charges (legacyPaidFromAccountByExpenseId).
+ * The web keeps the base row account-less and records that choice as an override.
+ */
+export async function setLocalTripCashflowAccount(ctx: any, userId: string, tripExpenseId: string, accountId: string): Promise<void> {
+  await upsertDerivedOverride(ctx, userId, { sourceKind: "trip_expense", sourceId: tripExpenseId, direction: "cashflow" }, accountId);
+}
+
 export function excludePersistedDerivedRows<T extends { systemType?: string | null }>(rows: T[]): T[] {
   return rows.filter((r) => !isDerivedTripSystemType(r.systemType ?? null));
 }

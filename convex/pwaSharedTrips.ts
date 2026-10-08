@@ -95,6 +95,27 @@ export const getTrip = query({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const member = await requireMember(ctx, args.tripId, userId);
+    return loadTripDetail(ctx, args.tripId, member);
+  },
+});
+
+/**
+ * Same as getTrip for live subscriptions: returns null instead of throwing when the
+ * caller is not (or no longer) a member, so a removed/deleted trip doesn't crash an
+ * open web screen.
+ */
+export const watchTrip = query({
+  args: { tripId: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const member = await ctx.db.query("sharedTripMembers").withIndex("by_user_trip", (q: any) => q.eq("userId", userId).eq("tripId", args.tripId)).first();
+    if (!member || member.deletedAtMs !== undefined) return null;
+    return loadTripDetail(ctx, args.tripId, member);
+  },
+});
+
+async function loadTripDetail(ctx: any, tripId: string, member: any) {
+    const args = { tripId };
     const trip = await byClientId(ctx, "sharedTrips", args.tripId);
     if (!trip || trip.deletedAtMs !== undefined) return null;
     const participants = await participantsFor(ctx, trip.id, member.participantId);
@@ -107,8 +128,7 @@ export const getTrip = query({
     const members = (await ctx.db.query("sharedTripMembers").withIndex("by_trip", (q: any) => q.eq("tripId", trip.id)).collect())
       .filter((x: any) => x.deletedAtMs === undefined).map((x: any) => ({ userId: x.userId, participantId: x.participantId, joinedAtMs: x.joinedAtMs }));
     return { ...toWire(trip), myParticipantId: member.participantId, participants, expenses, settlements, members };
-  },
-});
+}
 
 /** Resolve trip ids / display meta for shared expense, settlement, and participant ids (member-scoped). */
 export const resolveMeta = query({
