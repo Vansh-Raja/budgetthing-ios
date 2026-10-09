@@ -835,8 +835,9 @@ export function TransactionDetailScreen({
                             <Text style={styles.currencySymbol}>{getCurrencySymbol("INR")}</Text>
                             <TextInput
                                 // Web inputs default to ~20 characters wide (native auto-sizes), which
-                                // pushed the centred amount off-screen; size to the content instead.
-                                style={[styles.editAmountInput, Platform.OS === 'web' && { width: `${Math.max(2, editAmountString.length + 1)}ch` as any }]}
+                                // pushed the centred amount off-screen; size to the content, capped so a long
+                                // amount scrolls inside the input instead of overflowing the sheet.
+                                style={[styles.editAmountInput, Platform.OS === 'web' && { width: `${Math.min(12, Math.max(2, editAmountString.length + 1))}ch` as any }]}
                                 value={editAmountString}
                                 onChangeText={setEditAmountString}
                                 keyboardType="decimal-pad"
