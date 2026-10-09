@@ -76,6 +76,8 @@ export default function DateTimePicker({ value, mode = 'date', onChange, minimum
       fontSize: 16,
       minHeight: 44,
       width: '100%',
+      // Padding + border must stay inside the 100% width, or the input overflows its sheet.
+      boxSizing: 'border-box',
       outline: 'none',
     },
   });

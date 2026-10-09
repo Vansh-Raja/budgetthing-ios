@@ -15,10 +15,13 @@ export function WebConnectionBanner() {
   const online = useOnlineStatus();
   const state = useConvexConnectionState();
   const insets = useSafeAreaInsets();
+  // navigator.onLine is unreliable (iOS Safari can report false while the socket is live),
+  // so a connected Convex socket always wins; "offline" needs both signals to agree.
+  const offline = !online && !state.isWebSocketConnected;
   const disconnected = state.hasEverConnected && !state.isWebSocketConnected;
-  if (online && !disconnected) return null;
+  if (!offline && !disconnected) return null;
 
-  const message = !online ? 'You are offline. Changes are not saved until you reconnect.' : 'Reconnecting to the server…';
+  const message = offline ? 'You are offline. Changes are not saved until you reconnect.' : 'Reconnecting to the server…';
   return (
     <View style={[styles.banner, { paddingTop: insets.top + 8 }]} testID="web-connection-banner" accessibilityRole="alert">
       <Text style={styles.text}>{message}</Text>

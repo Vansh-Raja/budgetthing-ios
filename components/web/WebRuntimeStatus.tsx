@@ -22,10 +22,12 @@ export function WebRuntimeStatus() {
 
   const email = user?.primaryEmailAddress?.emailAddress ?? user?.id ?? '…';
   const serverSubject = whoami === undefined ? 'loading' : whoami === null ? 'unauthenticated' : whoami.subject;
-  const connectionLabel = !online
-    ? 'Offline — connection required'
-    : connection.isWebSocketConnected
-      ? 'Connected'
+  // A live Convex socket overrides navigator.onLine, which can be wrong on iOS Safari.
+  const offline = !online && !connection.isWebSocketConnected;
+  const connectionLabel = connection.isWebSocketConnected
+    ? 'Connected'
+    : offline
+      ? 'Offline — connection required'
       : connection.hasEverConnected
         ? 'Reconnecting…'
         : 'Connecting…';
@@ -34,7 +36,7 @@ export function WebRuntimeStatus() {
     <View style={styles.card} testID="web-runtime-status">
       <Row label="Signed in as" value={email} testID="web-identity" />
       <Row label="Server identity" value={serverSubject} testID="web-server-subject" />
-      <Row label="Connection" value={connectionLabel} testID="web-connection" warn={!online} />
+      <Row label="Connection" value={connectionLabel} testID="web-connection" warn={offline} />
       <Row
         label="Sync sequence"
         value={latestSeq === undefined ? 'loading' : String(latestSeq ?? 0)}
