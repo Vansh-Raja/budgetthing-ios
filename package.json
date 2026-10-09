@@ -12,7 +12,7 @@
     "convex:codegen": "convex codegen",
     "test": "jest",
     "test:watch": "jest --watch",
-    "web:export": "expo export --platform web --source-maps",
+    "web:export": "expo export --platform web --source-maps && node scripts/stamp-sw.mjs dist",
     "web:audit": "node scripts/web-import-audit.mjs dist",
     "test:web": "playwright test",
     "test:web:install": "playwright install chromium webkit",

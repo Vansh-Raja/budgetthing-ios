@@ -10,20 +10,19 @@ import { useConvexConnectionState, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Text } from '@/components/ui/LockedText';
 import { Colors, Fonts, Spacing, BorderRadius } from '@/constants/theme';
-import { useOnlineStatus } from '@/lib/web/runtime';
+import { useEffectiveOffline } from '@/lib/web/runtime';
 
 export function WebRuntimeStatus() {
   const { signOut } = useAuth();
   const { user } = useUser();
-  const online = useOnlineStatus();
   const connection = useConvexConnectionState();
   const whoami = useQuery(api.sync.whoami);
   const latestSeq = useQuery(api.sync.latestSeq);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? user?.id ?? '…';
   const serverSubject = whoami === undefined ? 'loading' : whoami === null ? 'unauthenticated' : whoami.subject;
-  // A live Convex socket overrides navigator.onLine, which can be wrong on iOS Safari.
-  const offline = !online && !connection.isWebSocketConnected;
+  // Verified offline (navigator.onLine alone can be wrong on iOS Safari).
+  const offline = useEffectiveOffline(connection.isWebSocketConnected);
   const connectionLabel = connection.isWebSocketConnected
     ? 'Connected'
     : offline

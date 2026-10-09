@@ -16,7 +16,7 @@ import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-get-random-values';
 import 'react-native-reanimated';
@@ -24,12 +24,30 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/LockedText';
 import { WebBootstrap } from '@/components/web/WebBootstrap';
 import { WebConnectionBanner } from '@/components/web/WebConnectionBanner';
+import { WebUpdateBanner } from '@/components/web/WebUpdateBanner.web';
+import { missingBrowserFeatures } from '../web/serviceWorker';
 import { Colors, Fonts } from '@/constants/theme';
 import { UserSettingsProvider } from '../hooks/useUserSettings';
 import { SyncProvider } from '../sync/SyncProvider';
 import { setWebConvexClient } from '../web/convexClient';
 
-export { ErrorBoundary } from 'expo-router';
+/** Web root error boundary: on-brand, with Retry and a full reload (expo-router contract). */
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => Promise<void> }) {
+  return (
+    <View style={styles.center} testID="web-error-boundary">
+      <Text style={styles.title}>Something went wrong</Text>
+      <Text style={styles.body}>{error?.message || 'An unexpected error occurred.'}</Text>
+      <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+        <TouchableOpacity onPress={() => { retry(); }} style={styles.button} accessibilityRole="button">
+          <Text style={styles.buttonText}>Retry</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => { if (typeof window !== 'undefined') window.location.assign('/'); }} style={[styles.button, styles.buttonSecondary]} accessibilityRole="button">
+          <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Reload app</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
 const CLERK_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
 const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL ?? '';
@@ -59,6 +77,18 @@ export default function RootLayout() {
   }, [error]);
 
   if (!loaded) return null;
+
+  const missing = missingBrowserFeatures();
+  if (missing.length) {
+    return (
+      <View style={styles.center} testID="web-unsupported-browser">
+        <Text style={styles.title}>This browser isn't supported</Text>
+        <Text style={styles.body}>
+          BudgetThing needs {missing.join(', ')}. Please use a current version of Safari, Chrome, Edge or Firefox.
+        </Text>
+      </View>
+    );
+  }
 
   if (!CLERK_KEY || !CONVEX_URL) {
     return (
@@ -120,6 +150,7 @@ function WebAuthGate() {
 
   return (
     <>
+    <WebUpdateBanner />
     <WebConnectionBanner />
     {signedIn ? <WebBootstrap /> : null}
     <Stack
@@ -153,4 +184,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 },
   title: { color: Colors.textPrimary, fontFamily: Fonts.heavy, fontSize: 20, marginBottom: 12 },
   body: { color: Colors.textSecondary, fontFamily: Fonts.medium, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  button: { backgroundColor: Colors.accent, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
+  buttonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
+  buttonText: { color: '#000', fontFamily: Fonts.demiBold, fontSize: 15 },
+  buttonTextSecondary: { color: Colors.textPrimary },
 });
