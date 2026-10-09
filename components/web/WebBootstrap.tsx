@@ -24,7 +24,9 @@ export function WebBootstrap() {
   // Native screens refresh the import inbox and its badges on sync events. The web has no
   // sync engine, so a live subscription stands in: new API imports (or confirms/ignores on
   // another device) emit the same event.
-  const pendingImports = useQuery(api.pwaImports.countPending, isAuthenticated ? {} : 'skip');
+  // Watch the pending rows themselves (not just the count): one item replacing another
+  // leaves the count unchanged but must still refresh the inbox.
+  const pendingImports = useQuery(api.pwaImports.listPending, isAuthenticated ? {} : 'skip');
   useEffect(() => {
     if (pendingImports !== undefined) GlobalEvents.emit(Events.importInboxChanged);
   }, [pendingImports]);
