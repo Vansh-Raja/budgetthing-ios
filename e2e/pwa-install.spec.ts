@@ -70,6 +70,31 @@ test.describe('Installable PWA (production build)', () => {
     expect(urls.some((u) => /convex|clerk|\/v1\//i.test(u))).toBe(false);
   });
 
+  test('install precaches the shell (HTML + hashed JS/CSS)', async ({ page }) => {
+    await page.goto('/sign-in');
+    await waitForController(page);
+    const urls = await cachedUrls(page);
+    expect(urls.some((u) => /\/_expo\/static\/.+\.js/.test(u)), urls.join('\n')).toBe(true);
+    expect(urls.some((u) => new URL(u).pathname === '/'), urls.join('\n')).toBe(true);
+  });
+
+  test('an offline launch renders the cached app with the offline banner', async ({ page, context, browserName }) => {
+    // Playwright's WebKit cannot navigate under setOffline when a service worker serves the
+    // page ("internal error" in page.reload); Chromium exercises the same worker logic.
+    test.skip(browserName === 'webkit', 'WebKit offline emulation does not support SW-served navigations');
+    await page.goto('/sign-in');
+    await waitForController(page);
+
+    await context.setOffline(true);
+    try {
+      await page.reload();
+      await expect(page.getByTestId('web-connection-banner')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText('You are offline', { exact: false })).toBeVisible();
+    } finally {
+      await context.setOffline(false);
+    }
+  });
+
   test('a new build shows "update available" and Reload switches to it', async ({ page }) => {
     await page.goto('/sign-in');
     await waitForController(page);

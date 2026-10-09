@@ -139,9 +139,14 @@ function WebAuthGate() {
   const { isLoaded, isSignedIn } = useAuth();
 
   if (!isLoaded) {
+    // Clerk loads from its own servers; offline it never finishes. Say why instead of
+    // spinning forever (the banner verifies connectivity and offers Retry).
     return (
-      <View style={styles.center} testID="web-auth-loading">
-        <ActivityIndicator color={Colors.accent} />
+      <View style={{ flex: 1, backgroundColor: Colors.background }}>
+        <WebConnectionBanner />
+        <View style={styles.center} testID="web-auth-loading">
+          <ActivityIndicator color={Colors.accent} />
+        </View>
       </View>
     );
   }

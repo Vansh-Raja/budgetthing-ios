@@ -26,13 +26,16 @@ function walk(dir, out = []) {
   return out;
 }
 
-const staticDir = join(dist, '_expo', 'static');
-const files = existsSync(staticDir) ? walk(staticDir).sort() : [];
-const buildId = createHash('sha256').update(files.join('\n')).digest('hex').slice(0, 12);
+// Hash the contents of every exported file except sw.js itself, so any change to HTML,
+// icons, the manifest or assets produces a new worker (and the "Reload" banner).
+const files = walk(dist).filter((f) => f !== 'sw.js' && !f.endsWith('.map')).sort();
+const hash = createHash('sha256');
+for (const f of files) hash.update(f).update('\0').update(readFileSync(join(dist, f))).update('\0');
+const buildId = hash.digest('hex').slice(0, 12);
 const source = readFileSync(swPath, 'utf8');
 if (!source.includes('__BUILD_ID__')) {
   console.log(`stamp-sw: already stamped (${swPath})`);
   process.exit(0);
 }
 writeFileSync(swPath, source.replace('__BUILD_ID__', buildId));
-console.log(`stamp-sw: BUILD_ID=${buildId} (${files.length} static files)`);
+console.log(`stamp-sw: BUILD_ID=${buildId} (${files.length} files)`);
