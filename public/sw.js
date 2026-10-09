@@ -19,8 +19,20 @@ const BUILD_ID = '__BUILD_ID__';
 const CACHE = `budgetthing-shell-${BUILD_ID}`;
 const SHELL_URL = '/';
 
+// Precache the HTML shell AND the hashed JS/CSS it references, so an offline launch can
+// render the app's own "connection required" state instead of a blank page.
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.add(SHELL_URL)).catch(() => undefined));
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(CACHE);
+      const res = await fetch(SHELL_URL, { cache: 'no-cache' });
+      if (!cacheable(res)) return;
+      const html = await res.clone().text();
+      await cache.put(SHELL_URL, res);
+      const assets = Array.from(new Set(html.match(/\/_expo\/static\/[^"'\s)]+/g) || []));
+      await cache.addAll(assets);
+    })().catch(() => undefined)
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -47,7 +59,9 @@ function isStaticAsset(url) {
 }
 
 function cacheable(response) {
-  return response && response.status === 200 && response.type === 'basic';
+  if (!response || response.status !== 200 || response.type !== 'basic') return false;
+  // Respect the server's caching intent.
+  return !/no-store/i.test(response.headers.get('Cache-Control') || '');
 }
 
 self.addEventListener('fetch', (event) => {
@@ -62,7 +76,8 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (cacheable(response)) {
             const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(SHELL_URL, copy));
+            // Keep the worker alive until the write lands.
+            event.waitUntil(caches.open(CACHE).then((cache) => cache.put(SHELL_URL, copy)));
           }
           return response;
         })
@@ -79,7 +94,7 @@ self.addEventListener('fetch', (event) => {
           fetch(request).then((response) => {
             if (cacheable(response)) {
               const copy = response.clone();
-              caches.open(CACHE).then((cache) => cache.put(request, copy));
+              event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, copy)));
             }
             return response;
           })

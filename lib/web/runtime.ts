@@ -84,14 +84,16 @@ export function useEffectiveOffline(socketConnected: boolean): boolean {
       return;
     }
     let cancelled = false;
-    const url = process.env.EXPO_PUBLIC_CONVEX_URL;
+    const base = process.env.EXPO_PUBLIC_CONVEX_URL;
+    const url = base ? `${base.replace('.convex.cloud', '.convex.site')}/v1/health` : undefined;
     const probe = async () => {
       if (!url) return setProbeFailed(true);
       const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const timer = setTimeout(() => ctrl?.abort(), 5_000);
       try {
-        await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store', signal: ctrl?.signal });
-        if (!cancelled) setProbeFailed(false);
+        // CORS-readable health endpoint: an HTTP error counts as a failed probe.
+        const res = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store', signal: ctrl?.signal });
+        if (!cancelled) setProbeFailed(!res.ok);
       } catch {
         if (!cancelled) setProbeFailed(true);
       } finally {

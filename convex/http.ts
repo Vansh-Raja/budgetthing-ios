@@ -41,11 +41,13 @@ http.route({
   path: "/v1/health",
   method: "GET",
   handler: httpAction(async () => {
+    // Public liveness check with no data and no credentials; readable cross-origin so the PWA
+    // can verify connectivity when navigator.onLine is unreliable.
     return jsonResponse(200, {
       status: "ok",
       service: "budgetthing-import-api",
       version: "1",
-    });
+    }, { "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" });
   }),
 });
 

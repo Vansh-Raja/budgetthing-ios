@@ -24,7 +24,14 @@ export function useServiceWorkerUpdate(): { updateReady: boolean; applyUpdate: (
       if (worker && navigator.serviceWorker.controller) setWaiting(worker);
     };
     const onControllerChange = () => {
+      // A new worker took control (possibly from another tab): the old waiting worker is gone.
+      setWaiting(null);
       if (reloadRequested.current) window.location.reload();
+    };
+    const watchInstalling = (worker: ServiceWorker | null) => {
+      worker?.addEventListener('statechange', () => {
+        if (worker.state === 'installed') markWaiting(worker);
+      });
     };
     const checkForUpdate = () => {
       if (document.visibilityState === 'visible') registration?.update().catch(() => undefined);
@@ -37,12 +44,8 @@ export function useServiceWorkerUpdate(): { updateReady: boolean; applyUpdate: (
       .then((reg) => {
         registration = reg;
         markWaiting(reg.waiting);
-        reg.addEventListener('updatefound', () => {
-          const installing = reg.installing;
-          installing?.addEventListener('statechange', () => {
-            if (installing.state === 'installed') markWaiting(installing);
-          });
-        });
+        watchInstalling(reg.installing); // an install may already be in progress
+        reg.addEventListener('updatefound', () => watchInstalling(reg.installing));
       })
       .catch((e) => console.warn('[sw] registration failed', e));
 
