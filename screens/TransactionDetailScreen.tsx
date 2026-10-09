@@ -574,33 +574,32 @@ export function TransactionDetailScreen({
                 return;
             }
 
-            await withTransaction(async () => {
-                await TransactionRepository.update(transaction.id, {
+            // Group trips: the expense and its split are written together (one atomic write on web).
+            const isGroupEdit = !!(relatedTrip?.isGroup && tripExpense);
+            await Actions.updateTripExpenseWithTransaction(
+                transaction.id,
+                {
                     amountCents: newAmountCents,
                     date: editDate.getTime(),
                     note: editNote.trim() || undefined,
                     categoryId: editCategoryId || undefined,
                     accountId: editAccountId || undefined
-                });
-
-                // If this transaction is part of a group trip, update payer + split metadata as well.
-                if (relatedTrip?.isGroup && tripExpense) {
-                    const totalAmountCents = Math.abs(newAmountCents);
-                    const computed = TripSplitCalculator.calculateSplits(
-                        totalAmountCents,
-                        editSplitType,
-                        relatedTrip.participants ?? [],
-                        editSplitData
-                    );
-
-                    await TripExpenseRepository.update(tripExpense.id, {
-                        paidByParticipantId: editPaidByParticipantId ?? tripExpense.paidByParticipantId,
+                },
+                isGroupEdit ? tripExpense!.id : null,
+                isGroupEdit
+                    ? {
+                        paidByParticipantId: editPaidByParticipantId ?? tripExpense!.paidByParticipantId,
                         splitType: editSplitType,
                         splitData: editSplitData,
-                        computedSplits: computed,
-                    });
-                }
-            });
+                        computedSplits: TripSplitCalculator.calculateSplits(
+                            Math.abs(newAmountCents),
+                            editSplitType,
+                            relatedTrip!.participants ?? [],
+                            editSplitData
+                        ),
+                    }
+                    : null
+            );
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setIsEditing(false);

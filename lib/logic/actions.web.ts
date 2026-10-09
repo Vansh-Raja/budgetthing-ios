@@ -6,6 +6,7 @@ import { webMutation, webQuery } from '../web/convexClient';
 import { Events, GlobalEvents } from '../events';
 import type { SplitType, Transaction, Trip, TripParticipant } from './types';
 import { toHydratedTrip, toTransaction } from '../web/mappers';
+import { TransactionRepository } from '../db/repositories';
 
 
 export const Actions = {
@@ -44,6 +45,35 @@ export const Actions = {
     GlobalEvents.emit(Events.transactionsChanged);
     GlobalEvents.emit(Events.tripExpensesChanged);
     return toTransaction(result.transaction);
+  },
+
+  /** Edit a local trip expense and its split atomically: one pwaTrips.updateExpense call. */
+  async updateTripExpenseWithTransaction(
+    transactionId: string,
+    txUpdates: Partial<Omit<Transaction, 'id' | 'createdAtMs'>>,
+    tripExpenseId: string | null,
+    splitUpdates: { paidByParticipantId?: string; splitType: SplitType; splitData?: Record<string, number>; computedSplits?: Record<string, number> } | null
+  ): Promise<void> {
+    if (!tripExpenseId || !splitUpdates) {
+      await TransactionRepository.update(transactionId, txUpdates);
+      return;
+    }
+    await webMutation(api.pwaTrips.updateExpense, {
+      tripExpenseId,
+      amountCents: txUpdates.amountCents !== undefined ? Math.abs(txUpdates.amountCents) : undefined,
+      date: txUpdates.date,
+      note: 'note' in txUpdates ? txUpdates.note ?? null : undefined,
+      categoryId: 'categoryId' in txUpdates ? txUpdates.categoryId ?? null : undefined,
+      paidByParticipantId: splitUpdates.paidByParticipantId ?? undefined,
+      splitType: splitUpdates.splitType,
+      splitData: splitUpdates.splitData ?? null,
+    });
+    if ('accountId' in txUpdates && txUpdates.accountId) {
+      // Group trips: the chosen account is the "you paid" cashflow account (server maps it).
+      await TransactionRepository.update(transactionId, { accountId: txUpdates.accountId });
+    }
+    GlobalEvents.emit(Events.transactionsChanged);
+    GlobalEvents.emit(Events.tripExpensesChanged);
   },
 
   async createGroupExpense(

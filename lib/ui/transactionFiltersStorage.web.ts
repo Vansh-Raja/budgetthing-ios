@@ -26,7 +26,13 @@ export async function loadTransactionsFiltersFromSecureStore(
   userId?: string | null
 ): Promise<StoredTransactionsFilters> {
   const storage = getPreferenceStorage();
-  const raw = storage?.getItem(keyForUser(userId)) ?? null;
+  // localStorage can throw (Safari private mode, quota): fall back to defaults.
+  let raw: string | null = null;
+  try {
+    raw = storage?.getItem(keyForUser(userId)) ?? null;
+  } catch {
+    raw = null;
+  }
   if (!raw) return { filters: DEFAULT_TRANSACTIONS_FILTERS, updatedAtMs: 0 };
 
   try {
@@ -51,9 +57,17 @@ export async function saveTransactionsFiltersToSecureStore(
     filters: normalizeTransactionsFilters(payload.filters),
     updatedAtMs: payload.updatedAtMs,
   };
-  storage.setItem(keyForUser(userId), JSON.stringify(safePayload));
+  try {
+    storage.setItem(keyForUser(userId), JSON.stringify(safePayload));
+  } catch (e) {
+    console.warn('[filters] save failed', e);
+  }
 }
 
 export async function clearTransactionsFiltersFromSecureStore(userId?: string | null): Promise<void> {
-  getPreferenceStorage()?.removeItem(keyForUser(userId));
+  try {
+    getPreferenceStorage()?.removeItem(keyForUser(userId));
+  } catch {
+    // ignore: storage unavailable
+  }
 }

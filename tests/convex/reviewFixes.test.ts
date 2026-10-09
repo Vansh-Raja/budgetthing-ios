@@ -96,6 +96,26 @@ describe('PWA ledger/trip edits (PR #2 review)', () => {
     expect((await cashflowFor(a, link.id)).accountId).toBe(bank.id);
   });
 
+  it('changing a group expense amount recomputes its stored splits; exact splits must be edited together', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    await seed(a);
+    const group = await a.mutation(api.pwaTrips.createTrip, { name: 'G', emoji: '🏝️', isGroup: true, participants: [{ name: 'You', isCurrentUser: true }, { name: 'Sam', isCurrentUser: false }] });
+    const [me, sam] = [group.participants.find((p: any) => p.isCurrentUser), group.participants.find((p: any) => !p.isCurrentUser)];
+    const eq: any = await a.mutation(api.pwaTrips.createExpense, { tripId: group.id, amountCents: 3000, date: 1_700_000_000_000, paidByParticipantId: me.id, splitType: 'equal' });
+    await a.mutation(api.pwaLedger.updateTransaction, { id: eq.transaction.id, amountCents: 5000 });
+    const after: any = await a.query(api.pwaTrips.getTrip, { id: group.id });
+    expect(after.expenses.find((e: any) => e.id === eq.tripExpense.id).computedSplits).toEqual({ [me.id]: 2500, [sam.id]: 2500 });
+    const share = ((await a.query(api.pwaPersonal.getSnapshot, {})).derivedRows as any[]).find((r) => r.systemType === 'trip_share' && r.sourceTripExpenseId === eq.tripExpense.id);
+    expect(share.amountCents).toBe(2500);
+
+    const ex: any = await a.mutation(api.pwaTrips.createExpense, { tripId: group.id, amountCents: 1000, date: 1_700_000_100_000, paidByParticipantId: me.id, splitType: 'exact', splitData: { [me.id]: 600, [sam.id]: 400 } });
+    await expectConvexError(a.mutation(api.pwaLedger.updateTransaction, { id: ex.transaction.id, amountCents: 2000 }), 'VALIDATION');
+    const together: any = await a.mutation(api.pwaTrips.updateExpense, { tripExpenseId: ex.tripExpense.id, amountCents: 2000, splitType: 'exact', splitData: { [me.id]: 1200, [sam.id]: 800 } });
+    expect(together.transaction.amountCents).toBe(2000);
+    expect(together.tripExpense.computedSplits).toEqual({ [me.id]: 1200, [sam.id]: 800 });
+  });
+
   it('switching a trip to group keeps exactly one current user', async () => {
     const t = setup();
     const a = t.withIdentity(USER_A);

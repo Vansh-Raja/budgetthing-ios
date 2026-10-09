@@ -9,7 +9,7 @@
  * Usage: node scripts/web-import-audit.mjs [distDir]
  */
 import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 const distDir = resolve(process.argv[2] ?? 'dist');
 const root = resolve('.');
@@ -47,7 +47,11 @@ if (maps.length === 0) {
 const sources = new Set();
 for (const m of maps) {
   const json = JSON.parse(readFileSync(m, 'utf8'));
-  for (const s of json.sources ?? []) sources.add(s.replace(/^.*?\/budgetthing[^/]*\//, ''));
+  for (const s of json.sources ?? []) {
+    // Normalise to repo-relative paths independent of the checkout directory name.
+    const abs = s.startsWith('/') ? s : resolve(dirname(m), s);
+    sources.add(abs.startsWith(root + '/') ? abs.slice(root.length + 1) : s);
+  }
 }
 
 const sorted = [...sources].sort();

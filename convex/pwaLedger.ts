@@ -5,9 +5,9 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { setLocalTripCashflowAccount } from "./pwaDerived";
-import { assertExpectedVersion, getOwned, newId, pwaError, requireOwnedLive, requireUser, serverNow, toWire } from "./pwaAuth";
+import { assertExpectedVersion, getOwned, listOwnedLive, newId, pwaError, requireOwnedLive, requireUser, serverNow, toWire } from "./pwaAuth";
 import { insertOwned, patchOwned, softDeleteOwned } from "./pwaWrite";
-import { assertCents, assertDateMs, assertOwnedRef, optionalText, vExpectedVersion, vNullableString, vTransactionType } from "./pwaValidation";
+import { assertCents, assertDateMs, assertOwnedRef, computeAndValidateSplits, optionalText, vExpectedVersion, vNullableString, vTransactionType } from "./pwaValidation";
 import { idempotentAdjustmentTransactionId, idempotentTransferTransactionId } from "../lib/logic/idempotency";
 import { isDerivedTripSystemType } from "../lib/logic/syncGuards";
 
@@ -42,6 +42,10 @@ export const updateTransaction = mutation({
     assertExpectedVersion(row, args.expectedSyncVersion);
     if (isDerivedTripSystemType(row.systemType)) throw pwaError("STATE", "Derived rows cannot be edited");
     const patch: Record<string, unknown> = {};
+    // Live local group-trip link, if any (ledger-only base row with stored splits).
+    const link = row.tripExpenseId ? await getOwned(ctx, userId, "tripExpenses", row.tripExpenseId) : null;
+    const linkedTrip = link && link.deletedAtMs === undefined ? await getOwned(ctx, userId, "trips", link.tripId) : null;
+    const groupLink = linkedTrip && linkedTrip.deletedAtMs === undefined && linkedTrip.isGroup === 1 ? link : null;
     if (args.amountCents !== undefined) patch.amountCents = assertCents(args.amountCents, "amountCents");
     if (args.date !== undefined) patch.date = assertDateMs(args.date, "date");
     if (args.type !== undefined) {
@@ -54,15 +58,30 @@ export const updateTransaction = mutation({
       // screen always sends one). Local group-trip expenses stay account-less ledger
       // rows; like native, a chosen account becomes their "you paid" cashflow account.
       const accountId = args.accountId === null ? null : await assertOwnedRef(ctx, userId, "accounts", args.accountId, "accountId");
-      const link = row.tripExpenseId ? await getOwned(ctx, userId, "tripExpenses", row.tripExpenseId) : null;
-      const trip = link && link.deletedAtMs === undefined ? await getOwned(ctx, userId, "trips", link.tripId) : null;
-      if (trip && trip.deletedAtMs === undefined && trip.isGroup === 1) {
-        if (accountId) await setLocalTripCashflowAccount(ctx, userId, link.id, accountId);
+      if (groupLink) {
+        if (accountId) await setLocalTripCashflowAccount(ctx, userId, groupLink.id, accountId);
       } else {
         patch.accountId = accountId;
       }
     }
     if (args.categoryId !== undefined) patch.categoryId = args.categoryId === null ? null : await assertOwnedRef(ctx, userId, "categories", args.categoryId, "categoryId");
+    // A group-trip amount change must keep the stored splits consistent with the new total:
+    // recompute from the stored split type/data in the same mutation. An exact split that no
+    // longer totals the amount is rejected (edit both together via pwaTrips.updateExpense).
+    if (groupLink && patch.amountCents !== undefined && patch.amountCents !== row.amountCents) {
+      const participants = (await listOwnedLive(ctx, userId, "tripParticipants"))
+        .filter((p: any) => p.tripId === groupLink.tripId)
+        .map((p: any) => ({ id: p.id, name: p.name, isCurrentUser: p.isCurrentUser === 1 }));
+      const r = computeAndValidateSplits({
+        amountCents: patch.amountCents as number, splitType: groupLink.splitType, participants,
+        splitData: groupLink.splitDataJson ? JSON.parse(groupLink.splitDataJson) : undefined,
+        paidByParticipantId: groupLink.paidByParticipantId ?? null,
+      });
+      await patchOwned(ctx, userId, "tripExpenses", groupLink, {
+        splitDataJson: r.splitData ? JSON.stringify(r.splitData) : null,
+        computedSplitsJson: JSON.stringify(r.computedSplits),
+      });
+    }
     return patchOwned(ctx, userId, "transactions", row, patch);
   },
 });
