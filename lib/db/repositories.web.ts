@@ -137,8 +137,13 @@ export const TransactionRepository = {
         categoryId: 'categoryId' in rest ? rest.categoryId ?? null : undefined,
       });
     }
-    // Linking is handled by TripExpenseRepository on web; an explicit null unlink is done there too.
-    GlobalEvents.emit(Events.transactionsChanged);
+    // Linking/unlinking is owned by TripExpenseRepository on web (create → linkExpense,
+    // delete → unlinkExpense, which clears both sides atomically). A trailing
+    // { tripExpenseId: null } after that delete is therefore a no-op; anything else is a bug.
+    if (tripExpenseId !== undefined && tripExpenseId !== null) {
+      throw new Error('Link transactions to trips via TripExpenseRepository on web');
+    }
+    if (hasLedgerFields) GlobalEvents.emit(Events.transactionsChanged);
   },
   async updateDerivedAccountId(id: string, accountId: string | null): Promise<void> {
     await webMutation(api.pwaDerived.setOverrideForDerivedRow, { derivedId: id, accountId });

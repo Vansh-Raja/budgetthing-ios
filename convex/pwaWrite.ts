@@ -15,13 +15,11 @@ type Row = Record<string, any>;
 export async function insertOwned(ctx: MutationCtx, userId: string, table: OwnedTable, id: string, data: Row, nowMs = serverNow()) {
   const doc: Row = { id, userId, ...stripUndefined(data), createdAtMs: nowMs, updatedAtMs: nowMs, syncVersion: 1 };
   if (table === "userSettings") delete doc.createdAtMs; // schema has no createdAtMs for settings
-  await ctx.db.insert(table as any, doc as any);
+  // Read back by _id: client ids are not unique across users (every settings row is "local"),
+  // so a by_client_id lookup would scan all users' rows.
+  const _id = await ctx.db.insert(table as any, doc as any);
   await recordUserChange(ctx, userId, table, id, nowMs, "upsert");
-  const inserted = await ctx.db
-    .query(table as any)
-    .withIndex("by_client_id", (q: any) => q.eq("id", id))
-    .filter((q: any) => q.eq(q.field("userId"), userId))
-    .first();
+  const inserted = await ctx.db.get(_id);
   return toWire(inserted as any);
 }
 

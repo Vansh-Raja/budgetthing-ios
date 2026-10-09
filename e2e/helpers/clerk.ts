@@ -88,7 +88,7 @@ async function waitForOutcome(page: Page): Promise<Outcome> {
   const shell = page.getByTestId('web-shell');
   const codeInput = page.locator('input[name="code"], input[autocomplete="one-time-code"]').first();
   const passwordInput = page.locator('input[name="password"]');
-  const notFound = page.getByText(/couldn't find your account|no account found|not found/i);
+  const notFound = page.getByText(/couldn't find your account|no account found/i);
   const passwordStep = page.getByRole('heading', { name: /enter your password|password/i });
   return Promise.race<Outcome>([
     shell.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'shell' as const),

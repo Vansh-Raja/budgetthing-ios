@@ -103,6 +103,21 @@ export const Actions = {
         });
     },
 
+    /**
+     * Edit a local trip expense and its split in one write (transaction detail screen).
+     */
+    async updateTripExpenseWithTransaction(
+        transactionId: string,
+        txUpdates: Partial<Omit<Transaction, 'id' | 'createdAtMs'>>,
+        tripExpenseId: string | null,
+        splitUpdates: { paidByParticipantId?: string; splitType: SplitType; splitData?: Record<string, number>; computedSplits?: Record<string, number> } | null
+    ): Promise<void> {
+        await withTransaction(async () => {
+            await TransactionRepository.update(transactionId, txUpdates);
+            if (tripExpenseId && splitUpdates) await TripExpenseRepository.update(tripExpenseId, splitUpdates);
+        });
+    },
+
     async createGroupExpense(
         transactionData: Omit<Transaction, 'id' | 'createdAtMs' | 'updatedAtMs'>,
         tripId: string,
