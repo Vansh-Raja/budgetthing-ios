@@ -58,6 +58,20 @@ Additional:
 
 ---
 
+## Mobile Web (PWA)
+
+The same Expo app also runs as an **online-only** mobile web app (plan: `plan.md` top section; evidence logs in `docs/pwa/`).
+
+- **No local database on web.** Every native-only module has a `.web.ts(x)` sibling that Metro picks on web: `lib/db/*.web.ts` (repositories → Convex `pwa*` queries/mutations), `lib/sync/*.web.ts` (no-ops), `lib/hooks/*.web.ts` (live `useQuery`), `lib/logic/actions.web.ts` (one atomic server mutation per multi-table action). Shared screens run unchanged.
+- **Server API for web:** `convex/pwa*.ts` (validated, owner-scoped, writes through the native change log). Derived trip rows (`trip_share`, `trip_cashflow`, `trip_settlement`) are computed virtually and never persisted; `derivedAccountOverrides` is web-only.
+- **Import sync:** API-import inbox items and `api_import_*` transactions use the server state machine in `convex/importSync.ts`, not generic LWW.
+- **Guards:** `metro.config.js` refuses SQLite/sync/SecureStore/pager on web; `npm run web:export && npm run web:audit` must print OK.
+- **PWA:** `public/manifest.webmanifest`, `public/sw.js` (static shell only; never caches Convex/Clerk/API), stamped by `scripts/stamp-sw.mjs`.
+- **Tests:** `npm run test:convex` (convex-test contracts), `npm run test:web` (Playwright; needs `.env.local` and the two Clerk dev test users), and production-build checks with `E2E_PROD=1` (see `e2e/pwa-install.spec.ts`).
+- Edit files with CRLF line endings carefully: many files are still CRLF, and rewriting them as LF bloats diffs.
+
+---
+
 ## Key Domain Concepts
 
 ### Core Entities
