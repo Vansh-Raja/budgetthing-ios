@@ -2,7 +2,165 @@ import { queryAll, run, withTransaction } from './database';
 import { TABLES } from './schema';
 import { Events, GlobalEvents } from '../events';
 
-function normalizeOptionalFields(table: string, data: any) {
+const SYNC_COLUMNS_BY_TABLE: Record<string, Set<string>> = {
+  [TABLES.ACCOUNTS]: new Set([
+    'id',
+    'name',
+    'emoji',
+    'kind',
+    'sortIndex',
+    'openingBalanceCents',
+    'limitAmountCents',
+    'billingCycleDay',
+    'createdAtMs',
+    'updatedAtMs',
+    'deletedAtMs',
+    'syncVersion',
+  ]),
+  [TABLES.CATEGORIES]: new Set([
+    'id',
+    'name',
+    'emoji',
+    'sortIndex',
+    'monthlyBudgetCents',
+    'isSystem',
+    'createdAtMs',
+    'updatedAtMs',
+    'deletedAtMs',
+    'syncVersion',
+  ]),
+  [TABLES.TRANSACTIONS]: new Set([
+    'id',
+    'amountCents',
+    'date',
+    'note',
+    'type',
+    'systemType',
+    'accountId',
+    'categoryId',
+    'transferFromAccountId',
+    'transferToAccountId',
+    'tripExpenseId',
+    'sourceType',
+    'sourceImportInboxItemId',
+    'createdAtMs',
+    'updatedAtMs',
+    'deletedAtMs',
+    'syncVersion',
+  ]),
+  [TABLES.TRIPS]: new Set([
+    'id',
+    'name',
+    'emoji',
+    'sortIndex',
+    'isGroup',
+    'isArchived',
+    'startDate',
+    'endDate',
+    'budgetCents',
+    'createdAtMs',
+    'updatedAtMs',
+    'deletedAtMs',
+    'syncVersion',
+  ]),
+  [TABLES.TRIP_PARTICIPANTS]: new Set([
+    'id',
+    'tripId',
+    'name',
+    'isCurrentUser',
+    'colorHex',
+    'createdAtMs',
+    'updatedAtMs',
+    'deletedAtMs',
+    'syncVersion',
+  ]),
+  [TABLES.TRIP_EXPENSES]: new Set([
+    'id',
+    'tripId',
+    'transactionId',
+    'paidByParticipantId',
+    'splitType',
+    'splitDataJson',
+    'computedSplitsJson',
+    'createdAtMs',
+    'updatedAtMs',
+    'deletedAtMs',
+    'syncVersion',
+  ]),
+  [TABLES.TRIP_SETTLEMENTS]: new Set([
+    'id',
+    'tripId',
+    'fromParticipantId',
+    'toParticipantId',
+    'amountCents',
+    'date',
+    'note',
+    'createdAtMs',
+    'updatedAtMs',
+    'deletedAtMs',
+    'syncVersion',
+  ]),
+  [TABLES.IMPORT_INBOX_ITEMS]: new Set([
+    'id',
+    'source',
+    'externalIdHash',
+    'externalIdLabel',
+    'apiKeyId',
+    'idempotencyKeyHash',
+    'payloadHash',
+    'status',
+    'type',
+    'amountCents',
+    'currencyCode',
+    'dateMs',
+    'merchantName',
+    'note',
+    'accountId',
+    'categoryId',
+    'possibleDuplicate',
+    'duplicateSignalsJson',
+    'confirmedTransactionId',
+    'confirmedAtMs',
+    'ignoredAtMs',
+    'createdAtMs',
+    'updatedAtMs',
+    'deletedAtMs',
+    'syncVersion',
+  ]),
+  [TABLES.USER_SETTINGS]: new Set([
+    'id',
+    'currencyCode',
+    'hapticsEnabled',
+    'defaultAccountId',
+    'hasSeenOnboarding',
+    'syncTransactionFilters',
+    'resetTransactionFiltersOnReopen',
+    'transactionsFiltersJson',
+    'transactionsFiltersUpdatedAtMs',
+    'updatedAtMs',
+    'syncVersion',
+  ]),
+};
+
+function sanitizeLocalChange(table: string, row: any) {
+  const allowed = SYNC_COLUMNS_BY_TABLE[table];
+  if (!allowed) return row;
+
+  const out: any = {};
+  for (const [key, value] of Object.entries(row ?? {})) {
+    if (allowed.has(key)) out[key] = value;
+  }
+  return out;
+}
+
+/** Columns that are NOT NULL locally but may be absent on older server rows. */
+const DEFAULTS_BY_TABLE: Record<string, Record<string, unknown>> = {
+  // Server transactions written before provenance existed have no sourceType;
+  // SQLite's column DEFAULT does not apply to an explicit NULL, so supply it here.
+  [TABLES.TRANSACTIONS]: { sourceType: 'manual' },
+};
+
+export function normalizeOptionalFields(table: string, data: any) {
   if (!data || typeof data !== 'object') return data;
 
   const optionalByTable: Record<string, string[]> = {
@@ -16,6 +174,22 @@ function normalizeOptionalFields(table: string, data: any) {
       'transferFromAccountId',
       'transferToAccountId',
       'tripExpenseId',
+      'sourceImportInboxItemId',
+      'deletedAtMs',
+    ],
+    [TABLES.IMPORT_INBOX_ITEMS]: [
+      'externalIdLabel',
+      'apiKeyId',
+      'idempotencyKeyHash',
+      'payloadHash',
+      'merchantName',
+      'note',
+      'accountId',
+      'categoryId',
+      'duplicateSignalsJson',
+      'confirmedTransactionId',
+      'confirmedAtMs',
+      'ignoredAtMs',
       'deletedAtMs',
     ],
     [TABLES.TRIPS]: ['startDate', 'endDate', 'budgetCents', 'deletedAtMs'],
@@ -37,6 +211,9 @@ function normalizeOptionalFields(table: string, data: any) {
     if (!(col in out)) out[col] = null;
     if (out[col] === undefined) out[col] = null;
   }
+  for (const [col, value] of Object.entries(DEFAULTS_BY_TABLE[table] ?? {})) {
+    if (out[col] === undefined || out[col] === null) out[col] = value;
+  }
   return out;
 }
 
@@ -48,6 +225,7 @@ export interface PendingChanges {
   tripParticipants: any[];
   tripExpenses: any[];
   tripSettlements: any[];
+  importInboxItems: any[];
   userSettings: any[];
 }
 
@@ -57,7 +235,8 @@ export const syncRepository = {
    */
   async getPendingChanges(): Promise<PendingChanges> {
     const getTableChanges = async (table: string) => {
-      return queryAll<any>(`SELECT * FROM ${table} WHERE needsSync = 1`);
+      const rows = await queryAll<any>(`SELECT * FROM ${table} WHERE needsSync = 1`);
+      return rows.map((row) => sanitizeLocalChange(table, row));
     };
 
     return {
@@ -68,6 +247,7 @@ export const syncRepository = {
       tripParticipants: await getTableChanges(TABLES.TRIP_PARTICIPANTS),
       tripExpenses: await getTableChanges(TABLES.TRIP_EXPENSES),
       tripSettlements: await getTableChanges(TABLES.TRIP_SETTLEMENTS),
+      importInboxItems: await getTableChanges(TABLES.IMPORT_INBOX_ITEMS),
       userSettings: await getTableChanges(TABLES.USER_SETTINGS),
     };
   },
@@ -104,6 +284,7 @@ export const syncRepository = {
       await markTable(TABLES.TRIP_PARTICIPANTS, changes.tripParticipants);
       await markTable(TABLES.TRIP_EXPENSES, changes.tripExpenses);
       await markTable(TABLES.TRIP_SETTLEMENTS, changes.tripSettlements);
+      await markTable(TABLES.IMPORT_INBOX_ITEMS, changes.importInboxItems);
       await markTable(TABLES.USER_SETTINGS, changes.userSettings);
     });
   },
@@ -163,6 +344,7 @@ export const syncRepository = {
       const tripParticipants = (changes as any).tripParticipants ?? [];
       const tripExpenses = (changes as any).tripExpenses ?? [];
       const tripSettlements = (changes as any).tripSettlements ?? [];
+      const importInboxItems = (changes as any).importInboxItems ?? [];
       const userSettings = (changes as any).userSettings ?? [];
 
       // If the server has older trip records without `sortIndex`, assign a stable
@@ -204,6 +386,7 @@ export const syncRepository = {
       await upsertTable(TABLES.TRIP_PARTICIPANTS, tripParticipants);
       await upsertTable(TABLES.TRIP_EXPENSES, tripExpenses);
       await upsertTable(TABLES.TRIP_SETTLEMENTS, tripSettlements);
+      await upsertTable(TABLES.IMPORT_INBOX_ITEMS, importInboxItems);
       await upsertTable(TABLES.USER_SETTINGS, userSettings);
 
       if (tripIdsMissingSortIndex.length) {
@@ -225,6 +408,7 @@ export const syncRepository = {
       if (tripParticipants.length) GlobalEvents.emit(Events.tripParticipantsChanged);
       if (tripExpenses.length) GlobalEvents.emit(Events.tripExpensesChanged);
       if (tripSettlements.length) GlobalEvents.emit(Events.tripSettlementsChanged);
+      if (importInboxItems.length) GlobalEvents.emit(Events.importInboxChanged);
       if (userSettings.length) GlobalEvents.emit(Events.userSettingsChanged);
     });
   }

@@ -1,0 +1,11 @@
+# BudgetThing
+
+BudgetThing is a fast expense tracker with optional cloud sync.
+
+## Agent Import API
+
+- Docs: https://budgetthing.vanshraja.me/agents/budgetthing/
+- Skill: https://budgetthing.vanshraja.me/agents/budgetthing/SKILL.md
+- OpenAPI: https://budgetthing.vanshraja.me/agents/budgetthing/openapi.json
+
+The Import API accepts structured expense and income candidates only. It does not accept raw emails, messages, OCR dumps, files, card numbers, or bank statements.

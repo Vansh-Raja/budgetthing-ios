@@ -1,0 +1,574 @@
+{
+  "title": "BudgetThing mobile-first PWA on Expo, Convex Cloud, and Clerk",
+  "one_liner": "Ship an installable, online-only mobile PWA with the existing BudgetThing feel and one shared user/data model, while preserving the Expo native path for a later iOS release.",
+  "project": "BudgetThing",
+  "feature": "Mobile-first installable PWA",
+  "branch": "feature/mobile-pwa",
+  "base_branch": "verified HEAD after preserving the dirty import work",
+  "repo": "BudgetThing repository",
+  "workspace": "/Users/vanshraja/Code/budgetthing-ios",
+  "tags": [
+    "expo",
+    "pwa",
+    "convex-cloud",
+    "clerk",
+    "mobile-first",
+    "online-only"
+  ],
+  "meta": {
+    "current_release_scope": "PWA first; desktop redesign and native iOS release are later work",
+    "backend": "Existing Convex Cloud deployment; no self-hosting in this plan",
+    "auth": "Existing Clerk identity; authenticated PWA only",
+    "planning_authorization": "This plan may be published and documented; implementation, Convex production deployment, EAS build, submit, DNS, hosting and commits remain separately authorized"
+  },
+  "extras": [
+    {
+      "label": "Documented dev deployment",
+      "value": "dev:adjoining-gnat-886"
+    },
+    {
+      "label": "Documented production deployment",
+      "value": "prod:ceaseless-mandrill-733"
+    },
+    {
+      "label": "Git caveat",
+      "value": "Current machine cannot execute git until the maintainer accepts the Xcode license; do not accept it automatically."
+    }
+  ],
+  "source_agent": "codex",
+  "story": "BudgetThing already has the product logic, a mobile Expo UI, Clerk sign-in, and Convex Cloud data. The next product surface is an installable phone-first PWA that feels like the existing app, is online-only at launch, and uses the same account and ledger as the future native app. The current checkout contains dirty agent-import work, so PWA implementation must begin from a recoverable, verified baseline without silently committing or losing that work.",
+  "how_we_got_here": "The final direction is mobile PWA parity first, therefore Expo and React Native Web rather than a permanent Vite fork; online-only launch, therefore direct authenticated Convex reads/writes rather than browser SQLite; existing Convex Cloud and Clerk, therefore no self-hosted backend or identity migration; one product, therefore one canonical user/data model; desktop redesign and App Store delivery remain later phases.",
+  "done_means": "A signed-in customer can install BudgetThing on an iPhone browser, use the complete agreed mobile PWA flow with the existing visual language, and see canonical data shared with the existing native-sync protocol without accounting divergence. The PWA has tested authentication, server error/offline behavior, installation/update behavior, real-device iPhone acceptance, and a reversible release handoff. Native code paths and existing local-first mobile sync remain intact.",
+  "decisions": [
+    {
+      "decision": "Mobile PWA parity",
+      "choice": "Keep the existing dark, portrait-first BudgetThing visual language, five-tab order, navigation intent, typography hierarchy, and full-screen editing flows on phone web.",
+      "why": "The first web surface is the same product for normal customers, not a desktop redesign. Pixel/behavior parity is a target to validate against the existing app; no percentage-complete claim is assumed."
+    },
+    {
+      "decision": "Universal runtime",
+      "choice": "Extend the existing Expo Router and React Native Web repository using narrowly scoped `.web.tsx` adapters and web helpers.",
+      "why": "It reuses the mobile UI, shared logic, Convex types, and future native target. A permanent Vite fork would create duplicate product and parity maintenance."
+    },
+    {
+      "decision": "PWA data mode",
+      "choice": "Use direct, authenticated Convex Cloud queries and authoritative mutations for the initial web release; do not enable guest mode or browser SQLite/offline write queues.",
+      "why": "Online-only scope is simpler and avoids presenting unsynced financial state. Native retains its existing SQLite/outbox protocol."
+    },
+    {
+      "decision": "Cloud and identity",
+      "choice": "Keep the existing Convex Cloud deployment and Clerk identity provider.",
+      "why": "It preserves current Clerk subject IDs and canonical server data. Self-hosting Convex or replacing Clerk is outside this release."
+    },
+    {
+      "decision": "Canonical compatibility",
+      "choice": "Use existing entity fields, integer-cent values, stable IDs, tombstones, sync versions, source provenance, and change-log semantics; add compatible purpose-specific server APIs beside the current sync APIs.",
+      "why": "Native and web must observe one ledger. Replacing or bypassing the legacy sync contract would risk data loss and accounting drift."
+    },
+    {
+      "decision": "Derived trip rows",
+      "choice": "Keep `trip_share`, `trip_cashflow`, and `trip_settlement` as virtual per-runtime projections. The PWA never persists derived rows to Convex.",
+      "why": "Current native derived rows are local-only and deliberately excluded from outbound sync. Persisting a second web-derived copy would double-count and conflict with native reconciliation."
+    },
+    {
+      "decision": "Derived account override compatibility",
+      "choice": "Inventory active native clients and choose a launch boundary: a later native adapter may upload canonical per-user overrides, while PWA v1 never silently guesses or globally forces a user account choice.",
+      "why": "Existing overrides are device-local and cannot be recovered from Convex. Native-App-Store availability is not a prerequisite for PWA launch, so unresolved older-client behavior must be documented and feature-gated where necessary rather than hidden behind a parity claim."
+    },
+    {
+      "decision": "Desktop",
+      "choice": "Defer desktop-specific navigation, density, and layout redesign.",
+      "why": "Mobile installability and iPhone usability are the release objective. Responsive desktop refinements should be a later, separately planned product phase."
+    },
+    {
+      "decision": "Native release",
+      "choice": "Preserve Expo-native modules and shared routes; do not run EAS build/submit in this PWA plan.",
+      "why": "Native iOS remains a future target after the Apple developer account is available, and repository rules reserve EAS/App Store execution to the maintainer."
+    },
+    {
+      "decision": "Dirty checkout baseline",
+      "choice": "Use a recoverable snapshot/worktree procedure before implementation; do not auto-commit, discard, reset, or merge the existing import work.",
+      "why": "The current branch has unreviewed dirty work. A clean feature worktree needs a known base without losing its tracked or allowlisted untracked source/assets."
+    }
+  ],
+  "research": {
+    "summary": "The current Expo project already declares React Native Web, React DOM, Expo Router static web output, a web HTML entry, Clerk, Convex, and the full mobile screen tree. The known incompatible pager component must be replaced on web, and direct native storage/date/modal dependencies need adapters. The existing Convex code stores authenticated data by Clerk subject and already owns the authoritative schema, shared-trip ACLs, API imports, and change log.",
+    "recommended": "Keep one Expo repository and Convex/Clerk backend. Make web-specific shells for platform blockers, add direct server query/mutation APIs that preserve the existing contracts, and release only after iPhone Safari installed-PWA acceptance plus native-sync compatibility evidence.",
+    "risks": [
+      "The current repository plan mixes historic/stale paths and status with current root files; inspect actual code before each implementation phase.",
+      "The current dirty import/API work must be preserved and explicitly selected, not inherited accidentally into PWA work.",
+      "The local machine's git commands are blocked by an unaccepted Xcode license, so baseline verification is a prerequisite owned by the maintainer; do not accept the license automatically.",
+      "Current device-local derived-account overrides cannot be recovered by the PWA. Exact override parity needs a later compatible native adapter or a deliberate per-user web selection/migration boundary.",
+      "Existing PWA config is incomplete: manifest/install icons, service-worker/cache policy, browser auth storage, and installed-app update handling need explicit implementation and real-device testing.",
+      "Financial correctness requires canonical server mutations to keep trip ledger/cashflow, transfers, tombstones, imports, and native sync behavior compatible.",
+      "Production hosting/domain and release account choices are not configured by this plan and must be supplied/approved at release time."
+    ],
+    "sources": [
+      {
+        "url": "https://docs.expo.dev/workflow/web/",
+        "purpose": "Expo web runtime"
+      },
+      {
+        "url": "https://docs.expo.dev/router/introduction/",
+        "purpose": "Expo Router web routes"
+      },
+      {
+        "url": "https://docs.convex.dev/functions/mutation-functions",
+        "purpose": "Convex mutation boundaries"
+      },
+      {
+        "url": "https://docs.convex.dev/client/react/overview",
+        "purpose": "Convex React subscriptions"
+      },
+      {
+        "url": "https://docs.convex.dev/auth/clerk",
+        "purpose": "Clerk with Convex"
+      },
+      {
+        "url": "https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/27/ios/27",
+        "purpose": "Safari web-app installation"
+      },
+      {
+        "url": "https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable",
+        "purpose": "PWA installability"
+      },
+      {
+        "url": "https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Offline_and_background_operation",
+        "purpose": "PWA cache boundaries"
+      }
+    ],
+    "narrative": "Official implementation references: https://docs.expo.dev/workflow/web/; https://docs.expo.dev/router/introduction/; https://docs.convex.dev/functions/mutation-functions; https://docs.convex.dev/client/react/overview; https://docs.convex.dev/auth/clerk; https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/27/ios/27; https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable; https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Offline_and_background_operation"
+  },
+  "phases": [
+    {
+      "id": "p0-baseline-and-guardrails",
+      "title": "Preserve the dirty checkout and establish the PWA baseline",
+      "goal": "Create a recoverable, content-verified PWA worktree without losing, committing, or contaminating the existing import work.",
+      "steps": [
+        "Ask the maintainer to complete the Xcode license action outside this plan if git is still unavailable; do not accept it on their behalf.",
+        "Read `git status --short`, `git diff --binary`, `git ls-files --others --exclude-standard`, `git rev-parse HEAD`, and `git worktree list` after git becomes usable; record only paths, base commit, and hashes in a local execution log, never credentials.",
+        "Create a safe temporary snapshot root with `snapshot_root=\"$(mktemp -d \"${TMPDIR:-/tmp}/budgetthing-pwa-snapshot.XXXXXX\")\"`; confirm it is outside this repository. Write the tracked binary patch and NUL-delimited pre-snapshot status there. Create a human-reviewed explicit allowlist manifest for untracked source/docs/assets that belong to the current import work. Exclude `.env*`, credentials, tokens, certificates, `node_modules`, build output, Pods, and database files.",
+        "Hash the patch and each allowlisted file, copy the allowlisted files to a local snapshot outside the repository, then compare source hashes and working-tree path manifest to prove the original checkout is unchanged.",
+        "Create `feature/mobile-pwa` from the verified base commit in a separate worktree. Do not apply the import patch there by default; only apply/copy explicitly chosen import files after their dependency status is reviewed.",
+        "Treat a reviewed commit as an alternative only if the user explicitly authorizes a commit. Never use reset, checkout, clean, stash, or automatic commit to create the baseline.",
+        "In the new worktree, install dependencies without writing lockfiles, inspect current route/build configuration, and record the exact PWA scope baseline.",
+        "Add the approved newest-first unchecked PWA checklist to `plan.md` only after this Planthing plan has been approved/published. Prepend surgically, then byte-compare the original `plan.md` suffix to prove no pre-existing text changed."
+      ],
+      "files": [
+        "plan.md",
+        "outside-repo timestamped binary patch",
+        "outside-repo allowlisted-source snapshot manifest"
+      ],
+      "verification": {
+        "plain": "The original dirty checkout is unchanged and recoverable; the PWA worktree starts at an identified base with no accidental credentials, build output, or import changes.",
+        "method": "cli",
+        "commands": [
+          "git rev-parse HEAD",
+          "git status --short",
+          "snapshot_root=\"$(mktemp -d \"${TMPDIR:-/tmp}/budgetthing-pwa-snapshot.XXXXXX\")\"",
+          "git diff --binary > \"$snapshot_root/working-tree.patch\"",
+          "git status --porcelain=v1 -z > \"$snapshot_root/status-before.z\"",
+          "git ls-files --others --exclude-standard -z > \"$snapshot_root/untracked-candidates.z\"",
+          "shasum -a 256 \"$snapshot_root/working-tree.patch\"",
+          "git worktree add ../budgetthing-mobile-pwa -b feature/mobile-pwa <verified-head>",
+          "cmp \"$snapshot_root/plan-md-original-suffix.txt\" plan.md"
+        ],
+        "expect": "Recorded hashes/manifests match before and after snapshot; the original checkout remains dirty exactly as it was; the new worktree has the verified base only; old `plan.md` content is byte-for-byte preserved after the new prepend.",
+        "on_fail": "Stop. Do not create or alter a worktree until the original dirty paths can be snapshotted and compared safely. Escalate the missing git/license prerequisite to the maintainer."
+      },
+      "exit_criteria": [
+        "A maintainer-verifiable snapshot and allowlist manifest exist outside the repository.",
+        "No secret, environment, dependency, build, Pod, or database file is copied into the snapshot/worktree.",
+        "The PWA worktree base commit and original checkout status are recorded.",
+        "The published plan is linked from a new unchecked checklist at the top of `plan.md`, with original suffix integrity proven."
+      ]
+    },
+    {
+      "id": "p1-web-runtime-spike",
+      "title": "Prove the universal web runtime and auth shell",
+      "goal": "Make the existing Expo app run as an authenticated mobile web shell without changing native behavior.",
+      "steps": [
+        "Produce a resolved import-graph audit from `app/_layout.web.tsx`: the web provider/data boundary uses web adapters such as `lib/hooks/useData.web.ts`, `useTrips.web.ts`, `useSharedTrips.web.ts`, `useUserSettings.web.ts`, `transactionFilterStorage.web.ts`, `app/import-inbox.web.tsx`, and `app/settings/api-import.web.tsx`. Prove it excludes SQLite, `lib/db`, sync engine, SecureStore, pager, native date picker, and native emoji modules.",
+        "Create platform-specific provider/auth/token-storage adapters so browser tokens/settings never call SecureStore directly; keep native imports and behavior unchanged.",
+        "Preferred default: first prove the existing Clerk Expo provider on web. Add a Clerk web-specific package only if the vertical slice demonstrates a concrete incompatibility, then isolate it behind the web shell without changing user identity semantics.",
+        "Add a web app shell that requires Clerk sign-in, supplies Convex auth, handles initial auth loading, and sends unauthenticated users through the approved login/onboarding route.",
+        "Define online-only runtime behavior: no guest mode, no guest seed, no browser SQLite bootstrap, no local outbox, and explicit signed-out/network/server-error views.",
+        "Keep all public runtime configuration limited to approved `EXPO_PUBLIC_*` values; do not put deploy keys, admin keys, or Clerk server credentials in browser code.",
+        "Run the web bundle and test Clerk token refresh plus Convex authenticated request/rejection behavior using the development deployment only.",
+        "Before full feature work, run the no-write vertical slice on an actual iPhone Safari browser and record viewport, sign-in, realtime read, sign-out, user-switch privacy, and unsupported-dependency results.",
+        "Establish browser automation before feature work: add `playwright.config.ts`, `e2e/*`, and `test:web` scripts with Chromium and WebKit mobile/desktop projects, dedicated authenticated Clerk test users, per-run disposable Convex fixture IDs and cleanup, no production data, and screenshot/trace/video artifacts."
+      ],
+      "files": [
+        "app/_layout.tsx",
+        "app/_layout.web.tsx",
+        "lib/auth/tokenCache.ts",
+        "lib/auth/*.web.ts",
+        "lib/hooks/useData.web.ts",
+        "lib/hooks/useTrips.web.ts",
+        "lib/hooks/useSharedTrips.web.ts",
+        "lib/hooks/useUserSettings.web.ts",
+        "lib/ui/transactionFilterStorage.web.ts",
+        "app/import-inbox.web.tsx",
+        "app/settings/api-import.web.tsx",
+        ".env.example",
+        "playwright.config.ts",
+        "e2e/*",
+        "package.json"
+      ],
+      "verification": {
+        "plain": "A signed-in browser receives authenticated Convex data; a signed-out browser cannot enter the ledger; native provider behavior remains buildable.",
+        "method": "browser+cli",
+        "commands": [
+          "npm run web",
+          "npx tsc -p tsconfig.json --noEmit",
+          "npm test -- --runInBand",
+          "npm run test:web"
+        ],
+        "expect": "Web opens without native-module runtime errors; Clerk sign-in/session refresh reaches Convex; sign-out removes private data; the hosting headers/origins, browser matrix, and final release hostname input are recorded; typecheck and existing tests pass. Playwright setup creates isolated fixtures and screenshots for Chromium/WebKit; real iPhone remains a separate acceptance gate.",
+        "on_fail": "Stop. Resolve provider, token-storage, route-gate, or native-regression failures before implementing feature screens."
+      },
+      "exit_criteria": [
+        "Web authentication is browser-safe and authenticated-only.",
+        "No guest/offline persistence is accidentally active on web.",
+        "Native-specific credentials remain out of the web bundle.",
+        "Existing native tests/typecheck still pass."
+      ]
+    },
+    {
+      "id": "p2-canonical-convex-api",
+      "title": "Add compatible direct Convex read and write APIs",
+      "goal": "Let the online PWA read and mutate the canonical ledger directly while preserving local-first native sync compatibility.",
+      "steps": [
+        "Map every web-needed view and write to its existing canonical Convex table(s), identity scope, change-log behavior, soft-delete behavior, and native sync counterpart.",
+        "Before enabling PWA writes, prove native-created data can be read by one proposed web command and web-created/update/tombstoned data pulls into native with matching IDs, optional-field clearing, versions, order, totals, filters, and trip views. Block on this compatibility gate.",
+        "Add `convex/pwaAuth.ts` (`requireUser`, `requireOwnedLive`, `assertExpectedVersion`, server time/ID helpers), `convex/pwaValidation.ts` (integer cents, owner references, card/split/system-type rules), and a small write helper. Keep pure account/split/balance/summary/filter rules in shared `lib/logic`; do not duplicate accounting in UI.",
+        "Create purpose-specific reads: `convex/pwaPersonal.ts` (`listDashboard`, `listTransactions(filters,cursor)`, `listAccounts`, `listCategories`, `getSettings`), `convex/pwaTrips.ts` local list/detail read models, `convex/pwaSharedTrips.ts` member-scoped reads, and `convex/pwaImports.ts` pending imports. Each filters tombstones at its canonical boundary.",
+        "Create authoritative commands: `pwaPersonal` account/category/settings create/update/archive/reorder; `pwaLedger` transaction create/update/soft-delete/bulk-category, one-row transfer, and adjustment; `pwaTrips` trip/participant/expense/settlement create/update/archive/reorder/delete; `pwaSharedTrips` member/invite/expense/settlement commands; `pwaImports` confirm/ignore. Each accepts domain inputs plus optional expected revision, returns canonical row/revision or PWA structured conflict, blocks raw client `userId`/timestamps/syncVersion/derived types, and records personal changes with `recordUserChange` and shared changes with `recordTripChange`.",
+        "Keep web-derived trip rows virtual. Add a defensive query guard that excludes any malformed/legacy persisted `trip_*` row before merging the virtual projection, and add a contract test that derived local upserts/tombstones never enter native outbound sync payloads.",
+        "Preserve the existing `sync:push`, `sync:pull`, shared-trip sync, HTTP import API, stable IDs, `updatedAtMs`, `syncVersion`, tombstones, and provenance fields. Do not rename/remove existing endpoints or fields.",
+        "Add web-only `derivedAccountOverrides`, indexed by `(userId, sourceKind, sourceId, direction)` and containing owned `accountId`, `updatedAtMs`, `deletedAtMs`, and revision. Its owner-scoped get/set drives only PWA virtual projections. Do not emit this unknown entity through legacy change logs/sync until a versioned native adapter proves it safe; device-local native choices remain untouched and cannot be auto-imported.",
+        "Apply full authorization checks to every query/mutation and shared-trip membership action. Keep API keys hashed, one-time raw-key reveal rules, rate limiting, idempotency, and audit logging unchanged. Add an isolated Convex fixture/harness task and `test:convex` script before claiming integration coverage; it uses disposable dev fixtures and never production data.",
+        "Deploy only to the documented Convex development deployment after local tests and review. Production deployment is a later maintainer-authorized release action."
+      ],
+      "files": [
+        "convex/schema.ts",
+        "convex/sync.ts",
+        "convex/userSyncSeq.ts",
+        "convex/sharedTrip*.ts",
+        "convex/apiImport*.ts",
+        "new focused Convex query/mutation modules",
+        "lib/logic/*.ts",
+        "lib/logic/__tests__/*.test.ts"
+      ],
+      "verification": {
+        "plain": "Web-originated canonical writes are authorized, idempotent where required, and visible to the native sync protocol without changing money/trip rules; no derived projection is persisted or outbound-synced.",
+        "method": "cli+integration",
+        "commands": [
+          "npm test -- --runInBand",
+          "npx tsc -p tsconfig.json --noEmit",
+          "CONVEX_DEPLOYMENT=dev:adjoining-gnat-886 npx convex dev --once",
+          "npx convex run sync:whoami '{}'"
+        ],
+        "expect": "All unit/rule tests pass; dev schema/functions deploy additively; authenticated and unauthorized smoke checks produce expected results; native/web round-trip fixtures match; current sync endpoints remain available; derived outbound exclusion contract passes.",
+        "on_fail": "Stop. Revert only the unverified phase changes in the PWA worktree and fix compatibility/authorization failures before any UI consumes the API. Do not deploy production."
+      },
+      "exit_criteria": [
+        "Every PWA write has a documented purpose-specific canonical server mutation and authorization rule.",
+        "Existing native sync receives PWA changes through compatible change-log records.",
+        "No web-derived transaction is persisted, and malformed persisted derived rows are excluded defensively.",
+        "No existing backend endpoint, table field, or import behavior is removed or weakened.",
+        "Rules tests cover all affected money/trip paths."
+      ]
+    },
+    {
+      "id": "p3-mobile-web-navigation-and-design-system",
+      "title": "Adapt navigation and shared chrome for phone web",
+      "goal": "Replace web-incompatible native paging with a mobile browser shell that retains BudgetThing’s existing navigation intent and visual language.",
+      "steps": [
+        "Use the existing tab order exactly: Calculator, Transactions, Accounts, Trips, Settings; preserve selection behavior and the floating tab-switcher design intent.",
+        "Implement web replacements for root, onboarding, local-trip-detail, and shared-trip-detail pagers without importing `react-native-pager-view` on web.",
+        "Use browser history/deep-link behavior deliberately so close/back actions and nested account/category/settings paths work on mobile Safari and installed mode.",
+        "Create platform-specific modal/sheet, popup, blur, haptic no-op/progressive-enhancement, keyboard, safe-area, and date-input primitives where current native assumptions do not hold.",
+        "Preferred defaults: retain existing emoji picker only if the target-browser spike proves it works, otherwise use a bounded browser-native emoji input fallback; retain the existing font hierarchy with a documented web fallback stack unless licensed font assets are already present; add no new package without target-browser evidence.",
+        "Warn before browser navigation/reload when a server-backed form has unsaved edits; do not cache private form drafts as financial authority.",
+        "Preserve black background, orange accent, typography hierarchy, locked geometry/copy, touch target sizes, and portrait-first widths. Do not begin a desktop layout redesign.",
+        "Establish a screenshot/reference checklist against the existing iOS screens for every shared shell state."
+      ],
+      "files": [
+        "app/(tabs)/index.tsx",
+        "app/(tabs)/index.web.tsx",
+        "screens/OnboardingScreen.tsx",
+        "screens/OnboardingScreen.web.tsx",
+        "screens/TripDetailScreen.tsx",
+        "screens/TripDetailScreen.web.tsx",
+        "screens/SharedTripDetailScreen.tsx",
+        "screens/SharedTripDetailScreen.web.tsx",
+        "components/ui/*",
+        "constants/theme.ts"
+      ],
+      "verification": {
+        "plain": "The PWA has the same mobile navigation order and recognizable visual language without web pager crashes or broken browser back behavior.",
+        "method": "browser+screenshot",
+        "commands": [
+          "npm run web",
+          "npx tsc -p tsconfig.json --noEmit"
+        ],
+        "expect": "Phone-width Safari/Chrome navigation reaches each tab and nested flow; no PagerView is rendered on web; screenshots meet the approved screen-by-screen reference checklist.",
+        "on_fail": "Stop. Correct web shell/navigation behavior before porting feature interactions, because every later screen depends on it."
+      },
+      "exit_criteria": [
+        "No web bundle path imports or renders an unsupported pager.",
+        "All five primary tabs, onboarding, nested paths, modals, and browser back behavior work on phone web.",
+        "The implementation remains mobile-first and does not claim unmeasured pixel parity."
+      ]
+    },
+    {
+      "id": "p4-core-ledger-web-screens",
+      "title": "Connect calculator, transactions, accounts, categories, and settings to direct Convex data",
+      "goal": "Deliver the personal-ledger PWA flows with canonical online reads/writes and existing financial presentation rules.",
+      "steps": [
+        "Build web data hooks over the direct Convex queries/mutations and keep shared pure formatters/calculators in `lib/logic`.",
+        "Port calculator expense/income creation, transactions grouping/detail/edit/delete, accounts/current balance, transfer, adjustment, category management, currency, filters, settings, profile and import-inbox entry points.",
+        "Ensure transfer stays one canonical transaction with from/to account IDs; adjustment stays a canonical adjustment; values stay integer cents end-to-end.",
+        "Apply Transactions visibility rules: always hide `trip_cashflow`, render trip share as `share · total` with muted total, exclude trip settlement from monthly spent totals, and prevent derived rows from bulk edit/delete.",
+        "Implement explicit online failure, retry, expired session, no-data, and mutation-pending states. Never present a saved state until the server mutation resolves.",
+        "Verify direct PWA changes appear after native pull and native changes appear in a live PWA session without duplicate records."
+      ],
+      "files": [
+        "screens/CalculatorScreen.tsx",
+        "screens/TransactionsScreen.tsx",
+        "screens/TransactionDetailScreen.tsx",
+        "screens/AccountsScreen.tsx",
+        "screens/TransferMoneyScreen.tsx",
+        "screens/EditAccountScreen.tsx",
+        "screens/EditCategoryScreen.tsx",
+        "screens/SettingsScreen.tsx",
+        "components/transactions/*",
+        "lib/hooks/*",
+        "lib/ui/transactionRules.ts",
+        "lib/ui/transactionFilters.ts",
+        "screens/CategoryDetailScreen.tsx",
+        "screens/ManageCategoriesScreen.tsx",
+        "screens/ManageAccountsScreen.tsx",
+        "screens/CurrencyPickerScreen.tsx",
+        "app/account/[id].tsx",
+        "app/category/[id].tsx",
+        "app/settings/accounts/index.tsx",
+        "app/settings/categories/index.tsx",
+        "app/settings/currency.tsx",
+        "app/settings/api-import.tsx"
+      ],
+      "verification": {
+        "plain": "Core PWA ledger actions write one correct canonical record and render correct totals/visibility across a signed-in browser and native-sync client.",
+        "method": "browser+integration+cli",
+        "commands": [
+          "npm test -- --runInBand",
+          "npx tsc -p tsconfig.json --noEmit",
+          "npm run web"
+        ],
+        "expect": "Expense, income, transfer, adjustment, edit/delete, filters, account balance, currency, and import entry routes pass the scripted browser matrix; rule tests pass; cross-client records converge without duplication.",
+        "on_fail": "Stop. Diagnose canonical mutation payload, change-log, totals, or visibility-rule failures before trips or PWA packaging."
+      },
+      "exit_criteria": [
+        "Core ledger screens do not depend on browser SQLite/local sync.",
+        "Money uses integer cents and canonical transaction types.",
+        "Required transaction display rules are covered by tests and browser scenarios.",
+        "Online error/retry states are usable and truthful."
+      ]
+    },
+    {
+      "id": "p5-local-and-shared-trips-web",
+      "title": "Deliver local and shared trip parity on web",
+      "goal": "Make trip creation, expense splits, balances, settlements, invitations, and derived accounting correct in the mobile PWA.",
+      "steps": [
+        "Connect local trip list/detail/add/edit/participant, add-expense, split-editor, balances, and settlement flows to canonical server APIs without changing participant identity constraints.",
+        "Connect shared-trip list/detail/member/invite/join/add-expense/edit/settlement flows to existing membership-guarded server APIs and direct read models.",
+        "Use existing split calculator and derived accounting modules; cover equal, equal-selected, percentage, shares, and exact splits including remainder/banker-rounding behavior.",
+        "Enforce one current user for each local group trip. Inventory supported active native clients and establish the release boundary for device-local derived-account overrides: web may use an explicit per-user selection/canonical override only after design approval; it must never silently guess, overwrite, or globally force an account choice.",
+        "Keep share ledger rows accountless; charge real accounts only when the current user pays or settlement moves funds; derive those rows virtually in each runtime and never persist them to Convex.",
+        "If old native clients cannot consume a canonical override, document the limitation and feature-gate the affected group-trip web write flow or explicitly accept runtime-specific account projection. Do not require an unavailable App Store native update before PWA launch.",
+        "Validate deletion/reconciliation/idempotency and web/native canonical-data convergence for both local and shared trips."
+      ],
+      "files": [
+        "screens/TripsScreen.tsx",
+        "screens/AddTripScreen.tsx",
+        "screens/EditTripScreen.tsx",
+        "screens/AddExpenseScreen.tsx",
+        "screens/SplitEditorScreen.tsx",
+        "screens/TripDetailScreen.tsx",
+        "screens/SharedTripDetailScreen.tsx",
+        "screens/AddSharedTripScreen.tsx",
+        "screens/AddSharedExpenseScreen.tsx",
+        "screens/RecordSettlementScreen.tsx",
+        "screens/RecordSharedSettlementScreen.tsx",
+        "components/trip/*",
+        "lib/logic/tripAccounting/*",
+        "convex/sharedTrip*.ts"
+      ],
+      "verification": {
+        "plain": "Each trip split and settlement produces the correct canonical ledger and virtual cashflow result, is safe to reconcile repeatedly, and has an explicit tested boundary for any old-client device-local account override.",
+        "method": "unit+browser+integration",
+        "commands": [
+          "npm test -- --runInBand",
+          "npx tsc -p tsconfig.json --noEmit",
+          "npm run web"
+        ],
+        "expect": "All five split types, payer/non-payer behavior, settlement movement, deleted canonical rows, invitations/membership ACLs, virtual-row non-persistence, and repeated reconciliation pass scripted tests and two-client scenarios; old-client override limits are documented rather than claimed as exact parity.",
+        "on_fail": "Stop. Treat any ledger/cashflow divergence, duplicate derived row, wrong account impact, or ACL leak as release-blocking; fix before PWA packaging."
+      },
+      "exit_criteria": [
+        "All `rules.md` trip contracts have automated coverage and browser evidence.",
+        "Local and shared trip behavior uses the same accounting model where required.",
+        "No derived transaction is persisted, bulk-editable, or bulk-deletable from the PWA.",
+        "The native-override compatibility boundary is tested and documented before group-trip web writes launch."
+      ]
+    },
+    {
+      "id": "p6-api-import-and-cross-client-compatibility",
+      "title": "Finish import inbox and cross-client compatibility",
+      "goal": "Ensure the API-import workflow and current native sync protocol remain safe after direct-web APIs are introduced.",
+      "steps": [
+        "Review the dirty import feature as its own dependency and either bring an explicitly reviewed subset into the PWA worktree or leave it out with clear feature gating; never silently copy it.",
+        "If included, render pending inbox items, edit/confirm/ignore actions, duplicate flags, badges, and API-key management with browser-safe modal/clipboard behavior.",
+        "Keep structured-only imports separate from transactions until user confirmation. Server `confirmImport` atomically owns pending-to-confirmed finalization, uses the exact existing native deterministic transaction-ID algorithm, validates immutable provenance, creates/loads one canonical transaction, patches the inbox item, and records both changes. The v1 product remains review-first; unattended/direct posting is an explicit later non-goal.",
+        "Harden legacy `sync:push` import-linked handling as an authoritative state machine, not generic row LWW: a confirmed inbox accepts only its exact deterministic provenance transaction and ignores competing candidate fields; ignored-versus-confirm is conflict; pending native confirm requires matching provenance; amount/date/type/account/category are immutable after confirmation except through dedicated audited edit/reversal.",
+        "Run compatibility matrices for PWA direct mutation → mobile pull; mobile local mutation → PWA live query; import API → PWA inbox; web-first/native-first confirmation retries and contradictory payloads; confirmation/ignore races; deletion/account switch → authorization isolation. Prove old native conflict rejection is non-poisoning and its outbox does not retry forever.",
+        "Add high-impact dedupe grouping/canonical selection tests and rapid-save/reconcile/sync failure tests that remain outstanding in `plan.md` where they touch this release.",
+        "Document whether production agent API docs are release-ready only after the production backend deployment is explicitly authorized and verified.",
+        "As soon as the import inbox vertical path exists, execute API candidate to PWA review to confirm/refresh on an actual iPhone browser before the broader feature pass.",
+        "Exclude API-import provenance transaction/inbox pairs from generic LWW and process them as one authoritative import state-machine pass. Released native `sync:push` must retain its `{status:\"ok\"}` response, after which existing native broad `markAsSynced` runs before normal full `sync:pull`; do not invent a per-record legacy acknowledgement or toast.",
+        "For a same-user server-ignored inbox plus an incoming exact deterministic `api_import` provenance transaction, atomically insert or patch a canonical deleted resolution transaction at that id using server inbox immutable amount/date/type/account/category and provenance fields, set a server revision/tombstone, record user changes for BOTH ignored inbox and resolution transaction, and audit `import_sync_server_winner_ignored`. The next normal full pull is authoritative and must overwrite the native SQLite transaction with `deletedAtMs` and `needsSync=0`, removing it from transaction lists, account totals, and month totals.",
+        "For a server-confirmed item, only exact immutable provenance/financial fields are idempotent; conflict is a server-winner no-op with canonical winner change-log records. Missing, malformed, unpaired, or unattributable provenance never passes through generic LWW or creates an active record. A push-only old native session may remain temporarily stale until its next full pull. Data that cannot be safely attributed cannot be auto-repaired, so PWA import launch is feature-gated until a repair/migration boundary exists.",
+        "Exercise Hermes and actual Shortcut voice/keyword flows end to end: strict JSON request, Shortcut/Hermes voice or keyword capture -> persistent per-event UUID -> import POST -> status check -> open PWA inbox. Reuse the UUID for retry so one event creates one candidate/transaction; two independent identical purchases carry distinct UUIDs and both post. Run both paths on a real iPhone."
+      ],
+      "files": [
+        "app/import-inbox.tsx",
+        "app/settings/api-import.tsx",
+        "components/import/*",
+        "convex/http.ts",
+        "convex/apiImport*.ts",
+        "lib/db/repositories.ts",
+        "lib/logic/importApiValidation.ts",
+        "lib/logic/dedupe/*",
+        "lib/logic/__tests__/*"
+      ],
+      "verification": {
+        "plain": "Imports are authenticated, review-first, idempotent, auditable, and atomically finalized; web and native clients converge on one matching terminal inbox row and provenance transaction without duplicate, contradictory, cross-user, or endlessly retried records.",
+        "method": "unit+http+browser+integration",
+        "commands": [
+          "npm test -- --runInBand",
+          "npx tsc -p tsconfig.json --noEmit",
+          "npm run web",
+          "curl -i https://<dev-convex-site>/v1/health"
+        ],
+        "expect": "Validation/idempotency/dedupe tests pass; unauthorized and malformed API requests are rejected; a valid candidate remains pending until confirmation; web-first/native-first and race fixtures create exactly one immutable source-tagged transaction and one matching terminal inbox row visible to both clients; rejected old-native transitions do not retry forever. The integration fixture performs released SQLite confirm -> `sync:push` status ok -> broad mark-as-synced -> full pull and asserts the correction tombstone, `needsSync=0`, ignored inbox, and exclusion from native transaction list/account/month totals.",
+        "on_fail": "Stop. Do not expose or document production API use until the failing authorization, duplicate, audit, or confirmation path is corrected."
+      },
+      "exit_criteria": [
+        "Import work is either explicitly included and tested or explicitly excluded/feature-gated.",
+        "No API key, raw payload, or secret is exposed in PWA code, logs, tests, or plan artifacts.",
+        "The included import vertical path passes on an actual iPhone browser before full PWA release QA.",
+        "Cross-client high-impact write paths have passing duplicate/failure tests."
+      ]
+    },
+    {
+      "id": "p7-pwa-install-update-and-browser-resilience",
+      "title": "Make the web app installable and operationally honest",
+      "goal": "Provide install, update, auth, cache, and connection behavior appropriate for an online-only finance PWA.",
+      "steps": [
+        "Add a web manifest, appropriate phone install icons, theme/background metadata, and manifest link through the Expo web HTML entry.",
+        "Preferred default: minimal static-shell service-worker cache for public app assets only; never cache Clerk/session material, Convex responses, HTTP import API responses, or financial mutations. Show a clear connection-required/retry state for all data requests.",
+        "Implement installed-PWA update signaling and safe reload behavior so a new release does not falsely report stale financial data as current, and warn before refresh/navigation when a server-backed form is dirty.",
+        "Verify Clerk authentication redirects/cookies/storage in browser and installed contexts; configure redirect/allowed origins only after the release hostname is an explicit approved input.",
+        "Add connection-loss, Convex maintenance/error, token expiry, storage-unavailable, and unsupported-browser messages with retry/sign-out behavior.",
+        "Test iPhone Safari browser, installed home-screen PWA, and Android Chrome. Test desktop only for graceful non-goal behavior, not redesign parity.",
+        "On iPhone Safari over HTTPS, execute Share -> Add to Home Screen -> Open as Web App -> Add -> launch -> login/navigation -> logout; then verify refresh, browser Back, and second-account switch expose no previous private financial UI/data. Permit Clerk SDK session storage only, and inspect service-worker caches to confirm no app-created finance/auth payload cache."
+      ],
+      "files": [
+        "app/+html.tsx",
+        "app.json",
+        "public/manifest.json",
+        "public/icons/*",
+        "web service-worker/cache configuration",
+        "web auth/error components",
+        "deployment environment documentation"
+      ],
+      "verification": {
+        "plain": "A customer can install the PWA on a real phone, sign in safely, receive current server data only while online, and understand update/offline/auth failures.",
+        "method": "real-device+browser",
+        "commands": [
+          "npx expo export --platform web",
+          "npx tsc -p tsconfig.json --noEmit",
+          "npm test -- --runInBand"
+        ],
+        "expect": "Manifest passes browser inspection, install prompt/home-screen installation succeeds, installed and browser modes authenticate, update behavior is visible, and loss of network never exposes an editable stale local ledger.",
+        "on_fail": "Stop. Fix install, cache privacy, update, or phone-auth behavior before release review; do not compensate by claiming offline support."
+      },
+      "exit_criteria": [
+        "The PWA is installable on the agreed real devices.",
+        "Cache policy is documented and consistent with online-only financial data.",
+        "Auth and error states work in installed and browser contexts.",
+        "No hostname/provider/account is configured without explicit release authorization."
+      ]
+    },
+    {
+      "id": "p8-full-qa-and-release-handoff",
+      "title": "Audit the mobile PWA and prepare a maintainer-controlled release",
+      "goal": "Produce evidence that the PWA is ready for a controlled hosted release without deploying, committing, or building native artifacts automatically.",
+      "steps": [
+        "Run full unit, type, lint/doctor if configured, web export, and dev-deployment smoke checks after all PWA changes; resolve failures before review.",
+        "Execute a phone-first acceptance matrix on actual iPhone Safari and installed PWA: sign-in/out, onboarding, all five tabs, calculator, accounts, transaction detail, filters, local/shared trips, all split types, settlements, import inbox if included, API-key management, refresh/update, token expiry, offline/error, and browser back/deep links.",
+        "Perform an exact screen-by-screen visual review against the existing mobile app for agreed flows. Record measured differences/accepted deviations; do not state a fabricated parity percentage.",
+        "Execute cross-client data matrix with the existing native app/local sync and PWA on the documented development deployment, including user switch and duplicate/concurrency scenarios.",
+        "Prepare a release runbook with explicit maintainer inputs: approved web host/domain, production environment values, Clerk redirect/origin changes, production Convex backup, production backend deploy command, web artifact upload/hosting command, monitoring, rollback, and post-release smoke checks.",
+        "Request explicit maintainer approval before any commit/push, Convex production deploy, DNS/hosting write, EAS build/submit, or App Store action. Those actions are outside planning authorization and must stay separately controlled.",
+        "After implementation is actually complete, update the PWA checklist in `plan.md` phase-by-phase; preserve all older plans and verify the final package/worktree state.",
+        "Use additive, backward-compatible schema migrations only: before production promotion export/backup and rehearse restore into an isolated target. Roll back web behavior by serving the prior artifact and/or disabling the web-write feature flag. Never destructively restore or roll back production financial data to undo an app release; retain changelog/tombstones and repair with audited compensating, data-forward operations."
+      ],
+      "files": [
+        "plan.md",
+        "release runbook",
+        "PWA QA evidence/screenshots",
+        "hosting configuration only after approval"
+      ],
+      "verification": {
+        "plain": "The release candidate passes automated, cross-client, and actual-iPhone PWA acceptance; deployment is a reviewed maintainer decision with a rollback path.",
+        "method": "cli+real-device+release-review",
+        "commands": [
+          "npm test -- --runInBand",
+          "npx tsc -p tsconfig.json --noEmit",
+          "npx expo export --platform web",
+          "CONVEX_DEPLOYMENT=dev:adjoining-gnat-886 npx convex dev --once"
+        ],
+        "expect": "All checks pass; acceptance evidence identifies actual devices/browsers and outcomes; release inputs and rollback are documented; no production, hosting, git, or EAS action occurs without a distinct maintainer authorization. The pre-production export and isolated-target restore rehearsal, prior-artifact/feature-flag rollback drill, and data-forward correction path are documented and evidenced.",
+        "on_fail": "Stop release preparation at the failing check, fix in the isolated PWA worktree, and repeat the relevant matrix. Do not deploy around a failed accounting, auth, cache, or real-device test."
+      },
+      "exit_criteria": [
+        "Automated tests, export, dev smoke, cross-client checks, and actual iPhone acceptance pass.",
+        "Visual differences are recorded rather than hidden behind a parity claim.",
+        "Release host/domain and production steps are approved inputs, not guessed configuration.",
+        "Maintainer has a concrete release and rollback runbook."
+      ]
+    }
+  ],
+  "acceptance": [
+    "The release is a customer-facing, installable, authenticated mobile PWA; it is not an offline/guest app or desktop redesign.",
+    "The existing tab order is Calculator, Transactions, Accounts, Trips, Settings and the established black/orange mobile visual language is retained for approved phone flows.",
+    "PWA writes and native local-sync writes converge on the same authorized Convex data without duplicate, missing, cross-user, or accounting-divergent records.",
+    "All money remains integer cents; all five split types retain existing rounding behavior; transfer/adjustment/system types and source provenance remain compatible.",
+    "Every `rules.md` contract is protected by automated tests and browser/real-device scenarios: share ledger only, payer cashflow, non-payer behavior, settlement movement, idempotent derivation, preserved account choice, transaction visibility, derived-row editing restrictions, current-user identity, and local/shared parity.",
+    "PWA is tested on an actual iPhone in Safari and installed mode; successful desktop rendering is only graceful support, not a claim of a completed desktop product.",
+    "Existing native Expo paths remain buildable and preserve their local-first guest/sync behavior; no native release is produced in this effort.",
+    "No production Convex deployment, EAS build/submit, DNS/hosting change, external account configuration, commit, or push occurs without explicit maintainer approval after the evidence is reviewable.",
+    "The dirty import work remains recoverable and untouched unless the user explicitly chooses a reviewed subset to include."
+  ],
+  "agent_notes": [
+    "Planning-only authorization now covers Planthing publication and a surgical repository `plan.md` PWA checklist after publication. It does not authorize implementation or release writes.",
+    "The PWA branch/base name is an intended convention, not a command to create it until the implementation is authorized and git baseline verification is possible.",
+    "Use the documented dev Convex deployment for development-only function/schema pushes. Never run generic `npx convex deploy` when development is intended.",
+    "Production Convex backup/deploy and all hosting/domain configuration are maintainer-controlled release gates. EAS build/submit remains maintainer-only under repository rules.",
+    "Do not put real URLs, tokens, Clerk keys, Convex deploy keys, API keys, exports, database files, or user financial data into the plan, screenshots, patch snapshots, or test fixtures.",
+    "If user scope changes to offline web support, self-hosted services, a different identity provider, or desktop-first design, stop and create a revision: each changes core architecture and acceptance criteria.",
+    "When applying the `plan.md` checklist, prepend only the new PWA section, retain every older plan below it, leave every implementation checkbox unchecked, and byte-compare the pre-existing suffix because git diff is unavailable until the Xcode license is accepted by the maintainer."
+  ]
+}

@@ -13,5 +13,12 @@
         "EXPO_NO_CAPABILITY_SYNC": "1"
       }
     }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6753360395"
+      }
+    }
   }
 }

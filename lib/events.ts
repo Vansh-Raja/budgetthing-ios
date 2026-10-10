@@ -9,6 +9,7 @@ export const Events = {
     tripExpensesChanged: 'trip_expenses_changed',
     tripSettlementsChanged: 'trip_settlements_changed',
     userSettingsChanged: 'user_settings_changed',
+    importInboxChanged: 'import_inbox_changed',
 } as const;
 
 export type GlobalEventName = (typeof Events)[keyof typeof Events];

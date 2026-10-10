@@ -181,6 +181,7 @@ export async function clearAllData(): Promise<void> {
       await run(`DELETE FROM ${TABLES.SHARED_TRIP_MEMBERS}`);
       await run(`DELETE FROM ${TABLES.SHARED_TRIPS}`);
 
+      await run(`DELETE FROM ${TABLES.IMPORT_INBOX_ITEMS}`);
       await run(`DELETE FROM ${TABLES.TRANSACTIONS}`);
       await run(`DELETE FROM ${TABLES.CATEGORIES}`);
       await run(`DELETE FROM ${TABLES.ACCOUNTS}`);
@@ -192,6 +193,7 @@ export async function clearAllData(): Promise<void> {
     GlobalEvents.emit(Events.tripExpensesChanged);
     GlobalEvents.emit(Events.tripParticipantsChanged);
     GlobalEvents.emit(Events.tripsChanged);
+    GlobalEvents.emit(Events.importInboxChanged);
     GlobalEvents.emit(Events.transactionsChanged);
     GlobalEvents.emit(Events.categoriesChanged);
     GlobalEvents.emit(Events.accountsChanged);

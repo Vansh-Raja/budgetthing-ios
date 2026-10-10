@@ -17,6 +17,8 @@ import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { tokenCache } from '../lib/auth/tokenCache';
 import { SyncProvider } from '../lib/sync/SyncProvider';
+import { ImportInboxRepository } from '../lib/db/repositories';
+import { Events, GlobalEvents } from '../lib/events';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -71,8 +73,11 @@ export default function RootLayout() {
 
 import { useRouter, useSegments } from 'expo-router';
 import { UserSettingsProvider, useUserSettings } from '../lib/hooks/useUserSettings';
+import { useSyncStatus } from '../lib/sync/SyncProvider';
 
 // ...
+
+let didAutoOpenImportInbox = false;
 
 function RootLayoutNav() {
   if (!CLERK_KEY || !CONVEX_URL) {
@@ -126,6 +131,7 @@ function RootLayoutProviders() {
 
 function InitialLayout() {
   const { settings, loading } = useUserSettings();
+  const { isBootstrapping } = useSyncStatus();
   const router = useRouter();
   const segments = useSegments();
   const [isReady, setIsReady] = React.useState(false);
@@ -215,6 +221,32 @@ function InitialLayout() {
     return () => subscription.remove();
   }, [isReady, router]);
 
+  useEffect(() => {
+    if (!isReady || loading || isBootstrapping) return;
+    if (!settings?.hasSeenOnboarding) return;
+    if (didAutoOpenImportInbox) return;
+    if (segments[0] === 'import-inbox' || segments[0] === 'onboarding') return;
+
+    let cancelled = false;
+    const checkPending = async () => {
+      try {
+        const count = await ImportInboxRepository.countPending();
+        if (cancelled || didAutoOpenImportInbox || count <= 0) return;
+        didAutoOpenImportInbox = true;
+        router.push('/import-inbox' as any);
+      } catch (error) {
+        console.warn('[ImportInbox] auto-open check failed:', error);
+      }
+    };
+
+    checkPending();
+    const unsub = GlobalEvents.on(Events.importInboxChanged, checkPending);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [isReady, loading, isBootstrapping, settings?.hasSeenOnboarding, segments, router]);
+
   return (
     <Stack
       screenOptions={{
@@ -226,6 +258,7 @@ function InitialLayout() {
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ headerShown: false }} />
+      <Stack.Screen name="import-inbox" options={{ headerShown: false, presentation: 'modal' }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false, animation: 'fade' }} />
     </Stack>
   );
