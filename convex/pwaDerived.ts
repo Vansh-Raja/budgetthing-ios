@@ -6,7 +6,8 @@
  * server at read time with the shared calculator and NEVER persists them.
  * IDs match native (`derivedKey` = userId) so both runtimes agree.
  */
-import { mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { mutation, withAuditReason } from "./functions";
 import { v } from "convex/values";
 import { listOwnedLive, requireUser, serverNow, type Ctx } from "./pwaAuth";
 import { assertOwnedRef } from "./pwaValidation";
@@ -238,6 +239,10 @@ export async function setLocalTripCashflowAccount(ctx: any, userId: string, trip
  * now. Writes only PWA-only overrides; nothing enters the changeLog.
  */
 export async function pinDerivedAccounts(ctx: any, userId: string): Promise<number> {
+  return withAuditReason(ctx, "default account change: keep past trip payments on their account", () => pinDerivedAccountsInner(ctx, userId));
+}
+
+async function pinDerivedAccountsInner(ctx: any, userId: string): Promise<number> {
   const rows = await computeVirtualDerivedRows(ctx, userId);
   const overrides = await loadOverrideMap(ctx, userId);
   let pinned = 0;

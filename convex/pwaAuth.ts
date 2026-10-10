@@ -18,6 +18,9 @@ export function pwaError(code: PwaErrorCode, message: string, extra?: Record<str
 export async function requireUser(ctx: Ctx): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw pwaError("UNAUTHENTICATED", "Sign in required");
+  // pwa* functions are the web app's API: label their writes in the audit trail.
+  const audit = (ctx as any).audit;
+  if (audit && audit.source === "app") audit.source = "web";
   return identity.subject;
 }
 

@@ -6,16 +6,10 @@
  */
 
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import {
-    View,
-    StyleSheet,
-    TouchableOpacity,
-    ScrollView,
-    StatusBar,
-    Modal,
-} from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Modal, Platform } from 'react-native';
 import { Text } from '@/components/ui/LockedText';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { HistorySheet } from '@/components/history/HistoryViews';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -53,6 +47,7 @@ function billingCycleEnd(reference: Date, day: number): Date {
 
 export default function AccountDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
+    const [showHistory, setShowHistory] = useState(false);
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
@@ -265,6 +260,16 @@ export default function AccountDetailScreen() {
                         <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
                     </TouchableOpacity>
                     <View style={{ flex: 1 }} />
+                    {Platform.OS === 'web' ? (
+                        <TouchableOpacity
+                            onPress={() => setShowHistory(true)}
+                            style={styles.navButton}
+                            accessibilityRole="button"
+                            accessibilityLabel="History"
+                        >
+                            <Ionicons name="time-outline" size={21} color="#FFFFFF" />
+                        </TouchableOpacity>
+                    ) : null}
                     <TouchableOpacity
                         onPress={() => { Haptics.selectionAsync(); setShowEditor(true); }}
                         style={styles.navButton}
@@ -408,6 +413,10 @@ export default function AccountDetailScreen() {
                     />
                 )}
             </Modal>
+
+            {Platform.OS === 'web' && id ? (
+                <HistorySheet visible={showHistory} onClose={() => setShowHistory(false)} entityTable="accounts" entityId={id} title="Account history" />
+            ) : null}
 
             {/* Edit Account Modal */}
             <Modal

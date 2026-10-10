@@ -2,7 +2,7 @@
  * PWA ledger commands: transactions, transfers, adjustments, bulk edits.
  * Transfers and adjustments keep the native deterministic-ID idempotency.
  */
-import { mutation } from "./_generated/server";
+import { mutation } from "./functions";
 import { v } from "convex/values";
 import { setLocalTripCashflowAccount } from "./pwaDerived";
 import { assertExpectedVersion, getOwned, listOwnedLive, newId, pwaError, requireOwnedLive, requireUser, serverNow, toWire } from "./pwaAuth";

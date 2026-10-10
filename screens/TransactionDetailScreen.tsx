@@ -31,6 +31,7 @@ import { SharedTripExpenseRepository, SharedTripSettlementRepository } from '../
 import { useAccounts, useCategories } from '../lib/hooks/useData';
 import { useTrips } from '../lib/hooks/useTrips';
 import { Actions } from '../lib/logic/actions';
+import { HistorySheet } from '@/components/history/HistoryViews';
 import { formatCents, getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
 import { SplitType, Transaction, Trip, TripExpense } from '../lib/logic/types';
@@ -92,6 +93,7 @@ export function TransactionDetailScreen({
 
     // Edit State
     const [editAmountString, setEditAmountString] = useState("");
+    const [showHistory, setShowHistory] = useState(false);
     const [editNote, setEditNote] = useState("");
     const [editDate, setEditDate] = useState(new Date());
     const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
@@ -780,6 +782,17 @@ export function TransactionDetailScreen({
                     </TouchableOpacity>
                 )}
 
+                {Platform.OS === 'web' && !isEditing && transaction && !transaction.systemType?.startsWith('trip_') && (
+                    <TouchableOpacity
+                        onPress={() => setShowHistory(true)}
+                        style={[styles.editButton, { marginRight: 8 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel="History"
+                    >
+                        <Ionicons name="time-outline" size={18} color="#FFFFFF" />
+                    </TouchableOpacity>
+                )}
+
                 {!isReadOnly && !isEditing && (
                     <TouchableOpacity
                         onPress={() => {
@@ -1317,6 +1330,17 @@ export function TransactionDetailScreen({
                     </View>
                 </Modal>
             )}
+
+            {/* Version history (web): every recorded version, with restore / undo. */}
+            {Platform.OS === 'web' && transaction ? (
+                <HistorySheet
+                    visible={showHistory}
+                    onClose={() => setShowHistory(false)}
+                    entityTable="transactions"
+                    entityId={transaction.id}
+                    title="Transaction history"
+                />
+            ) : null}
 
             {/* Simple Category Picker Modal */}
             <Modal visible={showCategoryPicker} animationType="slide" presentationStyle="pageSheet">

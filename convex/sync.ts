@@ -1,9 +1,11 @@
-import { mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { mutation } from "./functions";
 import { v } from "convex/values";
 import { getLastSeqFromChangeLog, recordUserChange } from "./userSyncSeq";
 import { isDerivedTripSystemType } from "../lib/logic/syncGuards";
 import { pinDerivedAccountsIfDefaultChanges } from "./pwaDerived";
 import { applyImportSync } from "./importSync";
+import { setAuditSource } from "./functions";
 
 const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
   accounts: new Set(["openingBalanceCents", "limitAmountCents", "billingCycleDay", "deletedAtMs"]),
@@ -229,6 +231,7 @@ export const push = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthorized");
     const userId = identity.subject;
+    setAuditSource(ctx, "native_sync");
 
     const processTable = async (tableName: string, records?: any[]) => {
       if (!records || records.length === 0) return;

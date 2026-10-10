@@ -3,7 +3,8 @@
  * transitions using the same deterministic transaction id as native so both
  * runtimes converge on exactly one canonical transaction per inbox item.
  */
-import { mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { mutation } from "./functions";
 import { v } from "convex/values";
 import { getOwned, listOwnedLive, pwaError, requireOwnedLive, requireUser, serverNow, toWire } from "./pwaAuth";
 import { insertOwned, patchOwned } from "./pwaWrite";

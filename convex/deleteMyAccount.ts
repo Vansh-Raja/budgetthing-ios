@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { mutation } from "./functions";
 import { recordTripChange } from "./sharedTripSeq";
 
 /**
@@ -37,6 +37,7 @@ export const deleteMyAccount = mutation({
             "apiImportRequests",
             "importInboxItems",
             "apiImportAuditEvents",
+            "derivedAccountOverrides",
         ] as const;
 
         // Delete all records from tables with by_user index
@@ -127,6 +128,19 @@ export const deleteMyAccount = mutation({
             });
 
             await recordTripChange(ctx, tripId, "sharedTrips", tripId, now, "delete");
+        }
+
+        // Erase this user's audit history last (the deletes above were themselves logged).
+        // Shared-trip history stays with the trip for the remaining members.
+        const auditRows = await ctx.db
+            .query("auditLog")
+            .withIndex("by_user_time", (q: any) => q.eq("userId", userId))
+            .collect();
+        for (const row of auditRows) {
+            const t = row.entityTable as string;
+            if (t.startsWith("sharedTrip")) continue;
+            await ctx.db.delete(row._id);
+            totalDeleted++;
         }
 
         return {

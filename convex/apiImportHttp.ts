@@ -1,4 +1,4 @@
-import { internalMutation } from "./_generated/server";
+import { internalMutation, setAuditSource } from "./functions";
 import { v } from "convex/values";
 import {
   compactExternalIdLabel,
@@ -379,6 +379,7 @@ export const createImportsForToken = internalMutation({
     userAgentHash: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<ApiResult> => {
+    setAuditSource(ctx, "import_api", "agent import");
     const auth = await authenticate(ctx, args.rawKey, args.ipHash, args.userAgentHash);
     if (!auth) return json(401, { error: "unauthorized" });
 
