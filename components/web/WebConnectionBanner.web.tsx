@@ -9,15 +9,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConvexConnectionState } from 'convex/react';
 import { Text } from '@/components/ui/LockedText';
 import { Colors, Fonts } from '@/constants/theme';
-import { useOnlineStatus } from '@/lib/web/runtime';
+import { useEffectiveOffline } from '@/lib/web/runtime';
 
 export function WebConnectionBanner() {
-  const online = useOnlineStatus();
   const state = useConvexConnectionState();
   const insets = useSafeAreaInsets();
-  // navigator.onLine is unreliable (iOS Safari can report false while the socket is live),
-  // so a connected Convex socket always wins; "offline" needs both signals to agree.
-  const offline = !online && !state.isWebSocketConnected;
+  // navigator.onLine is unreliable (iOS Safari can report false while connected), so
+  // "offline" is verified: no live socket and a real request to Convex fails.
+  const offline = useEffectiveOffline(state.isWebSocketConnected);
   const disconnected = state.hasEverConnected && !state.isWebSocketConnected;
   if (!offline && !disconnected) return null;
 
