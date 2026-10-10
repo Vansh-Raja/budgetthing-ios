@@ -141,6 +141,12 @@ describe('Audit trail', () => {
       await ctx.db.patch(m._id, { deletedAtMs: Date.now() });
     });
     expect((await a.query(api.history.recent, {})).some((e: any) => e.tripId === created.tripId)).toBe(false);
+    // The limit counts visible rows: hidden shared-trip rows don't shrink the page.
+    const acct = await a.mutation(api.pwaPersonal.createAccount, { name: 'Cash', emoji: '💵', kind: 'cash', openingBalanceCents: 0 });
+    for (let i = 0; i < 3; i++) await a.mutation(api.pwaPersonal.updateAccount, { id: acct.id, name: `Cash ${i}` });
+    const hiddenTripRows = await t.run(async (ctx: any) => (await ctx.db.query('auditLog').collect()).filter((r: any) => r.tripId === created.tripId).length);
+    expect(hiddenTripRows).toBeGreaterThan(0);
+    expect(await a.query(api.history.recent, { limit: 4 })).toHaveLength(4);
   });
 
   it('restore refuses a version that points at a record that no longer exists', async () => {

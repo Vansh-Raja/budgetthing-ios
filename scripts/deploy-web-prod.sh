@@ -46,7 +46,12 @@ sshthing exec -t "$SSH_HOST" --auth-file "$SSH_AUTH" '
   ln -sfn "$R" site
   # Health check through the live server; restore the previous release if it fails.
   if ! curl -sf -o /dev/null http://127.0.0.1:18170/sign-in || ! curl -sf -o /dev/null http://127.0.0.1:18170/sw.js; then
-    if [ -n "$PREV" ]; then ln -sfn "$PREV" site; echo "ROLLED BACK to $PREV (health check failed for $R)"; fi
+    if [ -n "$PREV" ]; then
+      ln -sfn "$PREV" site; echo "ROLLED BACK to $PREV (health check failed for $R)"
+    else
+      rm -f site; echo "TOOK SITE DOWN: first release $R failed its health check and there is no previous release"
+    fi
+    rm -rf "$R"
     exit 1
   fi
   ls -1dt releases/* | tail -n +6 | xargs -r rm -rf   # keep the last 5 releases

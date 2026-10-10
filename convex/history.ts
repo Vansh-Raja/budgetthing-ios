@@ -131,22 +131,30 @@ export const recent = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const rows = await ctx.db
-      .query("auditLog")
-      .withIndex("by_user_time", (q: any) => q.eq("userId", userId))
-      .order("desc")
-      .take(clampLimit(args.limit, 50, 200));
+    const limit = clampLimit(args.limit, 50, 200);
     // Shared-trip rows are attributed to the acting user; only show them while still a member.
+    // The limit applies to visible rows, so page until it is filled (bounded scan).
     const membership = new Map<string, boolean>();
-    const visible = [];
-    for (const row of rows) {
-      if (isSharedTable(row.entityTable)) {
-        const tripId = row.tripId as string | undefined;
-        if (!tripId) continue;
-        if (!membership.has(tripId)) membership.set(tripId, await isActiveMember(ctx, userId, tripId));
-        if (!membership.get(tripId)) continue;
+    const visible: any[] = [];
+    let cursor: string | null = null;
+    for (let pageNo = 0; pageNo < 10 && visible.length < limit; pageNo++) {
+      const page: any = await ctx.db
+        .query("auditLog")
+        .withIndex("by_user_time", (q: any) => q.eq("userId", userId))
+        .order("desc")
+        .paginate({ numItems: limit, cursor });
+      for (const row of page.page) {
+        if (isSharedTable(row.entityTable)) {
+          const tripId = row.tripId as string | undefined;
+          if (!tripId) continue;
+          if (!membership.has(tripId)) membership.set(tripId, await isActiveMember(ctx, userId, tripId));
+          if (!membership.get(tripId)) continue;
+        }
+        visible.push(row);
+        if (visible.length >= limit) break;
       }
-      visible.push(row);
+      if (page.isDone) break;
+      cursor = page.continueCursor;
     }
     return visible.map(toEntry);
   },
