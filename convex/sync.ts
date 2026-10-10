@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getLastSeqFromChangeLog, recordUserChange } from "./userSyncSeq";
+import { isDerivedTripSystemType } from "../lib/logic/syncGuards";
 
 const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
   accounts: new Set(["openingBalanceCents", "limitAmountCents", "billingCycleDay", "deletedAtMs"]),
@@ -235,6 +236,9 @@ export const push = mutation({
 
         const { id, ...raw } = record as any;
         if (!id) continue;
+
+        // Derived trip projections are runtime-local; never persist them canonically.
+        if (tableName === "transactions" && isDerivedTripSystemType((raw as any).systemType)) continue;
 
         const { data, unsetKeys } = sanitizeRecord(tableName, raw);
         const incomingUpdatedAtMs = (data.updatedAtMs as number | undefined) ?? 0;

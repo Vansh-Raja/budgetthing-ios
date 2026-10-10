@@ -6,7 +6,7 @@ import { useMutation, useQuery } from 'convex/react';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
-import PagerView from 'react-native-pager-view';
+import { Pager as PagerView, type PagerHandle } from '@/components/ui/Pager';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../convex/_generated/api';
 
@@ -17,6 +17,7 @@ import { TripHeaderCard } from '../components/trip/TripHeaderCard';
 import { Colors } from '../constants/theme';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { Events, GlobalEvents } from '../lib/events';
+import { useLiveSharedTrip } from '../lib/hooks/useLiveSharedTrip';
 import { TripSummaryCalculator } from '../lib/logic/tripSummaryCalculator';
 import type { Trip } from '../lib/logic/types';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
@@ -40,7 +41,7 @@ const TABS: { key: TabType; label: string; icon: any }[] = [
 
 export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailScreenProps) {
   const insets = useSafeAreaInsets();
-  const pagerRef = useRef<PagerView>(null);
+  const pagerRef = useRef<PagerHandle>(null);
   const { userId } = useAuth();
   const { syncNow } = useSyncStatus();
 
@@ -76,6 +77,12 @@ export function SharedTripDetailScreen({ tripId, onDismiss }: SharedTripDetailSc
     const unsub = GlobalEvents.on(Events.tripsChanged, refresh);
     return () => unsub();
   }, [refresh]);
+
+  // Web: live server subscription (native relies on the sync event above).
+  const liveTrip = useLiveSharedTrip(tripId);
+  useEffect(() => {
+    if (liveTrip !== undefined) setTrip(liveTrip);
+  }, [liveTrip]);
 
   const summary = useMemo(() => {
     if (!trip) return null;

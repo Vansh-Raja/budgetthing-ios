@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useMemo, useRef, useState } from 'react';
 import { Modal, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
-import PagerView from 'react-native-pager-view';
+import { Pager as PagerView, type PagerHandle } from '@/components/ui/Pager';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BalancesTab } from '../components/trip/BalancesTab';
@@ -43,7 +43,7 @@ const TABS: { key: TabType; label: string; icon: any }[] = [
 
 export function TripDetailScreen({ trip, onDismiss, onTripUpdate }: TripDetailScreenProps) {
   const insets = useSafeAreaInsets();
-  const pagerRef = useRef<PagerView>(null);
+  const pagerRef = useRef<PagerHandle>(null);
 
   // State
   const [selectedTab, setSelectedTab] = useState<TabType>('expenses');

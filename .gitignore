@@ -41,3 +41,9 @@ legacySwiftApp/build/
 # My Folders
 AppScreenies/
 .vercel
+
+# Web / PWA build + browser tests
+/dist
+/reports
+/playwright-report
+/test-results

@@ -24,8 +24,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../constants/theme';
-import { withTransaction } from '../lib/db/database';
-import { TransactionRepository, TripExpenseRepository } from '../lib/db/repositories';
+import { TransactionRepository } from '../lib/db/repositories';
+import { Actions } from '../lib/logic/actions';
 import { SharedTripRepository } from '../lib/db/sharedTripRepositories';
 import { SharedTripExpenseRepository } from '../lib/db/sharedTripWriteRepositories';
 import { useAccounts, useCategories } from '../lib/hooks/useData';
@@ -413,7 +413,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
   // Prepare data for UI
   const categoryItems = useMemo(
-    () => categoriesData.filter(c => !c.isSystem).map(c => ({ id: c.id, emoji: c.emoji })),
+    () => categoriesData.filter(c => !c.isSystem).map(c => ({ id: c.id, emoji: c.emoji, name: c.name })),
     [categoriesData]
   );
 
@@ -430,9 +430,9 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
   const tripEmojiItems = useMemo(() => {
     if (tripItemsOverride) return tripItemsOverride;
 
-    const localItems = openTrips.map((t) => ({ id: t.id, emoji: t.emoji }));
+    const localItems = openTrips.map((t) => ({ id: t.id, emoji: t.emoji, name: t.name }));
     const sharedItems = isSignedIn
-      ? sharedTrips.map((t) => ({ id: t.id, emoji: t.emoji }))
+      ? sharedTrips.map((t) => ({ id: t.id, emoji: t.emoji, name: t.name }))
       : [];
 
     // Shared first, then local.
@@ -572,30 +572,21 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
     // Save solo transaction
     try {
-      await withTransaction(async () => {
-        const tx = await TransactionRepository.create({
-          amountCents,
-          date: Date.now(),
-          note: data.note ?? undefined,
-          type: mode,
-          categoryId: categoryId ?? undefined,
-          accountId: accountId ?? undefined,
-        });
-
-        // Link to trip if selected (solo trip)
-        if (trip && mode === 'expense') {
-          const me = trip.participants?.find(p => p.isCurrentUser);
-
-          const tripExpense = await TripExpenseRepository.create({
-            tripId: trip.id,
-            transactionId: tx.id,
-            splitType: 'equal',
-            paidByParticipantId: me?.id,
-          });
-
-          await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
-        }
-      });
+      const txData = {
+        amountCents,
+        date: Date.now(),
+        note: data.note ?? undefined,
+        type: mode,
+        categoryId: categoryId ?? undefined,
+        accountId: accountId ?? undefined,
+      };
+      if (trip && mode === 'expense') {
+        // Solo trip: expense + trip link in one write.
+        const me = trip.participants?.find(p => p.isCurrentUser);
+        await Actions.saveCalculatorTripExpense(txData, trip.id, { splitType: 'equal', paidByParticipantId: me?.id });
+      } else {
+        await TransactionRepository.create(txData);
+      }
 
       calculator.clearAll();
       setNoteText('');
@@ -692,15 +683,15 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
         return;
       }
 
-      // Local group trip flow
-      const tx = await TransactionRepository.create({
+      // Local group trip flow: expense + trip link in one write.
+      const txData = {
         amountCents: pendingTransaction.amountCents,
         date: now,
         note: pendingTransaction.note ?? undefined,
         type: pendingTransaction.type,
         categoryId: pendingTransaction.categoryId ?? undefined,
         accountId: pendingTransaction.accountId ?? undefined,
-      });
+      };
 
       const trip = openTrips.find(t => t.id === pendingTransaction.tripId);
       const me = trip?.participants?.find(p => p.isCurrentUser);
@@ -712,17 +703,14 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
           trip.participants || [],
           splitData
         );
-
-        const tripExpense = await TripExpenseRepository.create({
-          tripId: trip.id,
-          transactionId: tx.id,
+        await Actions.saveCalculatorTripExpense(txData, trip.id, {
           paidByParticipantId: selectedPayerId || me?.id,
           splitType,
           splitData,
           computedSplits: computed,
         });
-
-        await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
+      } else {
+        await TransactionRepository.create(txData);
       }
 
       setShowSplitEditor(false);
@@ -797,7 +785,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
   };
 
   const renderEmojiRow = (
-    items: Array<{ id: string; emoji: string }>,
+    items: Array<{ id: string; emoji: string; name?: string }>,
     selectedId: string | null,
     onSelect: (id: string | null) => void,
     maxVisible = 7,
@@ -824,6 +812,9 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
             }}
             activeOpacity={0.7}
             disabled={mode === 'income'}
+            accessibilityRole="button"
+            accessibilityLabel={item.name ?? item.emoji}
+            accessibilityState={{ selected: selectedId === item.id }}
           >
             <Text style={[styles.emojiText, { fontSize: 24 * scale }]}>
               {item.emoji}
@@ -939,6 +930,8 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
             onPress={handleSave}
             activeOpacity={canSave ? 0.7 : 1}
             disabled={!canSave}
+            accessibilityRole="button"
+            accessibilityLabel="Save"
           >
             <Ionicons name="checkmark" size={16} color={Colors.textPrimary} />
           </TouchableOpacity>

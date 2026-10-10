@@ -73,6 +73,51 @@ export const Actions = {
         });
     },
 
+    /**
+     * Calculator save into a local trip: create the expense and its trip link in one
+     * write. Solo trips charge the chosen account; group trips keep it on the base row,
+     * which reconcile reads as the "you paid" cashflow account.
+     */
+    async saveCalculatorTripExpense(
+        transactionData: Omit<Transaction, 'id' | 'createdAtMs' | 'updatedAtMs'>,
+        tripId: string,
+        link: {
+            paidByParticipantId?: string;
+            splitType: SplitType;
+            splitData?: Record<string, number>;
+            computedSplits?: Record<string, number>;
+        }
+    ): Promise<Transaction> {
+        return await withTransaction(async () => {
+            const tx = await TransactionRepository.create(transactionData);
+            const tripExpense = await TripExpenseRepository.create({
+                tripId,
+                transactionId: tx.id,
+                paidByParticipantId: link.paidByParticipantId,
+                splitType: link.splitType,
+                splitData: link.splitData,
+                computedSplits: link.computedSplits,
+            });
+            await TransactionRepository.update(tx.id, { tripExpenseId: tripExpense.id });
+            return tx;
+        });
+    },
+
+    /**
+     * Edit a local trip expense and its split in one write (transaction detail screen).
+     */
+    async updateTripExpenseWithTransaction(
+        transactionId: string,
+        txUpdates: Partial<Omit<Transaction, 'id' | 'createdAtMs'>>,
+        tripExpenseId: string | null,
+        splitUpdates: { paidByParticipantId?: string; splitType: SplitType; splitData?: Record<string, number>; computedSplits?: Record<string, number> } | null
+    ): Promise<void> {
+        await withTransaction(async () => {
+            await TransactionRepository.update(transactionId, txUpdates);
+            if (tripExpenseId && splitUpdates) await TripExpenseRepository.update(tripExpenseId, splitUpdates);
+        });
+    },
+
     async createGroupExpense(
         transactionData: Omit<Transaction, 'id' | 'createdAtMs' | 'updatedAtMs'>,
         tripId: string,

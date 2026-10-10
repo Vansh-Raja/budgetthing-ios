@@ -1,6 +1,6 @@
 import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import { format } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import React, { useMemo, useState } from 'react';
@@ -148,7 +148,7 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
         <View style={styles.formSection}>
           <View style={styles.row}>
             <Text style={styles.label}>Start Date</Text>
-            {Platform.OS === 'ios' ? (
+            {Platform.OS !== 'android' ? (
               <DateTimePicker
                 value={startDate}
                 mode="date"
@@ -166,7 +166,7 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
           <View style={styles.divider} />
           <View style={styles.row}>
             <Text style={styles.label}>End Date</Text>
-            {Platform.OS === 'ios' ? (
+            {Platform.OS !== 'android' ? (
               <DateTimePicker
                 value={endDate}
                 mode="date"

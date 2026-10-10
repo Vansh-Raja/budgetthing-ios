@@ -16,7 +16,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import PagerView from 'react-native-pager-view';
+import { Pager as PagerView, type PagerHandle } from '@/components/ui/Pager';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '../constants/theme';
@@ -57,7 +57,7 @@ export function OnboardingScreen() {
   const params = useLocalSearchParams<{ fromSettings?: string }>();
   const fromSettings = params.fromSettings === 'true';
 
-  const pagerRef = useRef<PagerView>(null);
+  const pagerRef = useRef<PagerHandle>(null);
   const [activeIndex, setActiveIndex] = React.useState(0);
   const { updateSettings } = useUserSettings();
 

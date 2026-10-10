@@ -1,7 +1,7 @@
 import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import { useMutation } from 'convex/react';
 import { format } from 'date-fns';
 import * as Haptics from 'expo-haptics';
@@ -161,7 +161,7 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
           <View style={styles.sectionCard}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionLabel}>Start Date</Text>
-              {Platform.OS === 'ios' ? (
+              {Platform.OS !== 'android' ? (
                 <DateTimePicker
                   value={startDate}
                   mode="date"
@@ -185,7 +185,7 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
 
             <View style={styles.sectionRow}>
               <Text style={styles.sectionLabel}>End Date</Text>
-              {Platform.OS === 'ios' ? (
+              {Platform.OS !== 'android' ? (
                 <DateTimePicker
                   value={endDate}
                   mode="date"

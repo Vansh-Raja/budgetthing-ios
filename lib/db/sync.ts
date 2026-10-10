@@ -1,6 +1,7 @@
 import { queryAll, run, withTransaction } from './database';
 import { TABLES } from './schema';
 import { Events, GlobalEvents } from '../events';
+import { filterOutboundRows } from '../logic/syncGuards';
 
 const SYNC_COLUMNS_BY_TABLE: Record<string, Set<string>> = {
   [TABLES.ACCOUNTS]: new Set([
@@ -236,7 +237,8 @@ export const syncRepository = {
   async getPendingChanges(): Promise<PendingChanges> {
     const getTableChanges = async (table: string) => {
       const rows = await queryAll<any>(`SELECT * FROM ${table} WHERE needsSync = 1`);
-      return rows.map((row) => sanitizeLocalChange(table, row));
+      // Derived trip rows are per-device projections and must never leave the device.
+      return filterOutboundRows(table, rows).map((row) => sanitizeLocalChange(table, row));
     };
 
     return {
