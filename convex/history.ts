@@ -99,9 +99,8 @@ export const forEntity = query({
       if (!args.tripId || !(await isActiveMember(ctx, userId, args.tripId))) return [];
       const rows = await ctx.db
         .query("auditLog")
-        .withIndex("by_trip_time", (q: any) => q.eq("tripId", args.tripId))
+        .withIndex("by_trip_entity", (q: any) => q.eq("tripId", args.tripId).eq("entityTable", args.entityTable).eq("entityId", args.entityId))
         .order("desc")
-        .filter((q: any) => q.and(q.eq(q.field("entityTable"), args.entityTable), q.eq(q.field("entityId"), args.entityId)))
         .take(limit);
       return rows.map(toEntry);
     }

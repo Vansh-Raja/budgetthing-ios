@@ -93,10 +93,13 @@ CONVEX_DEPLOYMENT=prod:ceaseless-mandrill-733 npx convex deploy --yes
 Smoke test: `curl -i https://ceaseless-mandrill-733.convex.site/v1/health`. Then a native app sync (push and pull) with a test account.
 
 ### Step 3: build and host the web app
+Preferred: `scripts/deploy-web-prod.sh` (all safeguards built in). Manual equivalent:
 ```bash
-EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_… EXPO_PUBLIC_CONVEX_URL=https://ceaseless-mandrill-733.convex.cloud \
-  npm run web:export          # expo export + stamps dist/sw.js with a build id
-npm run web:audit             # must print OK
+# EXPO_NO_DOTENV=1: ignore .env.local (dev values); --clear: drop Metro's cache of inlined EXPO_PUBLIC_* values
+EXPO_NO_DOTENV=1 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_… EXPO_PUBLIC_CONVEX_URL=https://ceaseless-mandrill-733.convex.cloud \
+  npx expo export --platform web --source-maps --clear --output-dir dist
+node scripts/stamp-sw.mjs dist && npm run web:audit          # audit must print OK
+grep -rqE 'adjoining-gnat-886|immune-akita-85' dist/_expo/static/js && echo "STOP: dev values in bundle"
 ```
 Host `dist/` as static files. On Vercel, use a **separate project** from the marketing site (`Website/`) with a config like:
 ```json

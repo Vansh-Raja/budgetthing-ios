@@ -433,5 +433,6 @@ export default defineSchema({
   })
     .index("by_user_time", ["userId", "atMs"])
     .index("by_user_entity", ["userId", "entityTable", "entityId", "atMs"])
-    .index("by_trip_time", ["tripId", "atMs"]),
+    .index("by_trip_time", ["tripId", "atMs"])
+    .index("by_trip_entity", ["tripId", "entityTable", "entityId", "atMs"]),
 });

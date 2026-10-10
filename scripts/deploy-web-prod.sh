@@ -40,9 +40,16 @@ sshthing exec -t "$SSH_HOST" --auth-file "$SSH_AUTH" '
   set -e
   cd ~/sites/budgetthing-app
   R=releases/$(date +%Y%m%d-%H%M%S)
+  PREV=$(readlink site || true)
   mkdir -p "$R" && tar xzf site.tgz -C "$R" 2>/dev/null
+  test -s "$R/index.html" && test -s "$R/sw.js" || { echo "ABORT: release incomplete"; rm -rf "$R"; exit 1; }
   ln -sfn "$R" site
+  # Health check through the live server; restore the previous release if it fails.
+  if ! curl -sf -o /dev/null http://127.0.0.1:18170/sign-in || ! curl -sf -o /dev/null http://127.0.0.1:18170/sw.js; then
+    if [ -n "$PREV" ]; then ln -sfn "$PREV" site; echo "ROLLED BACK to $PREV (health check failed for $R)"; fi
+    exit 1
+  fi
   ls -1dt releases/* | tail -n +6 | xargs -r rm -rf   # keep the last 5 releases
-  curl -sf -o /dev/null http://127.0.0.1:18170/sign-in && echo "deployed $R"
+  echo "deployed $R"
 '
 echo "Rollback: ln -sfn releases/<previous> ~/sites/budgetthing-app/site (no restart needed)"
