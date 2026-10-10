@@ -5,7 +5,8 @@
  */
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
-import { useConvexAuth, useMutation } from 'convex/react';
+import { useConvexAuth, useMutation, useQuery } from 'convex/react';
+import { Events, GlobalEvents } from '@/lib/events';
 import { api } from '@/convex/_generated/api';
 
 export function WebBootstrap() {
@@ -19,6 +20,16 @@ export function WebBootstrap() {
     doneFor.current = userId;
     seed({}).catch((e) => console.warn('[WebBootstrap] seed failed:', e));
   }, [isAuthenticated, userId, seed]);
+
+  // Native screens refresh the import inbox and its badges on sync events. The web has no
+  // sync engine, so a live subscription stands in: new API imports (or confirms/ignores on
+  // another device) emit the same event.
+  // Watch the pending rows themselves (not just the count): one item replacing another
+  // leaves the count unchanged but must still refresh the inbox.
+  const pendingImports = useQuery(api.pwaImports.listPending, isAuthenticated ? {} : 'skip');
+  useEffect(() => {
+    if (pendingImports !== undefined) GlobalEvents.emit(Events.importInboxChanged);
+  }, [pendingImports]);
 
   return null;
 }

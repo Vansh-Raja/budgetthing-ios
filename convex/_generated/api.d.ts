@@ -13,6 +13,7 @@ import type * as apiImportKeys from "../apiImportKeys.js";
 import type * as apiImportShared from "../apiImportShared.js";
 import type * as deleteMyAccount from "../deleteMyAccount.js";
 import type * as http from "../http.js";
+import type * as importSync from "../importSync.js";
 import type * as pwaAuth from "../pwaAuth.js";
 import type * as pwaDerived from "../pwaDerived.js";
 import type * as pwaImports from "../pwaImports.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   apiImportShared: typeof apiImportShared;
   deleteMyAccount: typeof deleteMyAccount;
   http: typeof http;
+  importSync: typeof importSync;
   pwaAuth: typeof pwaAuth;
   pwaDerived: typeof pwaDerived;
   pwaImports: typeof pwaImports;

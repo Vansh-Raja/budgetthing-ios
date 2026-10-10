@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { getLastSeqFromChangeLog, recordUserChange } from "./userSyncSeq";
 import { isDerivedTripSystemType } from "../lib/logic/syncGuards";
 import { pinDerivedAccountsIfDefaultChanges } from "./pwaDerived";
+import { applyImportSync } from "./importSync";
 
 const NULL_CLEARS_OPTIONAL_FIELDS_BY_TABLE: Record<string, Set<string>> = {
   accounts: new Set(["openingBalanceCents", "limitAmountCents", "billingCycleDay", "deletedAtMs"]),
@@ -290,12 +291,14 @@ export const push = mutation({
 
     await processTable("accounts", args.accounts);
     await processTable("categories", args.categories);
-    await processTable("transactions", args.transactions);
+    // API-import inbox items and their deterministic transactions follow a server-authoritative
+    // state machine (convex/importSync.ts), not generic LWW; everything else is unchanged.
+    const genericTransactions = await applyImportSync(ctx, userId, args.transactions, args.importInboxItems);
+    await processTable("transactions", genericTransactions);
     await processTable("trips", args.trips);
     await processTable("tripParticipants", args.tripParticipants);
     await processTable("tripExpenses", args.tripExpenses);
     await processTable("tripSettlements", args.tripSettlements);
-    await processTable("importInboxItems", args.importInboxItems);
     await processTable("userSettings", args.userSettings);
 
     return { status: "ok" };
