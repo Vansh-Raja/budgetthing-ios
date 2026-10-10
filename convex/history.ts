@@ -136,7 +136,19 @@ export const recent = query({
       .withIndex("by_user_time", (q: any) => q.eq("userId", userId))
       .order("desc")
       .take(clampLimit(args.limit, 50, 200));
-    return rows.map(toEntry);
+    // Shared-trip rows are attributed to the acting user; only show them while still a member.
+    const membership = new Map<string, boolean>();
+    const visible = [];
+    for (const row of rows) {
+      if (isSharedTable(row.entityTable)) {
+        const tripId = row.tripId as string | undefined;
+        if (!tripId) continue;
+        if (!membership.has(tripId)) membership.set(tripId, await isActiveMember(ctx, userId, tripId));
+        if (!membership.get(tripId)) continue;
+      }
+      visible.push(row);
+    }
+    return visible.map(toEntry);
   },
 });
 

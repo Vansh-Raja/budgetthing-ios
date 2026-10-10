@@ -99,7 +99,9 @@ Preferred: `scripts/deploy-web-prod.sh` (all safeguards built in). Manual equiva
 EXPO_NO_DOTENV=1 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_… EXPO_PUBLIC_CONVEX_URL=https://ceaseless-mandrill-733.convex.cloud \
   npx expo export --platform web --source-maps --clear --output-dir dist
 node scripts/stamp-sw.mjs dist && npm run web:audit          # audit must print OK
-grep -rqE 'adjoining-gnat-886|immune-akita-85' dist/_expo/static/js && echo "STOP: dev values in bundle"
+if grep -rqE 'adjoining-gnat-886|immune-akita-85' dist/_expo/static/js; then
+  echo "STOP: dev values in bundle" >&2; exit 1
+fi
 ```
 Host `dist/` as static files. On Vercel, use a **separate project** from the marketing site (`Website/`) with a config like:
 ```json

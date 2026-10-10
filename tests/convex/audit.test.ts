@@ -131,6 +131,18 @@ describe('Audit trail', () => {
     expect(tripHistory.length).toBeGreaterThan(0);
   });
 
+  it('recent changes hide a shared trip once the caller is no longer a member', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const created: any = await a.mutation(api.sharedTrips.create, { name: 'Ladakh', emoji: '🏔️', participantName: 'Alice' });
+    expect((await a.query(api.history.recent, {})).some((e: any) => e.tripId === created.tripId)).toBe(true);
+    await t.run(async (ctx: any) => {
+      const m = (await ctx.db.query('sharedTripMembers').collect()).find((x: any) => x.tripId === created.tripId);
+      await ctx.db.patch(m._id, { deletedAtMs: Date.now() });
+    });
+    expect((await a.query(api.history.recent, {})).some((e: any) => e.tripId === created.tripId)).toBe(false);
+  });
+
   it('restore refuses a version that points at a record that no longer exists', async () => {
     const t = setup();
     const a = t.withIdentity(USER_A);
