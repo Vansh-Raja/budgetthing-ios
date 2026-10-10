@@ -141,12 +141,27 @@ describe('Audit trail', () => {
       await ctx.db.patch(m._id, { deletedAtMs: Date.now() });
     });
     expect((await a.query(api.history.recent, {})).some((e: any) => e.tripId === created.tripId)).toBe(false);
-    // The limit counts visible rows: hidden shared-trip rows don't shrink the page.
+  });
+
+  it('recent fills its limit with visible rows by paging past hidden shared-trip rows', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    // Personal changes first, so the newest rows (the shared trip's) are the hidden ones.
     const acct = await a.mutation(api.pwaPersonal.createAccount, { name: 'Cash', emoji: '💵', kind: 'cash', openingBalanceCents: 0 });
     for (let i = 0; i < 3; i++) await a.mutation(api.pwaPersonal.updateAccount, { id: acct.id, name: `Cash ${i}` });
-    const hiddenTripRows = await t.run(async (ctx: any) => (await ctx.db.query('auditLog').collect()).filter((r: any) => r.tripId === created.tripId).length);
-    expect(hiddenTripRows).toBeGreaterThan(0);
-    expect(await a.query(api.history.recent, { limit: 4 })).toHaveLength(4);
+    const created: any = await a.mutation(api.sharedTrips.create, { name: 'Ladakh', emoji: '🏔️', participantName: 'Alice' });
+    await t.run(async (ctx: any) => {
+      const m = (await ctx.db.query('sharedTripMembers').collect()).find((x: any) => x.tripId === created.tripId);
+      await ctx.db.patch(m._id, { deletedAtMs: Date.now() });
+    });
+    const rows: any[] = await t.run(async (ctx: any) => ctx.db.query('auditLog').collect());
+    const hidden = rows.filter((r) => r.tripId === created.tripId).length;
+    const personal = rows.filter((r) => !r.tripId).length;
+    expect(hidden).toBeGreaterThan(0);
+    // The first page (size = limit) is mostly hidden rows, so filling it requires paging on.
+    const result: any[] = await a.query(api.history.recent, { limit: personal });
+    expect(result).toHaveLength(personal);
+    expect(result.every((e) => e.tripId === null)).toBe(true);
   });
 
   it('restore refuses a version that points at a record that no longer exists', async () => {
