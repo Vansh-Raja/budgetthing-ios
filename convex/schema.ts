@@ -414,4 +414,25 @@ export default defineSchema({
   })
     .index("by_trip_seq", ["tripId", "seq"])
     .index("by_trip_entity", ["tripId", "entityType", "entityId"]),
+
+  // Append-only audit trail / version history for every user-data write (any source).
+  // Written by the trigger in convex/functions.ts; never updated or deleted.
+  auditLog: defineTable({
+    userId: v.string(),            // owner of the record (or acting user for shared-trip rows)
+    actorUserId: v.optional(v.string()), // authenticated caller, when known
+    entityTable: v.string(),
+    entityId: v.string(),          // client id (`id` field) when present, else the Convex _id
+    action: v.string(),            // create | update | delete | restore | purge
+    source: v.string(),            // web | native_sync | import_api | app | system
+    reason: v.optional(v.string()),
+    changedFields: v.array(v.string()),
+    beforeJson: v.optional(v.string()),
+    afterJson: v.optional(v.string()),
+    tripId: v.optional(v.string()), // shared-trip rows: readable by every active member
+    atMs: v.number(),
+  })
+    .index("by_user_time", ["userId", "atMs"])
+    .index("by_user_entity", ["userId", "entityTable", "entityId", "atMs"])
+    .index("by_trip_time", ["tripId", "atMs"])
+    .index("by_trip_entity", ["tripId", "entityTable", "entityId", "atMs"]),
 });

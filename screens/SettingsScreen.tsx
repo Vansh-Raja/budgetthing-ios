@@ -416,6 +416,17 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
             rightElement={<Chevron />}
           />
 
+          {Platform.OS === 'web' ? (
+            <SettingsItem
+              label="History & undo"
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push('/settings/history' as any);
+              }}
+              rightElement={<Chevron />}
+            />
+          ) : null}
+
           <SettingsItem
             label="Agent Import API"
             onPress={() => {

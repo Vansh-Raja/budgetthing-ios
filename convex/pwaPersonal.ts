@@ -1,7 +1,8 @@
 /**
  * PWA personal ledger read models + account/category/settings commands.
  */
-import { mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { mutation } from "./functions";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { assertExpectedVersion, listOwnedLive, newId, pwaError, requireOwnedLive, requireUser, serverNow, toWire } from "./pwaAuth";

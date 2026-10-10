@@ -17,6 +17,7 @@
  * immutable; unattributable import transactions never create active records.
  */
 import { recordUserChange } from "./userSyncSeq";
+import { withAuditReason } from "./functions";
 import { deterministicImportTransactionId } from "../lib/logic/importProvenance";
 
 type Row = Record<string, any>;
@@ -145,11 +146,11 @@ export async function applyImportSync(
         (!!tx && (tx.deletedAtMs === undefined || tx.deletedAtMs === null));
       if (wantsConfirm && txLive) {
         if (canonicalTx) generic.push(canonicalTx);
-        await patchItem(ctx, userId, item!, {
+        await withAuditReason(ctx, "import confirmed (device sync)", () => patchItem(ctx, userId, item!, {
           status: "confirmed",
           confirmedTransactionId: txId,
           confirmedAtMs: incoming?.confirmedAtMs ?? Date.now(),
-        }, losingUpdatedAtMs);
+        }, losingUpdatedAtMs));
       } else if (incoming?.status === "ignored") {
         await patchItem(ctx, userId, item!, { status: "ignored", ignoredAtMs: incoming.ignoredAtMs ?? Date.now() }, losingUpdatedAtMs);
         if (tx) await writeResolutionTombstone(ctx, userId, item!, txId, losingUpdatedAtMs);
@@ -173,7 +174,7 @@ export async function applyImportSync(
     if (item!.status === "ignored") {
       const staleConfirm = incoming?.status === "confirmed" || (!!tx && (tx.deletedAtMs === undefined || tx.deletedAtMs === null));
       if (staleConfirm) {
-        await writeResolutionTombstone(ctx, userId, item!, txId, losingUpdatedAtMs);
+        await withAuditReason(ctx, "import: stale confirm resolved against ignored item", () => writeResolutionTombstone(ctx, userId, item!, txId, losingUpdatedAtMs));
         await touchWinner(ctx, userId, "importInboxItems", item!, losingUpdatedAtMs);
         await auditEvent(ctx, userId, "import_sync_server_winner_ignored", "resolved", { itemId, txId });
       } else if (incoming && incoming.status !== "ignored") {

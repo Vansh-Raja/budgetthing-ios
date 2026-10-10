@@ -3,7 +3,8 @@
  * is recorded through the trip-scoped change log so native members pull it
  * through the unchanged `sharedTripSync` protocol. Derived rows stay virtual.
  */
-import { mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { mutation } from "./functions";
 import { v } from "convex/values";
 import { pwaError, requireUser, serverNow, toWire } from "./pwaAuth";
 import { assertCents, assertDateMs, assertEmoji, assertText, computeAndValidateSplits, optionalText, vExpectedVersion, vNullableNumber, vNullableString, vSplitMap, vSplitType } from "./pwaValidation";

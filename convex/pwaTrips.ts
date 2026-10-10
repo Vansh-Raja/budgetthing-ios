@@ -3,7 +3,8 @@
  * Local trips are personal rows synced through the user changeLog; group trips
  * keep exactly one current-user participant. Derived rows stay virtual.
  */
-import { mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { mutation } from "./functions";
 import { v } from "convex/values";
 import { setLocalTripCashflowAccount } from "./pwaDerived";
 import { assertExpectedVersion, getOwned, listOwnedLive, newId, pwaError, requireOwnedLive, requireUser, serverNow, toWire } from "./pwaAuth";

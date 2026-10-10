@@ -1,5 +1,6 @@
-import { mutation } from "./_generated/server";
+import { mutation } from "./functions";
 import { recordTripChange } from "./sharedTripSeq";
+import { internal } from "./_generated/api";
 
 /**
  * Delete all data for the authenticated user.
@@ -37,6 +38,7 @@ export const deleteMyAccount = mutation({
             "apiImportRequests",
             "importInboxItems",
             "apiImportAuditEvents",
+            "derivedAccountOverrides",
         ] as const;
 
         // Delete all records from tables with by_user index
@@ -128,6 +130,11 @@ export const deleteMyAccount = mutation({
 
             await recordTripChange(ctx, tripId, "sharedTrips", tripId, now, "delete");
         }
+
+        // Erase this user's personal audit history in bounded batches after this transaction
+        // commits (the deletes above are themselves logged, and erased too). Shared-trip
+        // history stays with the trip for the remaining members.
+        await ctx.scheduler.runAfter(0, internal.history.eraseUserHistory, { userId });
 
         return {
             success: true,
