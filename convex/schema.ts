@@ -428,8 +428,10 @@ export default defineSchema({
     changedFields: v.array(v.string()),
     beforeJson: v.optional(v.string()),
     afterJson: v.optional(v.string()),
+    tripId: v.optional(v.string()), // shared-trip rows: readable by every active member
     atMs: v.number(),
   })
     .index("by_user_time", ["userId", "atMs"])
-    .index("by_user_entity", ["userId", "entityTable", "entityId", "atMs"]),
+    .index("by_user_entity", ["userId", "entityTable", "entityId", "atMs"])
+    .index("by_trip_time", ["tripId", "atMs"]),
 });

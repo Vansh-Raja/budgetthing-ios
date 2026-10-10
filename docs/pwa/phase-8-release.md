@@ -52,7 +52,21 @@ Fixed during the pass: a false "You are offline" banner (iOS Safari `navigator.o
 3. **Merge order:** #1 → #2 → #3 → #4 → #5 → #6 → this PR, each with a merge commit (not squash), bottom-up.
 4. **Release hostname** for the PWA (needed for Clerk origins and hosting).
 
-## 3. Release runbook
+## 3. Production as deployed (2026-10-10)
+
+- **Backend:** Convex `prod:ceaseless-mandrill-733`. On 2026-10-10 the maintainer asked to start afresh, so all production data was wiped (no backup, by request) and redeployed from `feature/audit-history` (PR #8). The Clerk **production** instance (`clerk.budgetthing.vanshraja.me`, email/password + Sign in with Apple) is unchanged; existing Clerk accounts sign in to an empty ledger.
+- **Web app:** `https://app.budgetthing.vanshraja.me`. It has to sit under `budgetthing.vanshraja.me`, because Clerk production only serves its own domain and subdomains.
+  - DNS: Cloudflare A record → `155.248.255.33`, **DNS-only**. Cloudflare's free certificate doesn't cover two-level names.
+  - TLS + proxy: Nginx Proxy Manager custom include `/data/nginx/custom/http.conf`, with the Let's Encrypt cert `budgetthing-app` renewed daily by the user timer `budgetthing-app-cert-renew`.
+  - Origin: `~/sites/budgetthing-app/server.py` on `127.0.0.1:18170` (user unit `budgetthing-app-web`), serving `~/sites/budgetthing-app/site` → `releases/<timestamp>`.
+- **Deploy the web app:** `scripts/deploy-web-prod.sh` builds against production, refuses dev values, audits the bundle, uploads a new release and keeps the last 5.
+- **Roll back the web app:** `ln -sfn releases/<previous> ~/sites/budgetthing-app/site`. No restart is needed.
+- **Deploy the backend:** `npx convex deploy --yes`.
+- **Pitfalls:**
+  - In this repo, `.env.local` overrides a `CONVEX_DEPLOYMENT=prod:…` prefix, so use `--prod` on `convex data/run/env/export`.
+  - Expo inlines `EXPO_PUBLIC_*` at build time and caches it, so production builds need `EXPO_NO_DOTENV=1` and `--clear`. The deploy script does both.
+
+## 4. Release runbook (general reference)
 
 ### Inputs required first
 - Approved PWA hostname (e.g. `app.<domain>`), DNS access.
@@ -62,7 +76,7 @@ Fixed during the pass: a false "You are offline" banner (iOS Safari `navigator.o
 
 ### Step 1: back up production Convex (before any backend change)
 ```bash
-CONVEX_DEPLOYMENT=prod:ceaseless-mandrill-733 npx convex export --path ./backups/prod-$(date +%Y%m%d-%H%M).zip
+npx convex export --prod --path ./backups/prod-$(date +%Y%m%d-%H%M).zip   # --prod: .env.local pins dev otherwise
 ```
 Rehearse the restore into an **isolated** deployment (never into prod):
 ```bash
@@ -110,7 +124,7 @@ Check the generated `dist/` for any other dynamic routes before deploying.
 - Convex dashboard: function error rates for `sync:push`, `pwa*`, `apiImportHttp`; `apiImportAuditEvents` volume (auth failures are capped at 300/min globally).
 - Clerk dashboard: sign-in failures by origin.
 
-## 4. Rollback (data-forward only)
+## 5. Rollback (data-forward only)
 
 - **Web:** redeploy the previous `dist/` artifact. The new build id causes clients to offer Reload onto it. The service worker never caches API data, so rolling back the shell cannot serve stale finances.
 - **Backend:** redeploy the previous Convex functions from the prior git commit (`npx convex deploy` from that checkout). The schema is additive, so older functions keep working with the new table present.

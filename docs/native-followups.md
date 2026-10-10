@@ -48,7 +48,7 @@ If the same payment is assigned different accounts on web and on a phone, their 
 
 ## 2. History and undo (audit trail) in the native UI
 
-The server records an append-only history of every change, including changes pushed by native sync (see `convex/auditLog.ts`). The web shows History and Restore. The native app should add the same **History** sheet on transaction, account, category and trip detail screens (read via the Convex `history` queries), and a **Recent changes** list in Settings. Restores go through the server's restore mutation, whose result reaches the phone through normal sync.
+The server records an append-only history of every change, including changes pushed by native sync (the trigger is in `convex/functions.ts`, the queries and restore in `convex/history.ts`). The web shows History and Restore. The native app should add the same **History** sheet on transaction, account, category and trip detail screens (read via the Convex `history` queries), and a **Recent changes** list in Settings. Restores go through the server's restore mutation, whose result reaches the phone through normal sync.
 
 ---
 

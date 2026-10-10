@@ -17,6 +17,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { formatCents } from '@/lib/logic/currencyUtils';
 import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { useToast } from '@/components/ui/ToastProvider';
+import { useUserSettings } from '@/lib/hooks/useUserSettings';
 
 export type HistoryEntry = {
   auditId: string;
@@ -106,20 +107,24 @@ function entryTitle(entry: HistoryEntry): string {
   return `${ACTION_LABEL[entry.action] ?? entry.action} · ${SOURCE_LABEL[entry.source] ?? entry.source}`;
 }
 
-function entrySubject(entry: HistoryEntry): string {
+function entrySubject(entry: HistoryEntry, currencyCode: string): string {
   const doc = entry.after ?? entry.before ?? {};
   const label = TABLE_LABEL[entry.entityTable] ?? entry.entityTable;
   const name = doc.name ?? doc.note ?? doc.merchantName;
-  if (typeof doc.amountCents === 'number') return `${label} · ${formatCents(doc.amountCents)}${name ? ` · ${name}` : ''}`;
+  const cc = typeof doc.currencyCode === 'string' ? doc.currencyCode : currencyCode;
+  if (typeof doc.amountCents === 'number') return `${label} · ${formatCents(doc.amountCents, cc)}${name ? ` · ${name}` : ''}`;
   return name ? `${label} · ${name}` : label;
 }
 
 function EntryRow({ entry, showSubject, onRestore, onOpen }: {
   entry: HistoryEntry;
+  /** Records carry no currency of their own (except imports/shared trips); default to the user's. */
   showSubject?: boolean;
   onRestore?: (entry: HistoryEntry, version: 'after' | 'before') => void;
   onOpen?: (entry: HistoryEntry) => void;
 }) {
+  const { settings } = useUserSettings();
+  const currencyCode = (typeof (entry.after ?? entry.before)?.currencyCode === 'string' ? (entry.after ?? entry.before)!.currencyCode : null) ?? settings?.currencyCode ?? 'INR';
   const fields = entry.action === 'create' ? [] : entry.changedFields.filter((f) => f !== 'deletedAtMs').slice(0, 6);
   const canRestoreAfter = entry.restorable && entry.after && entry.action !== 'delete' && entry.action !== 'purge';
   const canUndo = entry.restorable && entry.before && (entry.action === 'delete' || entry.action === 'update');
@@ -129,11 +134,11 @@ function EntryRow({ entry, showSubject, onRestore, onOpen }: {
         <Text style={styles.entryTitle}>{entryTitle(entry)}</Text>
         <Text style={styles.entryTime}>{new Date(entry.atMs).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</Text>
       </View>
-      {showSubject ? <Text style={styles.entrySubject}>{entrySubject(entry)}</Text> : null}
+      {showSubject ? <Text style={styles.entrySubject}>{entrySubject(entry, currencyCode)}</Text> : null}
       {entry.reason ? <Text style={styles.entryReason}>{entry.reason}</Text> : null}
       {fields.map((f) => (
         <Text key={f} style={styles.diff} numberOfLines={1}>
-          {FIELD_LABEL[f] ?? f}: {formatValue(f, entry.before?.[f])} → {formatValue(f, entry.after?.[f])}
+          {FIELD_LABEL[f] ?? f}: {formatValue(f, entry.before?.[f], currencyCode)} → {formatValue(f, entry.after?.[f], currencyCode)}
         </Text>
       ))}
       {onRestore && (canRestoreAfter || canUndo) ? (

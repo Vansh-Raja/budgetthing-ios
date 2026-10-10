@@ -92,6 +92,8 @@ for (const table of AUDITED_TABLES) {
     }
     const doc = (change.newDoc ?? change.oldDoc) as Record<string, any>;
     const owner = (doc.userId as string | undefined) ?? meta.actor ?? "unknown";
+    // Shared-trip rows have no single owner: tag them with their trip so members can read them.
+    const tripId = table === "sharedTrips" ? (doc.id as string) : table.startsWith("sharedTrip") ? (doc.tripId as string | undefined) : undefined;
     await ctx.innerDb.insert("auditLog", {
       userId: owner,
       actorUserId: meta.actor ?? undefined,
@@ -103,6 +105,7 @@ for (const table of AUDITED_TABLES) {
       changedFields: change.operation === "insert" ? [] : fields,
       beforeJson: before ? JSON.stringify(before) : undefined,
       afterJson: after ? JSON.stringify(after) : undefined,
+      tripId,
       atMs: Date.now(),
     });
   });

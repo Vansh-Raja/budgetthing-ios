@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { api, internal } from '../../convex/_generated/api';
 import { USER_A, USER_B, expectConvexError, nativeAccountRow, nativeTransactionRow, setup } from './helpers';
 
@@ -99,13 +99,54 @@ describe('Audit trail', () => {
     await expectConvexError(b.mutation(api.history.restore, { auditId: entry.auditId as any }), "NOT_FOUND");
   });
 
-  it('deleting the account erases its personal history', async () => {
+  it('deleting the account erases its personal history in scheduled batches (shared-trip history stays)', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      const a = t.withIdentity(USER_A);
+      const acct = await a.mutation(api.pwaPersonal.createAccount, { name: 'Cash', emoji: '💵', kind: 'cash', openingBalanceCents: 0 });
+      for (let i = 0; i < 12; i++) await a.mutation(api.pwaPersonal.updateAccount, { id: acct.id, name: `Cash ${i}` });
+      const shared: any = await a.mutation(api.sharedTrips.create, { name: 'S', emoji: '🏔️', participantName: 'Alice' });
+      await a.mutation(api.deleteMyAccount.deleteMyAccount, {});
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      const left: any[] = await auditRows(t);
+      expect(left.filter((r) => r.userId === USER_A.subject && !r.tripId)).toEqual([]);
+      expect(left.some((r) => r.tripId === shared.tripId)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shared-trip history is readable by every active member, not by outsiders', async () => {
     const t = setup();
     const a = t.withIdentity(USER_A);
-    await a.mutation(api.pwaPersonal.createAccount, { name: 'Cash', emoji: '💵', kind: 'cash', openingBalanceCents: 0 });
-    expect((await auditRows(t)).length).toBeGreaterThan(0);
-    await a.mutation(api.deleteMyAccount.deleteMyAccount, {});
-    const left: any[] = await auditRows(t);
-    expect(left.filter((r) => r.userId === USER_A.subject && !r.entityTable.startsWith('sharedTrip'))).toEqual([]);
+    const b = t.withIdentity(USER_B);
+    const created: any = await a.mutation(api.sharedTrips.create, { name: 'Ladakh', emoji: '🏔️', participantName: 'Alice' });
+    expect(await b.query(api.history.forSharedTrip, { tripId: created.tripId })).toEqual([]);
+    const invite: any = await a.mutation(api.sharedTripInvites.rotate, { tripId: created.tripId });
+    await b.mutation(api.sharedTripInvites.joinByCode, { code: typeof invite === 'string' ? invite : invite.code, participantName: 'Bob' });
+    const forB: any[] = await b.query(api.history.forSharedTrip, { tripId: created.tripId });
+    expect(forB.some((e) => e.entityTable === 'sharedTrips' && e.action === 'create')).toBe(true);
+    const tripHistory: any[] = await b.query(api.history.forEntity, { entityTable: 'sharedTrips', entityId: created.tripId, tripId: created.tripId });
+    expect(tripHistory.length).toBeGreaterThan(0);
+  });
+
+  it('restore refuses a version that points at a record that no longer exists', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const keep = await a.mutation(api.pwaPersonal.createAccount, { name: 'Keep', emoji: '💵', kind: 'cash', openingBalanceCents: 0 });
+    const gone = await a.mutation(api.pwaPersonal.createAccount, { name: 'Gone', emoji: '🏦', kind: 'savings', openingBalanceCents: 0 });
+    const tx: any = await a.mutation(api.pwaLedger.createTransaction, { amountCents: 500, date: 1_700_000_000_000, type: 'expense', accountId: gone.id });
+    await a.mutation(api.pwaLedger.updateTransaction, { id: tx.id, accountId: keep.id });
+    await a.mutation(api.pwaPersonal.archiveAccount, { id: gone.id });
+    const history: any[] = await a.query(api.history.forEntity, { entityTable: 'transactions', entityId: tx.id });
+    const created = history.find((h) => h.action === 'create');
+    await expectConvexError(a.mutation(api.history.restore, { auditId: created.auditId }), 'STATE');
+    // Restoring the account first makes the transaction version restorable.
+    const acctHistory: any[] = await a.query(api.history.forEntity, { entityTable: 'accounts', entityId: gone.id });
+    await a.mutation(api.history.restore, { auditId: acctHistory.find((h) => h.action === 'delete').auditId, version: 'before' });
+    await a.mutation(api.history.restore, { auditId: created.auditId });
+    const snap: any = await a.query(api.pwaPersonal.getSnapshot, {});
+    expect(snap.transactions.find((x: any) => x.id === tx.id).accountId).toBe(gone.id);
   });
 });
