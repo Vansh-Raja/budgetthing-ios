@@ -10,7 +10,7 @@ import {
   assertBillingCycleDay, assertCents, assertCurrencyCode, assertEmoji, assertOwnedRef, assertText,
   optionalText, vAccountKind, vExpectedVersion, vNullableNumber, vNullableString,
 } from "./pwaValidation";
-import { computeVirtualDerivedRows, excludePersistedDerivedRows } from "./pwaDerived";
+import { computeVirtualDerivedRows, excludePersistedDerivedRows, pinDerivedAccounts, pinDerivedAccountsIfDefaultChanges, resolveDefaultAccountId } from "./pwaDerived";
 import { computeAccountBalanceCents, computeAccountAvailableCents, computeAccountTileValueCents, getTransactionsForAccount } from "../lib/logic/accountBalance";
 
 // ---------------------------------------------------------------------------
@@ -191,6 +191,9 @@ export const archiveAccount = mutation({
     const userId = await requireUser(ctx);
     const row = await requireOwnedLive(ctx, userId, "accounts", args.id);
     assertExpectedVersion(row, args.expectedSyncVersion);
+    // Archiving the effective default changes where unpinned trip payments land; pin them first
+    // (to this account, as native keeps them) so live account balances don't absorb history.
+    if ((await resolveDefaultAccountId(ctx, userId)) === args.id) await pinDerivedAccounts(ctx, userId);
     const settings = await getSettingsRow(ctx, userId);
     if (settings?.defaultAccountId === args.id) {
       await patchOwned(ctx, userId, "userSettings", settings, { defaultAccountId: null });
@@ -201,7 +204,16 @@ export const archiveAccount = mutation({
 
 export const reorderAccounts = mutation({
   args: { idsInOrder: v.array(v.string()) },
-  handler: async (ctx, args) => reorderOwned(ctx, await requireUser(ctx), "accounts", args.idsInOrder),
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    // Without a live explicit default, the effective default is the first account by order,
+    // so a reorder can change it: pin existing trip payments first.
+    const settings = await getSettingsRow(ctx, userId);
+    const live = await listOwnedLive(ctx, userId, "accounts");
+    const hasExplicitDefault = !!settings?.defaultAccountId && live.some((a: any) => a.id === settings.defaultAccountId);
+    if (!hasExplicitDefault) await pinDerivedAccounts(ctx, userId);
+    return reorderOwned(ctx, userId, "accounts", args.idsInOrder);
+  },
 });
 
 async function reorderOwned(ctx: any, userId: string, table: "accounts" | "categories" | "trips", idsInOrder: string[]) {
@@ -225,17 +237,20 @@ async function reorderOwned(ctx: any, userId: string, table: "accounts" | "categ
 // ---------------------------------------------------------------------------
 
 export const createCategory = mutation({
-  args: { name: v.string(), emoji: v.string(), monthlyBudgetCents: v.optional(vNullableNumber) },
+  args: { name: v.string(), emoji: v.string(), monthlyBudgetCents: v.optional(vNullableNumber), isSystem: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const existing = await listOwnedLive(ctx, userId, "categories");
-    const sortIndex = existing.reduce((m: number, c: any) => Math.max(m, c.sortIndex ?? -1), -1) + 1;
+    // System categories (e.g. "System · Adjustment") sit at 9999 like native and the first-run seed.
+    const sortIndex = args.isSystem
+      ? 9999
+      : existing.filter((c: any) => c.isSystem !== 1).reduce((m: number, c: any) => Math.max(m, c.sortIndex ?? -1), -1) + 1;
     return insertOwned(ctx, userId, "categories", newId(), {
       name: assertText(args.name, "name", { min: 1, max: 80 }),
       emoji: assertEmoji(args.emoji),
       sortIndex,
       monthlyBudgetCents: args.monthlyBudgetCents == null ? undefined : assertCents(args.monthlyBudgetCents, "monthlyBudgetCents", { allowZero: true }),
-      isSystem: 0,
+      isSystem: args.isSystem ? 1 : 0,
     });
   },
 });
@@ -299,6 +314,9 @@ export const updateSettings = mutation({
     }
     if (args.transactionsFiltersUpdatedAtMs !== undefined) patch.transactionsFiltersUpdatedAtMs = args.transactionsFiltersUpdatedAtMs;
 
+    if (patch.defaultAccountId !== undefined) {
+      await pinDerivedAccountsIfDefaultChanges(ctx, userId, (patch.defaultAccountId as string | null) ?? null);
+    }
     const existing = await getSettingsRow(ctx, userId);
     if (existing) return patchOwned(ctx, userId, "userSettings", existing, patch);
     const base = { currencyCode: "INR", hapticsEnabled: 1, hasSeenOnboarding: 1, syncTransactionFilters: 0, resetTransactionFiltersOnReopen: 0 };

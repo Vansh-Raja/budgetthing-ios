@@ -343,6 +343,9 @@ export function SplitEditorScreen({
                       </Text>
                     )}
                     <TouchableOpacity
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={`Include ${participant.isCurrentUser ? 'You' : participant.name}`}
+                      accessibilityState={{ checked: parsedSplitData[participant.id] > 0 }}
                       onPress={() => {
                         Haptics.selectionAsync();
                         const current = parsedSplitData[participant.id] || 0;
@@ -375,6 +378,8 @@ export function SplitEditorScreen({
                 {splitType === 'shares' && (
                   <View style={styles.sharesContainer}>
                     <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove share for ${participant.isCurrentUser ? 'You' : participant.name}`}
                       onPress={() => {
                         Haptics.selectionAsync();
                         const current = parseFloat(localSplitData[participant.id] || "0");
@@ -387,6 +392,8 @@ export function SplitEditorScreen({
                     <Text style={styles.shareValue}>{localSplitData[participant.id] || "0"}</Text>
 
                     <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add share for ${participant.isCurrentUser ? 'You' : participant.name}`}
                       onPress={() => {
                         Haptics.selectionAsync();
                         const current = parseFloat(localSplitData[participant.id] || "0");

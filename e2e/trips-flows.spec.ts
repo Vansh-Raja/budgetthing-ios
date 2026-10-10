@@ -78,15 +78,20 @@ test.describe('Local group trips', () => {
 
     // ---- Transactions tab shows the share row as "share · total" and hides payer cashflow ----
     await openTab(page, 1);
-    await expect(activePage(page).getByText(/15\.00/).first()).toBeVisible({ timeout: 15_000 });
-    await expect(activePage(page).getByText(/30\.00/).first()).toBeVisible();
+    // rules.md UI_TRIP_SHARE_AMOUNT_FORMAT: the share row reads "share · total" with the trip emoji.
+    const shareAmount = activePage(page).getByText(/15\.00\s*·\s*₹?30\.00/).first();
+    await expect(shareAmount).toBeVisible({ timeout: 15_000 });
+    // Same row (amount + subtitle share one text container): the subtitle carries the trip emoji.
+    await expect(shareAmount.locator('xpath=..').getByText(new RegExp(`·\\s*${trip.emoji}`))).toBeVisible();
 
     // ---- Settlement: Sam pays me → income on my account (SETTLEMENT_MOVES_MONEY) ----
-    await convexMutation(page, 'pwaTrips:createSettlement', { tripId: trip.id, fromParticipantId: sam.id, toParticipantId: me.id, amountCents: 1500, date: Date.now() });
+    // A retry resends the same payload (same date); ids are bucketed by fixed time windows.
+    const settleDate = Date.now();
+    await convexMutation(page, 'pwaTrips:createSettlement', { tripId: trip.id, fromParticipantId: sam.id, toParticipantId: me.id, amountCents: 1500, date: settleDate });
     await expect.poll(async () => (await convexQuery(page, 'pwaPersonal:listAccounts')).find((a: any) => a.id === defaultAccountId).balanceCents, { timeout: 20_000 })
       .toBe(balanceBefore - 3000 + 1500);
-    // Repeating the same settlement within the idempotency window creates nothing new.
-    await convexMutation(page, 'pwaTrips:createSettlement', { tripId: trip.id, fromParticipantId: sam.id, toParticipantId: me.id, amountCents: 1500, date: Date.now() });
+    // Retrying the same settlement creates nothing new.
+    await convexMutation(page, 'pwaTrips:createSettlement', { tripId: trip.id, fromParticipantId: sam.id, toParticipantId: me.id, amountCents: 1500, date: settleDate });
     const after: any = await convexQuery(page, 'pwaTrips:getTrip', { id: trip.id });
     expect(after.settlements).toHaveLength(1);
 
@@ -102,6 +107,89 @@ test.describe('Local group trips', () => {
     expect(survivor.tripExpenseId).toBeUndefined();
     expect(finalSnap.accounts.find((a: any) => a.id === defaultAccountId).balanceCents).toBe(balanceBefore);
     await convexMutation(page, 'pwaLedger:deleteTransaction', { id: baseTx.id });
+  });
+});
+
+test.describe('Split editor (local group trip)', () => {
+  test.setTimeout(240_000);
+
+  test('shares and exact splits from the Split Options sheet store canonical splits and matching shares', async ({ page }) => {
+    await signIn(page, PRIMARY_TEST_EMAIL);
+    const run = Date.now().toString(36).slice(-5);
+    const prevDefault = (await convexQuery(page, 'pwaPersonal:getSettings')).defaultAccountId ?? null;
+    const acct: any = await convexMutation(page, 'pwaPersonal:createAccount', { name: `Spl ${run}`, emoji: '💵', kind: 'cash', openingBalanceCents: 100_000 });
+    let tripId: string | undefined;
+    try {
+      await convexMutation(page, 'pwaPersonal:updateSettings', { defaultAccountId: acct.id });
+      const trip: any = await convexMutation(page, 'pwaTrips:createTrip', {
+        name: `Split ${run}`, emoji: '🧮', isGroup: true,
+        participants: [{ name: 'You', isCurrentUser: true }, { name: 'Sam', isCurrentUser: false }],
+      });
+      tripId = trip.id;
+      const me = trip.participants.find((p: any) => p.isCurrentUser);
+      const sam = trip.participants.find((p: any) => !p.isCurrentUser);
+
+      async function addExpense(configure: () => Promise<void>) {
+        await openTab(page, 0);
+        const tripButton = activePage(page).getByRole('button', { name: `Split ${run}`, exact: true });
+        if ((await tripButton.getAttribute('aria-selected')) !== 'true') await tripButton.click();
+        await activePage(page).getByLabel('C', { exact: true }).first().click();
+        await pressKeys(page, '30');
+        await activePage(page).getByRole('button', { name: 'Save', exact: true }).first().click();
+        await expect(page.getByText('Split Options')).toBeVisible({ timeout: 15_000 });
+        await configure();
+        await page.getByText('Done', { exact: true }).click();
+        await expect(page.getByText('Split Options')).toBeHidden({ timeout: 15_000 });
+      }
+      // getTrip carries parsed splitData/computedSplits (the snapshot only has light link summaries).
+      const linksFor = async () => ((await convexQuery(page, 'pwaTrips:getTrip', { id: trip.id })).expenses as any[]);
+
+      // ---- Shares 2:1 ----
+      await addExpense(async () => {
+        await page.getByText('Shares', { exact: true }).click();
+        await page.getByRole('button', { name: 'Add share for You' }).click();
+      });
+      await expect.poll(async () => (await linksFor()).length, { timeout: 20_000 }).toBe(1);
+      const [sharesLink] = await linksFor();
+      expect(sharesLink.splitType).toBe('shares');
+      expect(sharesLink.splitData).toEqual({ [me.id]: 2, [sam.id]: 1 });
+      expect(sharesLink.computedSplits).toEqual({ [me.id]: 2000, [sam.id]: 1000 });
+
+      // ---- Exact 25 / 5 ----
+      await addExpense(async () => {
+        await page.getByText('Exact', { exact: true }).click();
+        // Pick each amount input by its participant row, not by position.
+        const amountFor = (name: string) => page.locator('div')
+          .filter({ has: page.getByText(name, { exact: true }) })
+          .filter({ has: page.getByPlaceholder('0.00') })
+          .last()
+          .getByPlaceholder('0.00');
+        await amountFor('You').fill('25');
+        await amountFor('Sam').fill('5');
+      });
+      await expect.poll(async () => (await linksFor()).length, { timeout: 20_000 }).toBe(2);
+      const exactLink = (await linksFor()).find((l) => l.splitType === 'exact');
+      expect(exactLink).toBeTruthy();
+      expect(exactLink.computedSplits).toEqual({ [me.id]: 2500, [sam.id]: 500 });
+      expect(exactLink.splitData).toEqual({ [me.id]: 2500, [sam.id]: 500 });
+
+      // My ledger shares mirror computedSplits[me]; cashflow charges the full amount twice.
+      const snap: any = await convexQuery(page, 'pwaPersonal:getSnapshot');
+      const mine = snap.derivedRows.filter((r: any) => r.tripId === trip.id);
+      expect(mine.filter((r: any) => r.systemType === 'trip_share').map((r: any) => r.amountCents).sort((x: number, y: number) => x - y))
+        .toEqual([2000, 2500]); // shares 2:1 → 20.00, exact → 25.00
+      expect(mine.filter((r: any) => r.systemType === 'trip_cashflow').map((r: any) => r.amountCents)).toEqual([3000, 3000]);
+    } finally {
+      // Runs even when an assertion fails, so the shared test user is left clean.
+      const step = (fn: () => Promise<unknown>) => fn().catch(() => undefined);
+      if (tripId) {
+        const baseIds: string[] = await convexQuery(page, 'pwaTrips:getTrip', { id: tripId }).then((t: any) => (t?.expenses ?? []).map((e: any) => e.transactionId)).catch(() => []);
+        await step(() => convexMutation(page, 'pwaTrips:deleteTrip', { id: tripId }));
+        for (const id of baseIds) await step(() => convexMutation(page, 'pwaLedger:deleteTransaction', { id }));
+      }
+      await step(() => convexMutation(page, 'pwaPersonal:updateSettings', { defaultAccountId: prevDefault }));
+      await step(() => convexMutation(page, 'pwaPersonal:archiveAccount', { id: acct.id }));
+    }
   });
 });
 
@@ -148,6 +236,18 @@ test.describe('Shared trips (two members)', () => {
       // Open the shared trip detail in B's browser; tabs render.
       await activePage(b).getByText(`Shared ${run}`).click();
       await expect(b.getByText('Balances', { exact: true })).toBeVisible({ timeout: 20_000 });
+
+      // B settles up from the suggested payment: PAY → prefilled Record Payment → Save.
+      await b.getByText('Settle Up', { exact: true }).click();
+      await b.getByText('PAY', { exact: true }).first().click();
+      await expect(b.getByText('Record Payment', { exact: true })).toBeVisible({ timeout: 15_000 });
+      await b.getByText('Save', { exact: true }).last().click();
+      await expect(b.getByText('Record Payment', { exact: true })).toBeHidden({ timeout: 15_000 });
+      await expect.poll(async () => ((await convexQuery(a, 'pwaSharedTrips:getTrip', { tripId: created.tripId })).settlements ?? []).length, { timeout: 20_000 }).toBe(1);
+      const settled: any = (await convexQuery(a, 'pwaSharedTrips:getTrip', { tripId: created.tripId })).settlements[0];
+      expect(settled).toMatchObject({ amountCents: 2000, fromParticipantId: bob.id, toParticipantId: alice.id });
+      // Nested pager: the trip's active page inside the tab shell's active page.
+      await expect(activePage(b).getByTestId('pager-page-active').getByText('All Settled Up!')).toBeVisible({ timeout: 20_000 });
 
       // Native shared-trip protocol sees the web-created expense.
       const pulled: any = await convexQuery(a, 'sharedTripSync:pull', { tripId: created.tripId, lastSeq: 0 });

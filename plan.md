@@ -6,8 +6,8 @@ Planning-only artifact for the approved mobile-first, online-only Expo PWA. Impl
 - [x] Phase 1 — Prove the universal web runtime and auth shell. (Evidence: `docs/pwa/phase-1-web-runtime.md`; real-iPhone Safari check deferred to the maintainer.)
 - [x] Phase 2 — Add compatible direct Convex read and write APIs. (Evidence: `docs/pwa/phase-2-convex-api.md`; dev deployment only.)
 - [x] Phase 3 — Adapt navigation and shared chrome for phone web. (Evidence: `docs/pwa/phase-3-web-shell.md`.)
-- [ ] Phase 4 — Connect core ledger screens to direct Convex data.
-- [ ] Phase 5 — Deliver local and shared trip parity on web.
+- [x] Phase 4 — Connect core ledger screens to direct Convex data. (Evidence: `docs/pwa/phase-4-5-ledger-trips.md`.)
+- [x] Phase 5 — Deliver local and shared trip parity on web. (Evidence: `docs/pwa/phase-4-5-ledger-trips.md`; derived-account boundary awaits maintainer sign-off.)
 - [ ] Phase 6 — Finish import inbox and cross-client compatibility.
 - [ ] Phase 7 — Make the web app installable and operationally honest.
 - [ ] Phase 8 — Audit the mobile PWA and prepare a maintainer-controlled release.

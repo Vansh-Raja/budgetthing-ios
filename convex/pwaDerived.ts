@@ -69,11 +69,21 @@ export async function resolveDefaultAccountId(ctx: Ctx, userId: string, accounts
  * Compute every virtual derived row for the user across local group trips and
  * shared trips. Applies PWA account overrides. Pure read; no writes.
  */
+const NO_DEFAULT_ACCOUNT = "__no_default_account__";
+
 export async function computeVirtualDerivedRows(ctx: Ctx, userId: string, opts?: { accounts?: any[]; categories?: any[] }): Promise<VirtualDerivedRow[]> {
   const accounts = opts?.accounts ?? (await listOwnedLive(ctx, userId, "accounts"));
   const categories = opts?.categories ?? (await listOwnedLive(ctx, userId, "categories"));
-  const defaultAccountId = await resolveDefaultAccountId(ctx, userId, accounts);
+  // With no live account there is no default, but saved overrides (e.g. to an archived account)
+  // must still apply. Compute with a placeholder default, apply overrides, then drop only the
+  // cashflow/settlement rows still on the placeholder, matching the no-default behaviour.
+  const defaultAccountId = (await resolveDefaultAccountId(ctx, userId, accounts)) ?? NO_DEFAULT_ACCOUNT;
   const overrides = await loadOverrideMap(ctx, userId);
+  // Overrides may point at an archived account: native keeps a derived row on the account it
+  // was assigned even after that account is deleted, so the web must not re-home it either.
+  const ownedAccountIds = new Set(
+    (await ctx.db.query("accounts").withIndex("by_user", (q: any) => q.eq("userId", userId)).collect()).map((a: any) => a.id)
+  );
   const liveAccountIds = new Set(accounts.map((a: any) => a.id));
   const catMap = new Map(categories.map((c: any) => [c.id, c]));
   const out: VirtualDerivedRow[] = [];
@@ -83,8 +93,9 @@ export async function computeVirtualDerivedRows(ctx: Ctx, userId: string, opts?:
       const key = overrideKeyFor(row, origin);
       if (key) {
         const chosen = overrides.get(keyString(key));
-        if (chosen && liveAccountIds.has(chosen)) row.accountId = chosen;
+        if (chosen && ownedAccountIds.has(chosen)) row.accountId = chosen;
       }
+      if (row.accountId === NO_DEFAULT_ACCOUNT) continue;
       out.push({ ...row, createdAtMs: stampMs, updatedAtMs: stampMs, virtual: true, origin, tripId });
     }
   };
@@ -137,9 +148,6 @@ export async function computeVirtualDerivedRows(ctx: Ctx, userId: string, opts?:
           id: s.id, tripId: s.tripId, fromParticipantId: s.fromParticipantId, toParticipantId: s.toParticipantId,
           amountCents: Math.abs(s.amountCents), dateMs: s.date, note: s.note ?? null, updatedAtMs: s.updatedAtMs ?? 0,
         }));
-      if (!defaultAccountId && !legacyPaidFrom.size) {
-        // Ledger-only rows (trip_share) still apply without an account.
-      }
       const rows = computeTripDerivedRowsForUser({
         derivedKey: userId, defaultAccountId, tripLabel: `${trip.emoji} ${trip.name}`,
         participants, meParticipantId: me.id, expenses, settlements,
@@ -198,7 +206,6 @@ function parseJson(value: string | null | undefined): Record<string, number> | n
   }
 }
 
-/** Defensive: drop any legacy/malformed persisted derived row before merging the virtual projection. */
 /** Insert or update (and un-delete) one PWA-only derived-account override. */
 export async function upsertDerivedOverride(ctx: any, userId: string, key: OverrideKey, accountId: string): Promise<number> {
   const now = serverNow();
@@ -223,6 +230,35 @@ export async function setLocalTripCashflowAccount(ctx: any, userId: string, trip
   await upsertDerivedOverride(ctx, userId, { sourceKind: "trip_expense", sourceId: tripExpenseId, direction: "cashflow" }, accountId);
 }
 
+/**
+ * Native keeps a derived cashflow/settlement row's account once it is assigned
+ * (upsertDerivedBatch preserves accountId), so changing the default account only
+ * affects new trip payments. The web projection recomputes on every read, so before
+ * the default changes we pin every not-yet-overridden row to the account it charges
+ * now. Writes only PWA-only overrides; nothing enters the changeLog.
+ */
+export async function pinDerivedAccounts(ctx: any, userId: string): Promise<number> {
+  const rows = await computeVirtualDerivedRows(ctx, userId);
+  const overrides = await loadOverrideMap(ctx, userId);
+  let pinned = 0;
+  for (const row of rows) {
+    const key = overrideKeyFor(row, row.origin);
+    if (!key || !row.accountId || overrides.has(keyString(key))) continue;
+    // Also re-pins a previously cleared override to the account currently charged.
+    await upsertDerivedOverride(ctx, userId, key, row.accountId);
+    overrides.set(keyString(key), row.accountId);
+    pinned++;
+  }
+  return pinned;
+}
+
+/** Pin derived accounts only when the effective default account is about to change. */
+export async function pinDerivedAccountsIfDefaultChanges(ctx: any, userId: string, nextDefaultAccountId: string | null): Promise<void> {
+  const current = await resolveDefaultAccountId(ctx, userId);
+  if (current && current !== nextDefaultAccountId) await pinDerivedAccounts(ctx, userId);
+}
+
+/** Defensive: drop any legacy/malformed persisted derived row before merging the virtual projection. */
 export function excludePersistedDerivedRows<T extends { systemType?: string | null }>(rows: T[]): T[] {
   return rows.filter((r) => !isDerivedTripSystemType(r.systemType ?? null));
 }

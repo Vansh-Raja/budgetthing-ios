@@ -73,7 +73,7 @@ export const CategoryRepository = {
     return (await this.getAll()).find((c) => c.id === id) ?? null;
   },
   async create(category: Omit<Category, 'id' | 'createdAtMs' | 'updatedAtMs' | 'sortIndex'> & { sortIndex?: number }): Promise<Category> {
-    const row = await webMutation(api.pwaPersonal.createCategory, { name: category.name, emoji: category.emoji, monthlyBudgetCents: nullable(category.monthlyBudgetCents) });
+    const row = await webMutation(api.pwaPersonal.createCategory, { name: category.name, emoji: category.emoji, monthlyBudgetCents: nullable(category.monthlyBudgetCents), isSystem: category.isSystem || undefined });
     GlobalEvents.emit(Events.categoriesChanged);
     return toCategory(row);
   },
@@ -117,7 +117,7 @@ export const TransactionRepository = {
       row = await webMutation(api.pwaLedger.createTransfer, { fromAccountId: tx.transferFromAccountId ?? '', toAccountId: tx.transferToAccountId ?? '', amountCents: Math.abs(tx.amountCents), date: tx.date, note: tx.note ?? null });
     } else if (tx.systemType === 'adjustment') {
       const signed = tx.type === 'income' ? Math.abs(tx.amountCents) : -Math.abs(tx.amountCents);
-      row = await webMutation(api.pwaLedger.createAdjustment, { accountId: tx.accountId ?? '', amountCents: signed, date: tx.date, note: tx.note ?? null });
+      row = await webMutation(api.pwaLedger.createAdjustment, { accountId: tx.accountId ?? '', amountCents: signed, date: tx.date, note: tx.note ?? null, categoryId: tx.categoryId ?? null });
     } else {
       row = await webMutation(api.pwaLedger.createTransaction, { amountCents: Math.abs(tx.amountCents), date: tx.date, type: tx.type, note: tx.note ?? null, accountId: tx.accountId ?? null, categoryId: tx.categoryId ?? null });
     }

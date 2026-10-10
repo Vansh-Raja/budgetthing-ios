@@ -165,17 +165,19 @@ export const createTransfer = mutation({
 
 /** Balance adjustment: signed cents, deterministic id. Positive = income, negative = expense. */
 export const createAdjustment = mutation({
-  args: { accountId: v.string(), amountCents: v.number(), date: v.number(), note: v.optional(vNullableString) },
+  args: { accountId: v.string(), amountCents: v.number(), date: v.number(), note: v.optional(vNullableString), categoryId: v.optional(vNullableString) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const accountId = (await assertOwnedRef(ctx, userId, "accounts", args.accountId, "accountId"))!;
+    // Native files adjustments under its "System · Adjustment" category; keep that link.
+    const categoryId = await assertOwnedRef(ctx, userId, "categories", args.categoryId, "categoryId");
     const signed = assertCents(args.amountCents, "amountCents", { allowNegative: true });
     const date = assertDateMs(args.date, "date");
     const note = optionalText(args.note, "note");
     const id = idempotentAdjustmentTransactionId({ accountId, amountCents: signed, dateMs: date, note: note ?? null });
     const existing = await getOwned(ctx, userId, "transactions", id);
     if (existing && existing.deletedAtMs === undefined) return toWire(existing);
-    const data = { amountCents: Math.abs(signed), date, note, type: signed >= 0 ? "income" : "expense", systemType: "adjustment", accountId, sourceType: "manual" };
+    const data = { amountCents: Math.abs(signed), date, note, type: signed >= 0 ? "income" : "expense", systemType: "adjustment", accountId, categoryId, sourceType: "manual" };
     if (existing) return patchOwned(ctx, userId, "transactions", existing, { ...data, deletedAtMs: null });
     return insertOwned(ctx, userId, "transactions", id, data);
   },

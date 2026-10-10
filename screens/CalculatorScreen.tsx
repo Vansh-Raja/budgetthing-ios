@@ -882,6 +882,9 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
               style={styles.modeButton}
               onPress={() => { setMode('expense'); Haptics.selectionAsync(); }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Expense mode"
+              accessibilityState={{ selected: mode === 'expense' }}
             >
               <Text style={[
                 styles.modeButtonText,
@@ -892,6 +895,9 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
               style={styles.modeButton}
               onPress={() => { setMode('income'); Haptics.selectionAsync(); }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Income mode"
+              accessibilityState={{ selected: mode === 'income' }}
             >
               <Text style={[
                 styles.modeButtonText,

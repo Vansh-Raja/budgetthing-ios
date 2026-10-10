@@ -144,3 +144,97 @@ describe('PWA ledger/trip edits (PR #2 review)', () => {
     expect((await a.query(api.pwaSharedTrips.watchTrip, { tripId: created.tripId }))?.id).toBe(created.tripId);
   });
 });
+
+describe('Default-account pinning edge cases (PR #3 review)', () => {
+  async function seed(a: any) {
+    const first = await a.mutation(api.pwaPersonal.createAccount, { name: 'First', emoji: '💵', kind: 'cash', openingBalanceCents: 100_000 });
+    const second = await a.mutation(api.pwaPersonal.createAccount, { name: 'Second', emoji: '🏦', kind: 'savings', openingBalanceCents: 100_000 });
+    const trip = await a.mutation(api.pwaTrips.createTrip, { name: 'Goa', emoji: '🏝️', isGroup: true, participants: [{ name: 'You', isCurrentUser: true }, { name: 'Sam', isCurrentUser: false }] });
+    const me = trip.participants.find((p: any) => p.isCurrentUser);
+    return { first, second, trip, me };
+  }
+  const cashflowAccount = async (a: any, tripExpenseId: string) =>
+    ((await a.query(api.pwaPersonal.getSnapshot, {})).derivedRows as any[]).find((r) => r.systemType === 'trip_cashflow' && r.sourceTripExpenseId === tripExpenseId)?.accountId;
+  const settingsRow = (defaultAccountId: string, updatedAtMs: number) => ({
+    id: 'local', currencyCode: 'INR', hapticsEnabled: 1, defaultAccountId, hasSeenOnboarding: 1, syncTransactionFilters: 0, resetTransactionFiltersOnReopen: 0,
+    transactionsFiltersJson: null, transactionsFiltersUpdatedAtMs: null, createdAtMs: updatedAtMs, updatedAtMs, deletedAtMs: null, syncVersion: 5, needsSync: 1,
+  });
+
+  it('a push carrying a new default AND new trip payments: only pre-existing payments are pinned', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const { first, second, trip, me } = await seed(a);
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: first.id });
+    const old: any = await a.mutation(api.pwaTrips.createExpense, { tripId: trip.id, amountCents: 3000, date: 1_700_000_000_000, paidByParticipantId: me.id, splitType: 'equal' });
+
+    const now = Date.now() + 60_000;
+    await a.mutation(api.sync.push, {
+      transactions: [{ id: 'tx-offline', amountCents: 1000, date: now, note: null, type: 'expense', systemType: null, accountId: null, categoryId: null, transferFromAccountId: null, transferToAccountId: null, tripExpenseId: 'te-offline', sourceType: 'manual', sourceImportInboxItemId: null, createdAtMs: now, updatedAtMs: now, deletedAtMs: null, syncVersion: 1, needsSync: 1 }],
+      tripExpenses: [{ id: 'te-offline', tripId: trip.id, transactionId: 'tx-offline', paidByParticipantId: me.id, splitType: 'equal', splitDataJson: null, computedSplitsJson: JSON.stringify({ [me.id]: 500, [trip.participants.find((p: any) => !p.isCurrentUser).id]: 500 }), createdAtMs: now, updatedAtMs: now, deletedAtMs: null, syncVersion: 1, needsSync: 1 }],
+      userSettings: [settingsRow(second.id, now)],
+    });
+    expect(await cashflowAccount(a, old.tripExpense.id)).toBe(first.id);   // history stays
+    expect(await cashflowAccount(a, 'te-offline')).toBe(second.id);         // new payment follows the new default
+  });
+
+  it('a stale settings row that loses last-write-wins pins nothing', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const { first, second, trip, me } = await seed(a);
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: first.id });
+    await a.mutation(api.pwaTrips.createExpense, { tripId: trip.id, amountCents: 3000, date: 1_700_000_000_000, paidByParticipantId: me.id, splitType: 'equal' });
+    await a.mutation(api.sync.push, { userSettings: [settingsRow(second.id, 1)] }); // older than the server row
+    expect((await a.query(api.pwaPersonal.getSettings, {})).defaultAccountId).toBe(first.id);
+    const overrides = await t.run(async (ctx) => ctx.db.query('derivedAccountOverrides').collect());
+    expect(overrides).toHaveLength(0);
+  });
+
+  it('reordering accounts with no explicit default does not move past payments', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const { first, second, trip, me } = await seed(a);
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: null });
+    const exp: any = await a.mutation(api.pwaTrips.createExpense, { tripId: trip.id, amountCents: 3000, date: 1_700_000_000_000, paidByParticipantId: me.id, splitType: 'equal' });
+    expect(await cashflowAccount(a, exp.tripExpense.id)).toBe(first.id); // first by sortIndex
+    await a.mutation(api.pwaPersonal.reorderAccounts, { idsInOrder: [second.id, first.id] });
+    expect(await cashflowAccount(a, exp.tripExpense.id)).toBe(first.id);
+  });
+
+  it('archiving the default keeps its past payments off the remaining live accounts', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const { first, second, trip, me } = await seed(a);
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: first.id });
+    const exp: any = await a.mutation(api.pwaTrips.createExpense, { tripId: trip.id, amountCents: 3000, date: 1_700_000_000_000, paidByParticipantId: me.id, splitType: 'equal' });
+    await a.mutation(api.pwaPersonal.archiveAccount, { id: first.id });
+    expect(await cashflowAccount(a, exp.tripExpense.id)).toBe(first.id); // stays with the archived account, like native
+    const accounts: any[] = await a.query(api.pwaPersonal.listAccounts, {});
+    expect(accounts.map((x) => x.id)).toEqual([second.id]);
+    expect(accounts[0].balanceCents).toBe(100_000);
+  });
+
+  it('ordinary categories created after a system category still sort before it', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    await a.mutation(api.pwaPersonal.createCategory, { name: 'Food', emoji: '🍔' });
+    await a.mutation(api.pwaPersonal.createCategory, { name: 'System · Adjustment', emoji: '🛠', isSystem: true });
+    const travel = await a.mutation(api.pwaPersonal.createCategory, { name: 'Travel', emoji: '✈️' });
+    expect(travel.sortIndex).toBe(1);
+  });
+
+  it('archiving the last account keeps pinned trip payments and settlements (no live default left)', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const only = await a.mutation(api.pwaPersonal.createAccount, { name: 'Only', emoji: '💵', kind: 'cash', openingBalanceCents: 0 });
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: only.id });
+    const trip = await a.mutation(api.pwaTrips.createTrip, { name: 'Goa', emoji: '🏝️', isGroup: true, participants: [{ name: 'You', isCurrentUser: true }, { name: 'Sam', isCurrentUser: false }] });
+    const me = trip.participants.find((p: any) => p.isCurrentUser);
+    const sam = trip.participants.find((p: any) => !p.isCurrentUser);
+    const exp: any = await a.mutation(api.pwaTrips.createExpense, { tripId: trip.id, amountCents: 3000, date: 1_700_000_000_000, paidByParticipantId: me.id, splitType: 'equal' });
+    await a.mutation(api.pwaTrips.createSettlement, { tripId: trip.id, fromParticipantId: sam.id, toParticipantId: me.id, amountCents: 1500, date: 1_700_000_100_000 });
+    await a.mutation(api.pwaPersonal.archiveAccount, { id: only.id });
+    const rows: any[] = (await a.query(api.pwaPersonal.getSnapshot, {})).derivedRows;
+    expect(rows.find((r) => r.systemType === 'trip_cashflow' && r.sourceTripExpenseId === exp.tripExpense.id)?.accountId).toBe(only.id);
+    expect(rows.filter((r) => r.systemType === 'trip_settlement').map((r) => r.accountId)).toEqual([only.id]);
+  });
+});

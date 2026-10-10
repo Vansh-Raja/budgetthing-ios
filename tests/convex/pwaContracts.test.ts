@@ -110,6 +110,21 @@ describe('PWA ledger rules', () => {
     expect((await a.query(api.pwaPersonal.listAccounts, {}))[0].balanceCents).toBe(700);
   });
 
+  it('adjustment keeps the system adjustment category like native, and rejects foreign categories', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const b = t.withIdentity(USER_B);
+    const acct = await a.mutation(api.pwaPersonal.createAccount, { name: 'A', emoji: '💵', kind: 'cash', openingBalanceCents: 1000 });
+    const sys = await a.mutation(api.pwaPersonal.createCategory, { name: 'System · Adjustment', emoji: '🛠', isSystem: true });
+    const adj = await a.mutation(api.pwaLedger.createAdjustment, { accountId: acct.id, amountCents: 250, date: 1_700_000_000_000, categoryId: sys.id });
+    expect(sys.isSystem).toBe(1);
+    expect(sys.sortIndex).toBe(9999);
+    expect(adj.categoryId).toBe(sys.id);
+    expect(adj.type).toBe('income');
+    const foreign = await b.mutation(api.pwaPersonal.createCategory, { name: 'Other', emoji: '❓' });
+    await expectConvexError(a.mutation(api.pwaLedger.createAdjustment, { accountId: acct.id, amountCents: 100, date: 1_700_000_000_001, categoryId: foreign.id }), 'VALIDATION');
+  });
+
   it('rejects non-integer cents, derived system types cannot be written, bulk ops skip derived', async () => {
     const t = setup();
     const a = t.withIdentity(USER_A);
@@ -374,5 +389,55 @@ describe('Split parity: server splits match the shared calculator', () => {
     await expectConvexError(a.mutation(api.pwaTrips.createExpense, { ...base, splitType: 'exact', splitData: { [me.id]: 500, [sam.id]: 400 } }), 'VALIDATION');
     await expectConvexError(a.mutation(api.pwaTrips.createExpense, { ...base, splitType: 'equalSelected', splitData: {} }), 'VALIDATION');
     await expectConvexError(a.mutation(api.pwaTrips.createExpense, { ...base, splitType: 'shares', splitData: { [me.id]: 0 } }), 'VALIDATION');
+  });
+});
+
+describe('Default account changes do not re-home past trip payments (native parity)', () => {
+  async function seed(a: any) {
+    const first = await a.mutation(api.pwaPersonal.createAccount, { name: 'First', emoji: '💵', kind: 'cash', openingBalanceCents: 100_000 });
+    const second = await a.mutation(api.pwaPersonal.createAccount, { name: 'Second', emoji: '🏦', kind: 'savings', openingBalanceCents: 100_000 });
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: first.id });
+    const trip = await a.mutation(api.pwaTrips.createTrip, { name: 'Goa', emoji: '🏝️', isGroup: true, participants: [{ name: 'You', isCurrentUser: true }, { name: 'Sam', isCurrentUser: false }] });
+    const me = trip.participants.find((p: any) => p.isCurrentUser);
+    const old: any = await a.mutation(api.pwaTrips.createExpense, { tripId: trip.id, amountCents: 3000, date: 1_700_000_000_000, paidByParticipantId: me.id, splitType: 'equal' });
+    return { first, second, trip, me, old };
+  }
+  const cashflowAccount = async (a: any, tripExpenseId: string) =>
+    ((await a.query(api.pwaPersonal.getSnapshot, {})).derivedRows as any[]).find((r) => r.systemType === 'trip_cashflow' && r.sourceTripExpenseId === tripExpenseId)?.accountId;
+
+  it('web settings change: old payment stays on the old default, new payment uses the new one', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const { first, second, trip, me, old } = await seed(a);
+    expect(await cashflowAccount(a, old.tripExpense.id)).toBe(first.id);
+
+    const seqBefore = (await a.query(api.sync.pull, { lastSeq: 0 }))!.latestSeq;
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: second.id });
+    expect(await cashflowAccount(a, old.tripExpense.id)).toBe(first.id);
+    const fresh: any = await a.mutation(api.pwaTrips.createExpense, { tripId: trip.id, amountCents: 1000, date: 1_700_000_100_000, paidByParticipantId: me.id, splitType: 'equal' });
+    expect(await cashflowAccount(a, fresh.tripExpense.id)).toBe(second.id);
+
+    const accounts: any[] = await a.query(api.pwaPersonal.listAccounts, {});
+    expect(accounts.find((x) => x.id === first.id).balanceCents).toBe(100_000 - 3000);
+    expect(accounts.find((x) => x.id === second.id).balanceCents).toBe(100_000 - 1000);
+    // Pinning is PWA-only: only the settings change itself reaches the native change log.
+    const pull: any = await a.query(api.sync.pull, { lastSeq: seqBefore });
+    expect(pull.transactions).toHaveLength(1); // the new base transaction
+    expect(pull.userSettings).toHaveLength(1);
+  });
+
+  it('native sync:push default change pins too; repeated settings writes are idempotent', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    const { first, second, old } = await seed(a);
+    const now = Date.now();
+    await a.mutation(api.sync.push, { userSettings: [{ id: 'local', currencyCode: 'INR', hapticsEnabled: 1, defaultAccountId: second.id, hasSeenOnboarding: 1, syncTransactionFilters: 0, resetTransactionFiltersOnReopen: 0, transactionsFiltersJson: null, transactionsFiltersUpdatedAtMs: null, createdAtMs: now, updatedAtMs: now + 10_000, deletedAtMs: null, syncVersion: 99, needsSync: 1 }] });
+    expect((await a.query(api.pwaPersonal.getSettings, {})).defaultAccountId).toBe(second.id);
+    expect(await cashflowAccount(a, old.tripExpense.id)).toBe(first.id);
+
+    await a.mutation(api.pwaPersonal.updateSettings, { defaultAccountId: second.id });
+    const overrides = await t.run(async (ctx) => (await ctx.db.query('derivedAccountOverrides').collect()).filter((o: any) => o.deletedAtMs === undefined));
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0]).toMatchObject({ sourceKind: 'trip_expense', sourceId: old.tripExpense.id, direction: 'cashflow', accountId: first.id });
   });
 });
