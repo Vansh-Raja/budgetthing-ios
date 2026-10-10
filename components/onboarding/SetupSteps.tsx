@@ -147,8 +147,9 @@ export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
     const check = async () => {
       try {
         const n = await ImportInboxRepository.countPending();
-        if (stop || baseline.current === null) return;
-        if (n > baseline.current) {
+        if (stop) return;
+        if (baseline.current === null) baseline.current = n;
+        else if (n > baseline.current) {
           setArrived(true);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           onFirstImport();
@@ -165,7 +166,8 @@ export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
     setCreating(true);
     try {
       // Baseline before the key exists, so even an import that lands instantly counts as new.
-      baseline.current = await ImportInboxRepository.countPending().catch(() => 0);
+      // If that read fails, the first successful poll sets the baseline instead (never assume 0).
+      baseline.current = await ImportInboxRepository.countPending().catch(() => null);
       const r = await createKey({ name: 'My AI agent', expiresIn: '1y' });
       setKey(r.rawKey);
     } catch (e: any) {
