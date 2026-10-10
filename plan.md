@@ -1,3 +1,14 @@
+## Onboarding: "Stop logging expenses" (2026-10-10)
+
+First-run story that leads with automatic imports (AI agents + Apple Pay Shortcut → inbox → swipe to approve), then manual entry, setup, and an optional "connect your helpers" step. Shared code for web and native.
+
+- [x] Story pages: hook, AI agents (Dots, Grok Bot, Muse, Hermes, OpenClaw as stylised badges), Apple Pay + Shortcuts, interactive swipe demo (right = confirm, left = edit, matching the real inbox), "do it yourself".
+- [x] Setup: currency quick-pick, quick-add Bank / Credit card / UPI wallet accounts.
+- [x] Connect: create an agent key, copy a setup message (skill URL + key), Apple Pay Shortcut steps, live "waiting for your first import" that lands on the Inbox. Native guests see Sign in with Apple instead.
+- [x] Web first-run gate: brand-new accounts (seeded by `seedDefaultsIfEmpty`) start with `hasSeenOnboarding = 0`; existing settings are never reset. Settings › View Tutorial replays it.
+- [x] Tests: `e2e/onboarding.spec.ts` (mobile WebKit + desktop Chromium, real key and real import), convex seed tests; native checked in the iOS Simulator.
+- [ ] Publish a ready-made iCloud Shortcut link for Apple Pay and verify the Wallet automation with Indian cards on a real iPhone.
+
 ## Mobile-first Expo PWA execution plan (published 2026-09-18)
 
 Planning-only artifact for the approved mobile-first, online-only Expo PWA. Implementation, worktree creation, production deployment, hosting/DNS, EAS actions, commits, and pushes remain separately authorized. [Human plan](https://plans.vanshraja.me/p/PszNYhnX7vY5) · [Agent execution](https://plans.vanshraja.me/agent/PszNYhnX7vY5) · [Structured JSON](https://plans.vanshraja.me/raw/PszNYhnX7vY5)

@@ -334,6 +334,8 @@ describe('First-run defaults', () => {
     expect(accounts.map((x) => x.name)).toEqual(['Cash']);
     const settings: any = await a.query(api.pwaPersonal.getSettings, {});
     expect(settings.defaultAccountId).toBe(accounts[0].id);
+    // A brand-new account starts with onboarding.
+    expect(settings.hasSeenOnboarding).toBe(0);
     const second: any = await a.mutation(api.pwaPersonal.seedDefaultsIfEmpty, {});
     expect(second.seeded).toBe(false);
     expect((await a.query(api.pwaPersonal.listCategories, {})).length).toBe(7);
@@ -342,6 +344,17 @@ describe('First-run defaults', () => {
     expect(pull.categories).toHaveLength(7);
     expect(pull.accounts).toHaveLength(1);
     expect(pull.userSettings[0].defaultAccountId).toBe(accounts[0].id);
+  });
+
+  it('never resets onboarding for an account whose settings already exist', async () => {
+    const t = setup();
+    const a = t.withIdentity(USER_A);
+    await a.mutation(api.pwaPersonal.updateSettings, { currencyCode: 'USD' });
+    await a.mutation(api.pwaPersonal.seedDefaultsIfEmpty, {});
+    const settings: any = await a.query(api.pwaPersonal.getSettings, {});
+    expect(settings.hasSeenOnboarding).toBe(1);
+    await a.mutation(api.pwaPersonal.updateSettings, { hasSeenOnboarding: false });
+    expect((await a.query(api.pwaPersonal.getSettings, {})).hasSeenOnboarding).toBe(0);
   });
 });
 

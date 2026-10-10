@@ -45,7 +45,8 @@ export function toSettings(w: any): UserSettings {
     currencyCode: w?.currencyCode ?? 'INR',
     hapticsEnabled: w ? w.hapticsEnabled === 1 || w.hapticsEnabled === true : false,
     defaultAccountId: w?.defaultAccountId ?? null,
-    hasSeenOnboarding: true, // web is sign-in gated; onboarding never blocks
+    // No settings row yet (first sign-in, before the seed): don't flash onboarding.
+    hasSeenOnboarding: w ? w.hasSeenOnboarding !== 0 : true,
     syncTransactionFilters: w ? w.syncTransactionFilters === 1 : false,
     resetTransactionFiltersOnReopen: w ? w.resetTransactionFiltersOnReopen === 1 : false,
     transactionsFiltersJson: w?.transactionsFiltersJson ?? null,

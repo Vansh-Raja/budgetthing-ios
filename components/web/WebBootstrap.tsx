@@ -4,6 +4,8 @@
  * Idempotent server-side; runs once per user per page load.
  */
 import { useEffect, useRef } from 'react';
+import { usePathname, useRouter } from 'expo-router';
+import { useUserSettings } from '@/lib/hooks/useUserSettings';
 import { useAuth } from '@clerk/clerk-expo';
 import { useConvexAuth, useMutation, useQuery } from 'convex/react';
 import { Events, GlobalEvents } from '@/lib/events';
@@ -30,6 +32,16 @@ export function WebBootstrap() {
   useEffect(() => {
     if (pendingImports !== undefined) GlobalEvents.emit(Events.importInboxChanged);
   }, [pendingImports]);
+
+  // First run: a brand-new account goes through onboarding once (Settings › View Tutorial replays it).
+  const { settings, loading } = useUserSettings();
+  const pathname = usePathname();
+  const router = useRouter();
+  useEffect(() => {
+    if (!isAuthenticated || loading || !settings || settings.hasSeenOnboarding) return;
+    if (pathname === '/onboarding' || pathname.startsWith('/settings/currency')) return;
+    router.replace('/onboarding');
+  }, [isAuthenticated, loading, settings, pathname, router]);
 
   return null;
 }

@@ -357,7 +357,7 @@ export const seedDefaultsIfEmpty = mutation({
     const cash = await insertOwned(ctx, userId, "accounts", newId(), { name: "Cash", emoji: "💵", kind: "cash", sortIndex: 0 }, now);
     const existing = await getSettingsRow(ctx, userId);
     if (existing) await patchOwned(ctx, userId, "userSettings", existing, { defaultAccountId: cash.id }, now);
-    else await insertOwned(ctx, userId, "userSettings", "local", { currencyCode: "INR", hapticsEnabled: 1, hasSeenOnboarding: 1, syncTransactionFilters: 0, resetTransactionFiltersOnReopen: 0, defaultAccountId: cash.id }, now);
+    else await insertOwned(ctx, userId, "userSettings", "local", { currencyCode: "INR", hapticsEnabled: 1, hasSeenOnboarding: 0, syncTransactionFilters: 0, resetTransactionFiltersOnReopen: 0, defaultAccountId: cash.id }, now);
     return { seeded: true, defaultAccountId: cash.id };
   },
 });
