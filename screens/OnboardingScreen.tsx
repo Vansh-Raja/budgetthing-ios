@@ -36,6 +36,7 @@ export function OnboardingScreen() {
   const [index, setIndex] = useState(0);
   const [firstImport, setFirstImport] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
   const step: Step = STEPS[index];
   const last = index === STEPS.length - 1;
 
@@ -47,11 +48,16 @@ export function OnboardingScreen() {
   const finish = useCallback(async () => {
     if (finishing) return;
     setFinishing(true);
+    setFinishError(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     try {
       if (!settings?.hasSeenOnboarding) await updateSettings({ hasSeenOnboarding: true });
     } catch (e) {
+      // Don't leave without saving: the first-run gate would just bring the user back.
       console.warn('[Onboarding] could not save completion', e);
+      setFinishing(false);
+      setFinishError("Couldn't save your setup. Check your connection and try again.");
+      return;
     }
     if (fromSettings && router.canGoBack()) {
       router.back();
@@ -100,6 +106,7 @@ export function OnboardingScreen() {
       </Animated.View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
+        {finishError ? <Text style={styles.error} accessibilityRole="alert">{finishError}</Text> : null}
         <TouchableOpacity
           accessibilityRole="button"
           testID="onboarding-primary"
@@ -130,4 +137,5 @@ const styles = StyleSheet.create({
   footer: { paddingHorizontal: 24, paddingTop: 10, width: '100%', maxWidth: 520, alignSelf: 'center' },
   button: { height: 56, borderRadius: 28, backgroundColor: Colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   buttonText: { fontFamily: Fonts.heavy, fontSize: 20, color: '#000' },
+  error: { fontFamily: Fonts.medium, fontSize: 14, color: Colors.error, textAlign: 'center', marginBottom: 10 },
 });

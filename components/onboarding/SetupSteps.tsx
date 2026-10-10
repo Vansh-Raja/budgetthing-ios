@@ -33,7 +33,9 @@ const QUICK_ACCOUNTS: Array<{ name: string; emoji: string; kind: AccountKind }> 
 ];
 
 export const SKILL_URL = 'https://budgetthing.vanshraja.me/agents/budgetthing/SKILL.md';
-const IMPORT_BASE = (process.env.EXPO_PUBLIC_CONVEX_URL ?? 'https://ceaseless-mandrill-733.convex.cloud').replace(/\.convex\.cloud\/?$/, '.convex.site') + '/v1';
+// The import API lives on the same deployment as this build's Convex client (no hardcoded fallback).
+const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL;
+const IMPORT_BASE = CONVEX_URL ? CONVEX_URL.replace(/\.convex\.cloud\/?$/, '.convex.site') + '/v1' : null;
 
 export function SetupStep() {
   const router = useRouter();
@@ -122,7 +124,7 @@ const SHORTCUT_STEPS = (key: string | null) => [
   'Open Shortcuts → Automation → New Automation → Transaction (Wallet).',
   'Pick your cards, choose Run Immediately, then New Blank Automation.',
   'Add "Calculate": Shortcut Input Amount × 100, then "Round Number".',
-  `Add "Get Contents of URL": POST ${IMPORT_BASE}/imports`,
+  `Add "Get Contents of URL": POST ${IMPORT_BASE ? `${IMPORT_BASE}/imports` : 'your BudgetThing import URL (see the SKILL.md linked in Settings › Agent Import API)'}`,
   `Headers: Authorization = Bearer ${key ? key.slice(0, 10) + '…' : '<your key>'}, Idempotency-Key = Current Date (ISO) + Merchant, Content-Type = application/json.`,
   'JSON body: source "apple-pay", items = [{ externalId: same as Idempotency-Key, type "expense", amountCents: Rounded Number, currencyCode: your currency, occurredAt: Current Date (ISO 8601), merchantName: Merchant }].',
 ];
@@ -145,9 +147,8 @@ export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
     const check = async () => {
       try {
         const n = await ImportInboxRepository.countPending();
-        if (stop) return;
-        if (baseline.current === null) baseline.current = n;
-        else if (n > baseline.current) {
+        if (stop || baseline.current === null) return;
+        if (n > baseline.current) {
           setArrived(true);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           onFirstImport();
@@ -163,6 +164,8 @@ export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
     if (creating) return;
     setCreating(true);
     try {
+      // Baseline before the key exists, so even an import that lands instantly counts as new.
+      baseline.current = await ImportInboxRepository.countPending().catch(() => 0);
       const r = await createKey({ name: 'My AI agent', expiresIn: '1y' });
       setKey(r.rawKey);
     } catch (e: any) {

@@ -90,18 +90,14 @@ function TopCard({ item, currencyCode, onDone }: { item: DemoItem; currencyCode:
   );
 }
 
-export function SwipeDemoScene({ currencyCode, onComplete }: { currencyCode: string; onComplete?: () => void }) {
+export function SwipeDemoScene({ currencyCode }: { currencyCode: string }) {
   const [index, setIndex] = useState(0);
   const [log, setLog] = useState<Array<{ item: DemoItem; outcome: Outcome }>>([]);
 
   const onDone = useCallback((outcome: Outcome) => {
     setLog((l) => [{ item: DEMO[index], outcome }, ...l]);
-    setIndex((i) => {
-      const next = i + 1;
-      if (next >= DEMO.length) onComplete?.();
-      return next;
-    });
-  }, [index, onComplete]);
+    setIndex(index + 1);
+  }, [index]);
 
   const done = index >= DEMO.length;
   return (
