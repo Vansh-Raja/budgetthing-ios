@@ -10,7 +10,7 @@ Planning-only artifact for the approved mobile-first, online-only Expo PWA. Impl
 - [x] Phase 5 — Deliver local and shared trip parity on web. (Evidence: `docs/pwa/phase-4-5-ledger-trips.md`; derived-account boundary awaits maintainer sign-off.)
 - [x] Phase 6 — Finish import inbox and cross-client compatibility. (Evidence: `docs/pwa/phase-6-import-sync.md`; real-iPhone Shortcut/Hermes flows and production API docs await the maintainer.)
 - [x] Phase 7 — Make the web app installable and operationally honest. (Evidence: `docs/pwa/phase-7-installable.md`; installed-mode real-device checks await the maintainer.)
-- [ ] Phase 8 — Audit the mobile PWA and prepare a maintainer-controlled release.
+- [ ] Phase 8 — Audit the mobile PWA and prepare a maintainer-controlled release. (Automated + simulator acceptance and the release runbook are done: `docs/pwa/phase-8-release.md`. Open: real-iPhone/Android pass, maintainer decisions, production deploy.)
 
 # BudgetThing: SwiftUI to Expo + Convex Migration Plan
 
