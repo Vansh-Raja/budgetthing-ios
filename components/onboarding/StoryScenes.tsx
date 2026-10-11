@@ -346,9 +346,11 @@ const DIY: Array<{ icon: keyof typeof Ionicons.glyphMap; title: string; body: st
   { icon: 'arrow-undo-outline', title: 'Undo anything', body: 'Every change is kept.', Demo: UndoDemo },
 ];
 
+const DEMO_MS = 1400;
+
 function DiyTile({ index, currencyCode }: { index: number; currencyCode: string }) {
-  // Each demo starts after its tile has landed, one after another, and then rests.
-  const t = useOnce(1800, 650 + index * 450);
+  // Strictly one after another: each demo starts when the previous one has finished, then rests.
+  const t = useOnce(DEMO_MS, 650 + index * DEMO_MS);
   const { icon, title, body, Demo } = DIY[index];
   return (
     <Rise delay={200 + index * 90} style={styles.tileWrap}>
