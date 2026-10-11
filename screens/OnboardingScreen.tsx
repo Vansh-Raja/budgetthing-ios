@@ -9,7 +9,7 @@ import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,12 +34,6 @@ export function OnboardingScreen() {
   const fromSettings = params.fromSettings === 'true';
   const { settings, updateSettings } = useUserSettings();
   const currencyCode = settings?.currencyCode ?? 'INR';
-  // Whether this is the real first run (replays never delete anything). Settings load
-  // asynchronously, so decide once they are known and keep that answer.
-  const [firstRun, setFirstRun] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (firstRun === null && settings) setFirstRun(!fromSettings && settings.hasSeenOnboarding === false);
-  }, [firstRun, settings, fromSettings]);
 
   const [wantsSetup, setWantsSetup] = useState<boolean | null>(null);
   const steps = useMemo<Step[]>(() => [...STORY, ...(wantsSetup ? SETUP : []), ...END], [wantsSetup]);
@@ -125,9 +119,9 @@ export function OnboardingScreen() {
   const scene = Math.max(0, index);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]} testID="onboarding">
+    <View style={[styles.container, { paddingTop: insets.top }, inStory && styles.noSelect]} testID="onboarding">
       <StatusBar barStyle="light-content" />
-      <Aurora scene={scene} />
+      <Aurora scene={scene} still={['currency', 'spend', 'accounts', 'connect'].includes(step)} />
 
       <View style={styles.topBar}>
         {index > 0 && step !== 'done' ? (
@@ -155,10 +149,10 @@ export function OnboardingScreen() {
           {step === 'agents' && <AgentsScene currencyCode={currencyCode} />}
           {step === 'applepay' && <ApplePayScene currencyCode={currencyCode} />}
           {step === 'swipe' && <SwipeDemoScene currencyCode={currencyCode} />}
-          {step === 'diy' && <DiyScene />}
+          {step === 'diy' && <DiyScene currencyCode={currencyCode} />}
           {step === 'ask' && <AskStep onChoose={chooseSetup} />}
           {step === 'currency' && <CurrencyStep bindNext={bindCurrency} />}
-          {step === 'spend' && <SpendStep bindNext={bindSpend} firstRun={firstRun === true} onSummary={onSummary} />}
+          {step === 'spend' && <SpendStep bindNext={bindSpend} onSummary={onSummary} />}
           {step === 'accounts' && <AccountsStep bindNext={bindAccounts} onSummary={onSummary} />}
           {step === 'connect' && <ConnectStep onFirstImport={onFirstImport} onKeyCreated={onKeyCreated} />}
           {step === 'done' && <DoneStep summary={summary} agentConnected={agentConnected} firstImport={firstImport} />}
@@ -187,6 +181,8 @@ export function OnboardingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
+  // Story pages only (no inputs there): dragging demo cards with a mouse must not select text.
+  noSelect: { userSelect: 'none' } as any,
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, height: 52, width: '100%', maxWidth: 560, alignSelf: 'center', gap: 8 },
   iconBtn: { width: 44, height: 40, justifyContent: 'center', paddingLeft: 4 },
   progress: { flex: 1, flexDirection: 'row', paddingHorizontal: 8 },

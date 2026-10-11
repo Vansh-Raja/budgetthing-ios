@@ -32,6 +32,7 @@ test.describe('Onboarding', () => {
     const keysBefore = new Set(((await convexQuery(page, 'apiImportKeys:list')) as any[]).map((k) => k.id));
     const shot = (name: string) => page.screenshot({ path: `${SHOTS}/${info.project.name}-${name}.png` });
 
+    const tempCat: any = await convexMutation(page, 'pwaPersonal:createCategory', { name: `Onb temp ${run}`, emoji: '🧪' });
     await convexMutation(page, 'pwaPersonal:updateSettings', { hasSeenOnboarding: false });
     try {
       // First run: the app sends a new account to onboarding.
@@ -67,7 +68,9 @@ test.describe('Onboarding', () => {
 
       await next.click();
       await expect(page.getByRole('heading', { name: /Do it yourself/ })).toBeVisible();
-      await page.waitForTimeout(1200);
+      await page.waitForTimeout(1500);
+      await shot('5a-diy');
+      await page.waitForTimeout(2800);
       await shot('5-diy');
 
       // "Set me up" → currency → categories → accounts.
@@ -94,19 +97,50 @@ test.describe('Onboarding', () => {
       await expect(page.getByRole('heading', { name: /What do you usually/ })).toBeVisible();
       const newCat = ['Pets', 'Gifts', 'Education', 'Fitness', 'Coffee'].find((n) => !(before.categories as any[]).some((c) => !c.deletedAtMs && c.name === n))!;
       await page.getByRole('button', { name: `Category ${newCat}` }).click();
+      // Existing categories can be unselected and are removed on Continue (a throwaway one here).
+      const tempChip = page.getByRole('button', { name: `Category ${tempCat.name}` });
+      await tempChip.click();
+      await expect(page.getByText(/1 will be removed/)).toBeVisible();
       await page.waitForTimeout(900);
       await shot('8-spend');
       await next.click();
       await expect(page.getByRole('heading', { name: /Where does your/ })).toBeVisible({ timeout: 15_000 });
       await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).categories as any[]).some((c) => !c.deletedAtMs && c.name === newCat)).toBe(true);
+      // The snapshot lists live categories only: the removed one is gone from it.
+      await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).categories as any[]).some((c) => c.id === tempCat.id && !c.deletedAtMs)).toBe(false);
 
+      // Several accounts of the same type, plus a card with limit and statement day.
+      await page.getByRole('button', { name: 'Add Bank account' }).click();
+      await page.getByRole('button', { name: 'Add Bank account' }).click();
+      const bankNames = page.getByLabel('Bank account name');
+      await bankNames.nth(-2).fill(`Onb bank A ${run}`);
+      await bankNames.nth(-1).fill(`Onb bank B ${run}`);
+      await page.getByLabel(`Onb bank B ${run} balance`).fill('1,234.50');
       await page.getByRole('button', { name: 'Add Credit card' }).click();
-      await page.getByLabel('Credit card name').fill(`Onb card ${run}`);
-      await page.getByLabel('Credit card Credit limit').fill('50000');
+      await page.getByLabel('Credit card name').last().fill(`Onb card ${run}`);
+      await page.getByLabel(`Onb card ${run} credit limit`).fill('50000');
+      await page.getByLabel(`Onb card ${run} statement day`).fill('12');
       await page.waitForTimeout(600);
       await shot('9-accounts');
       await next.click();
       await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts as any[]).find((a) => a.name === `Onb card ${run}`)?.limitAmountCents, { timeout: 15_000 }).toBe(5_000_000);
+      const accts: any[] = (await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts;
+      expect(accts.find((a) => a.name === `Onb card ${run}`).billingCycleDay).toBe(12);
+      expect(accts.find((a) => a.name === `Onb bank A ${run}`)).toBeTruthy();
+      expect(accts.find((a) => a.name === `Onb bank B ${run}`).openingBalanceCents).toBe(123_450);
+
+      // Clearing an existing account's balance on a replay really clears it.
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByRole('heading', { name: /Where does your/ })).toBeVisible();
+      await page.getByLabel(`Onb bank B ${run} balance`).fill('');
+      await page.getByLabel(`Onb card ${run} credit limit`).fill('');
+      await page.getByLabel(`Onb card ${run} statement day`).fill('');
+      await next.click();
+      await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts as any[]).find((a) => a.name === `Onb bank B ${run}`)?.openingBalanceCents ?? null, { timeout: 15_000 }).toBe(null);
+      await expect.poll(async () => {
+        const card: any = ((await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts as any[]).find((a) => a.name === `Onb card ${run}`);
+        return [card?.limitAmountCents ?? null, card?.billingCycleDay ?? null];
+      }, { timeout: 15_000 }).toEqual([null, null]);
 
       // Connect: create a key, then a real import arrives while the page waits.
       await expect(page.getByRole('heading', { name: /Connect your/ })).toBeVisible();

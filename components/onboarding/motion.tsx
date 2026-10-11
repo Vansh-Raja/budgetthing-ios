@@ -138,39 +138,47 @@ const SCENES: Array<Array<{ x: number; y: number }>> = [
   [{ x: 0.0, y: -0.2 }, { x: -0.35, y: 0.4 }, { x: 0.4, y: 0.35 }],
 ];
 
-function Blob({ index, scene, color, size, strength, t }: { index: number; scene: number; color: string; size: number; strength: number; t: SharedValue<number> }) {
+/**
+ * One ambient glow. Uses Reanimated's CSS animations/transitions: on web these are real
+ * CSS (compositor thread, no per-frame JS), so the glow never competes with typing or
+ * layout animations. Only transforms are animated.
+ */
+function Blob({ index, scene, color, size, strength, still }: { index: number; scene: number; color: string; size: number; strength: number; still: boolean }) {
+  const reduced = useReducedMotion();
   const target = SCENES[scene % SCENES.length][index];
-  const x = useSharedValue(target.x);
-  const y = useSharedValue(target.y);
-  useEffect(() => {
-    x.value = withSpring(target.x, { damping: 30, stiffness: 18 });
-    y.value = withSpring(target.y, { damping: 30, stiffness: 18 });
-  }, [target.x, target.y, x, y]);
-  const style = useAnimatedStyle(() => {
-    const drift = Math.sin((t.value + index / 3) * Math.PI * 2);
-    return {
-      transform: [
-        { translateX: x.value * 420 + drift * 18 },
-        { translateY: y.value * 620 + Math.cos((t.value + index / 3) * Math.PI * 2) * 22 },
-        { scale: 1 + drift * 0.06 },
-      ],
-    };
-  });
+  const drift: any = still || reduced ? {} : {
+    animationName: {
+      from: { transform: [{ translateX: -22 }, { translateY: -18 }] },
+      to: { transform: [{ translateX: 22 }, { translateY: 18 }] },
+    },
+    animationDuration: `${11 + index * 3}s`,
+    animationDelay: `${-index * 2}s`,
+    animationIterationCount: 'infinite',
+    animationDirection: 'alternate',
+    animationTimingFunction: 'ease-in-out',
+  };
+  const place: any = {
+    transform: [{ translateX: target.x * 420 }, { translateY: target.y * 620 }],
+    transitionProperty: 'transform',
+    transitionDuration: reduced ? '0s' : '1.6s',
+    transitionTimingFunction: 'ease-in-out',
+  };
   return (
-    <Animated.View style={[styles.blob, { marginLeft: -size / 2, marginTop: -size / 2 }, style]} pointerEvents="none">
-      <Glow size={size} color={color} strength={strength} />
+    <Animated.View style={[styles.blob, { marginLeft: -size / 2, marginTop: -size / 2 }, place]} pointerEvents="none">
+      <Animated.View style={drift}>
+        <Glow size={size} color={color} strength={strength} />
+      </Animated.View>
     </Animated.View>
   );
 }
 
-/** Slowly drifting ambient glows; `scene` moves them to a new arrangement per page. */
-export function Aurora({ scene }: { scene: number }) {
-  const t = useLoop(14000, 0.3);
+/** Ambient glows; `scene` re-arranges them per page, `still` stops the drift on form pages. */
+export function Aurora({ scene, still = false }: { scene: number; still?: boolean }) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Blob index={0} scene={scene} color={Colors.accent} size={560} strength={0.22} t={t} />
-      <Blob index={1} scene={scene} color={CYAN} size={500} strength={0.16} t={t} />
-      <Blob index={2} scene={scene} color="#FF3B6B" size={420} strength={0.12} t={t} />
+      <Blob index={0} scene={scene} color={Colors.accent} size={560} strength={0.22} still={still} />
+      <Blob index={1} scene={scene} color={CYAN} size={500} strength={0.16} still={still} />
+      <Blob index={2} scene={scene} color="#FF3B6B" size={420} strength={0.12} still={still} />
     </View>
   );
 }
