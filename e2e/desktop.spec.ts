@@ -40,15 +40,17 @@ test.describe('Desktop browser', () => {
       await page.keyboard.press('Escape');
 
       // Mixed mouse + keyboard: a clicked key keeps focus, but Enter saves (it doesn't re-press 7).
+      const idsBefore = new Set(((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[]).map((x) => x.id));
       await page.getByTestId('pager-page-active').getByLabel('7', { exact: true }).first().click();
       await page.keyboard.type('.43');
       await page.keyboard.press('Enter');
       let tx2: string | undefined;
       await expect.poll(async () => {
-        const t = ((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[]).find((x) => x.amountCents === 743 && x.type === 'expense' && x.createdAtMs > Date.now() - 60_000);
-        tx2 = t?.id;
-        return !!t;
-      }, { timeout: 15_000 }).toBe(true);
+        // Only transactions this test created: exactly one, and it's 7.43 (not 7.437 or 77.43).
+        const created = ((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[]).filter((x) => !idsBefore.has(x.id));
+        tx2 = created[0]?.id;
+        return created.map((x) => [x.amountCents, x.type]);
+      }, { timeout: 15_000 }).toEqual([[743, 'expense']]);
       if (tx2) await convexMutation(page, 'pwaLedger:deleteTransaction', { id: tx2 }).catch(() => undefined);
 
       // Option/Alt + number switches section; typing digits elsewhere doesn't touch the calculator.
