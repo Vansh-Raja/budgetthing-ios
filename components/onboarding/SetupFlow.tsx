@@ -270,14 +270,17 @@ export function AccountsStep({ bindNext, onSummary }: { bindNext: BindNext; onSu
 
   useEffect(() => {
     bindNext(async () => {
-      let added = 0;
-      for (const o of ACCOUNT_OPTIONS) {
-        const d = drafts[o.key];
-        if (!d.on || created.current.has(o.key)) continue;
-        const cents = toCents(d.amount, `${o.label} ${o.amountLabel.toLowerCase()}`);
+      // Validate every amount on the page before writing anything.
+      const cashCents = toCents(cashAmount, 'Cash in hand');
+      const plan = ACCOUNT_OPTIONS.filter((o) => drafts[o.key].on && !created.current.has(o.key)).map((o) => {
+        const cents = toCents(drafts[o.key].amount, `${o.label} ${o.amountLabel.toLowerCase()}`);
         if (o.kind === 'card' && cents !== undefined && cents < 0) throw new Error('A credit limit can\'t be negative.');
+        return { o, cents };
+      });
+      let added = 0;
+      for (const { o, cents } of plan) {
         await AccountRepository.create({
-          name: d.name.trim() || o.label,
+          name: drafts[o.key].name.trim() || o.label,
           emoji: o.emoji,
           kind: o.kind,
           ...(o.kind === 'card' ? { limitAmountCents: cents } : { openingBalanceCents: cents }),
@@ -285,7 +288,6 @@ export function AccountsStep({ bindNext, onSummary }: { bindNext: BindNext; onSu
         created.current.add(o.key);
         added++;
       }
-      const cashCents = toCents(cashAmount, 'Cash in hand');
       if (cash && cashCents !== undefined) await AccountRepository.update(cash.id, { openingBalanceCents: cashCents });
       onSummary({ accountsAdded: added });
     });
