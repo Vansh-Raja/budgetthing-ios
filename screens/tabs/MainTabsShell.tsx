@@ -119,6 +119,9 @@ export default function MainTabsScreen() {
               style={[styles.desktopPage, index !== selectedIndex && styles.hidden]}
               aria-hidden={index !== selectedIndex}
               testID={index === selectedIndex ? 'pager-page-active' : undefined}
+              nativeID={`desktop-panel-${index}`}
+              role="tabpanel"
+              aria-label={tab.label}
             >
               <View style={tab.key === 0 ? styles.desktopCalc : [styles.desktopContent, { maxWidth: DESKTOP_WIDTHS[tab.key] ?? 1080 }]}>
                 {visited.has(index) ? renderScreen(tab.key) : null}

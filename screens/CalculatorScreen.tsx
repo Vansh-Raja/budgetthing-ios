@@ -646,6 +646,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
   // Web keyboard support. Only while this screen is focused (stack screens above it keep it
   // mounted), nothing else has focus (inputs, popups), and no modifier is held.
   const isFocused = useIsFocused();
+  const rootRef = useRef<View>(null);
   const [flashLabel, setFlashLabel] = useState<string | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -655,6 +656,13 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       if (document.querySelector('[aria-modal="true"]')) return;
+      // Enter on a focused control outside the calculator (sidebar, links, buttons) keeps its
+      // normal activation. Inside the calculator (e.g. a key clicked with the mouse keeps
+      // focus) Enter means save, and must not also re-press that key.
+      if (e.key === 'Enter' && el && el !== document.body) {
+        const root = rootRef.current as unknown as HTMLElement | null;
+        if (!root || !root.contains(el)) return;
+      }
       let key: KeyType | null = null;
       let label = '';
       if (/^[0-9]$/.test(e.key)) { key = { type: 'digit', value: Number(e.key) }; label = e.key; }
@@ -670,13 +678,15 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
       else if (e.key === 'Enter') { key = { type: 'save' }; label = '✓'; }
       if (!key) return;
       e.preventDefault();
+      e.stopPropagation();
       onKeyPress(key);
       setFlashLabel(label);
       if (flashTimer.current) clearTimeout(flashTimer.current);
       flashTimer.current = setTimeout(() => setFlashLabel(null), 140);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Capture phase: runs before a focused key's own Enter handling.
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [keyboardActive, isFocused, showSplitEditor, onKeyPress]);
 
   const handleSplitSave = async (splitType: SplitType, splitData: Record<string, number>) => {
@@ -918,6 +928,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
   return (
     <View
+      ref={rootRef}
       style={styles.container}
       onLayout={Platform.OS === 'web' ? (e) => {
         const { width: w, height: h } = e.nativeEvent.layout;

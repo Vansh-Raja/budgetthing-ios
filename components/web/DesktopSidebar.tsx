@@ -22,7 +22,7 @@ const ICONS: Record<number, keyof typeof Ionicons.glyphMap> = {
   3: 'settings-outline',
 };
 
-function NavItem({ icon, label, active, hint, badge, onPress, testID, role = 'tab' }: { icon: keyof typeof Ionicons.glyphMap; label: string; active?: boolean; hint?: string; badge?: number; onPress: () => void; testID?: string; role?: 'tab' | 'button' }) {
+function NavItem({ icon, label, active, hint, badge, onPress, testID, role = 'tab', controls }: { icon: keyof typeof Ionicons.glyphMap; label: string; active?: boolean; hint?: string; badge?: number; onPress: () => void; testID?: string; role?: 'tab' | 'button'; controls?: string }) {
   return (
     <Pressable
       onPress={onPress}
@@ -30,6 +30,7 @@ function NavItem({ icon, label, active, hint, badge, onPress, testID, role = 'ta
       accessibilityLabel={label}
       accessibilityState={role === 'tab' ? { selected: !!active } : undefined}
       aria-selected={role === 'tab' ? !!active : undefined}
+      {...({ 'aria-controls': controls } as any)}
       testID={testID}
       style={(state: any) => [styles.item, active && styles.itemActive, !active && state.hovered && styles.itemHover]}
     >
@@ -80,6 +81,7 @@ export function DesktopSidebar({ selectedIndex, onSelectIndex }: { selectedIndex
             hint={`⌥${index + 1}`}
             onPress={() => onSelectIndex(index)}
             testID={`desktop-nav-${index}`}
+            controls={`desktop-panel-${index}`}
           />
         ))}
       </View>

@@ -138,6 +138,9 @@ export function CurrencyStep({ bindNext }: { bindNext: BindNext }) {
 // Spending categories
 // ---------------------------------------------------------------------------
 
+/** Shared by the input's maxLength and the add-time check. */
+const MAX_CUSTOM_CATEGORY_NAME = 40;
+
 const SUGGESTED = [
   { emoji: '🍔', name: 'Food' }, { emoji: '🛒', name: 'Groceries' }, { emoji: '🚕', name: 'Transport' },
   { emoji: '🏠', name: 'Rent' }, { emoji: '🎉', name: 'Fun' }, { emoji: '☕', name: 'Coffee' },
@@ -178,7 +181,7 @@ export function SpendStep({ bindNext, onSummary }: { bindNext: BindNext; onSumma
   const addCustom = () => {
     const name = customName.trim().replace(/\s+/g, ' ');
     if (!name) { setCustomError('Give it a name.'); return; }
-    if (name.length > 40) { setCustomError('Keep it under 40 characters.'); return; }
+    if (name.length > MAX_CUSTOM_CATEGORY_NAME) { setCustomError(`Keep it under ${MAX_CUSTOM_CATEGORY_NAME} characters.`); return; }
     const key = name.toLowerCase();
     if (options.some((o) => o.name.toLowerCase() === key)) {
       // Already listed: just make sure it's selected.
@@ -286,7 +289,7 @@ export function SpendStep({ bindNext, onSummary }: { bindNext: BindNext; onSumma
             autoFocus
             returnKeyType="done"
             onSubmitEditing={addCustom}
-            maxLength={40}
+            maxLength={MAX_CUSTOM_CATEGORY_NAME}
             accessibilityLabel="Custom category name"
           />
           <PressableScale accessibilityRole="button" accessibilityLabel="Add category" onPress={addCustom} style={styles.customAdd}>

@@ -39,6 +39,18 @@ test.describe('Desktop browser', () => {
       await expect(page.getByTestId('pager-page-active').getByText('₹36').first()).toBeVisible();
       await page.keyboard.press('Escape');
 
+      // Mixed mouse + keyboard: a clicked key keeps focus, but Enter saves (it doesn't re-press 7).
+      await page.getByTestId('pager-page-active').getByLabel('7', { exact: true }).first().click();
+      await page.keyboard.type('.43');
+      await page.keyboard.press('Enter');
+      let tx2: string | undefined;
+      await expect.poll(async () => {
+        const t = ((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[]).find((x) => x.amountCents === 743 && x.type === 'expense' && x.createdAtMs > Date.now() - 60_000);
+        tx2 = t?.id;
+        return !!t;
+      }, { timeout: 15_000 }).toBe(true);
+      if (tx2) await convexMutation(page, 'pwaLedger:deleteTransaction', { id: tx2 }).catch(() => undefined);
+
       // Option/Alt + number switches section; typing digits elsewhere doesn't touch the calculator.
       await page.keyboard.press('Alt+Digit2');
       await expect(page.getByRole('tab', { name: 'Transactions', selected: true })).toBeVisible();
