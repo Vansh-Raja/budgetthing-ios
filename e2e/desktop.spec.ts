@@ -21,6 +21,8 @@ test.describe('Desktop browser', () => {
     await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts as any[]).length, { timeout: 20_000 }).toBeGreaterThan(0);
     await expect(page.getByTestId('pager-page-active').getByText('No accounts')).toHaveCount(0, { timeout: 20_000 });
     const amt = uniqueAmount();
+    // Only rows created after this point are ours (the shared test account has history).
+    const idsBeforeSave = new Set(((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[]).map((x) => x.id));
     await page.keyboard.press('Escape');
     await page.keyboard.type(amt.keys);
     await expect(page.getByTestId('pager-page-active').getByText(amt.text).first()).toBeVisible();
@@ -28,7 +30,7 @@ test.describe('Desktop browser', () => {
     await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 });
     let txId: string | undefined;
     await expect.poll(async () => {
-      const tx = ((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[]).find((t) => t.amountCents === amt.cents && t.type === 'expense');
+      const tx = ((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[]).find((t) => !idsBeforeSave.has(t.id) && t.amountCents === amt.cents && t.type === 'expense');
       txId = tx?.id;
       return !!tx;
     }, { timeout: 15_000 }).toBe(true);
