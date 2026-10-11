@@ -28,6 +28,8 @@ test.describe('Desktop browser', () => {
     await expect(page.getByTestId('pager-page-active').getByText(amt.text).first()).toBeVisible();
     await page.keyboard.press('Enter');
     await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+    // It lands in the pane beside the calculator.
+    await expect(page.getByTestId('desktop-ledger-pane').getByText(amt.text).first()).toBeVisible({ timeout: 10_000 });
     let txId: string | undefined;
     await expect.poll(async () => {
       const tx = ((await convexQuery(page, 'pwaPersonal:getSnapshot')).transactions as any[]).find((t) => !idsBeforeSave.has(t.id) && t.amountCents === amt.cents && t.type === 'expense');

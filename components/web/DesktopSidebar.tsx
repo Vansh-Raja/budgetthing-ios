@@ -94,13 +94,7 @@ export function DesktopSidebar({ selectedIndex, onSelectIndex }: { selectedIndex
 
       <View style={{ flex: 1 }} />
 
-      <View style={styles.tipCard}>
-        <Text style={styles.tipTitle}>Keyboard</Text>
-        <Text style={styles.tip}><Text style={styles.kbd}>0–9</Text> type an amount</Text>
-        <Text style={styles.tip}><Text style={styles.kbd}>+ − × ÷</Text> calculate</Text>
-        <Text style={styles.tip}><Text style={styles.kbd}>Enter</Text> save · <Text style={styles.kbd}>Esc</Text> clear</Text>
-        <Text style={styles.tip}><Text style={styles.kbd}>⌥1–5</Text> switch section</Text>
-      </View>
+      <Text style={styles.footer}>Type to log · Enter saves</Text>
     </View>
   );
 }
@@ -123,8 +117,5 @@ const styles = StyleSheet.create({
   badge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: Colors.accent, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontFamily: Fonts.heavy, fontSize: 12, color: '#000' },
   section: { fontFamily: Fonts.demiBold, fontSize: 12, letterSpacing: 1.4, textTransform: 'uppercase', color: Colors.textMuted, marginTop: 22, marginBottom: 6, paddingHorizontal: 10 },
-  tipCard: { borderRadius: 14, padding: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', gap: 4 },
-  tipTitle: { fontFamily: Fonts.demiBold, fontSize: 12, letterSpacing: 1.4, textTransform: 'uppercase', color: Colors.textMuted, marginBottom: 2 },
-  tip: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.textTertiary },
-  kbd: { fontFamily: Fonts.demiBold, fontSize: 12, color: Colors.textSecondary },
+  footer: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.textMuted, paddingHorizontal: 10 },
 });
