@@ -39,6 +39,7 @@ function TopCard({ item, currencyCode, onDone }: { item: DemoItem; currencyCode:
 
   // Buttons (JS thread); the gesture below does the same on the UI thread.
   const fly = (o: Outcome) => {
+    if (gone.value > 0) return; // already leaving
     x.value = withTiming(o === 'confirmed' ? FLY : -FLY, { duration: 260 });
     gone.value = withTiming(1, { duration: 240 }, (fin) => { if (fin) runOnJS(finish)(o); });
   };
@@ -55,6 +56,7 @@ function TopCard({ item, currencyCode, onDone }: { item: DemoItem; currencyCode:
       }
     })
     .onEnd((e) => {
+      if (gone.value > 0) return;
       const o: Outcome | null =
         e.translationX >= THRESHOLD || e.velocityX > 800 ? 'confirmed' : e.translationX <= -THRESHOLD || e.velocityX < -800 ? 'edited' : null;
       if (!o) {

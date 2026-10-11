@@ -80,6 +80,15 @@ test.describe('Onboarding', () => {
       await expect(page.getByRole('button', { name: `Currency ${before.settings?.currencyCode ?? 'INR'}` })).toBeVisible();
       await page.waitForTimeout(900);
       await shot('7-currency');
+      // Picking a currency is only saved on Continue: Back leaves the setting untouched.
+      const myCurrency = before.settings?.currencyCode ?? 'INR';
+      const other = myCurrency === 'USD' ? 'EUR' : 'USD';
+      await page.getByRole('button', { name: `Currency ${other}` }).click();
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByTestId('onboarding-setup-yes')).toBeVisible();
+      expect((await convexQuery(page, 'pwaPersonal:getSnapshot')).settings.currencyCode).toBe(myCurrency);
+      await page.getByTestId('onboarding-setup-yes').click();
+      await expect(page.getByRole('heading', { name: /Your currency/ })).toBeVisible();
 
       await next.click();
       await expect(page.getByRole('heading', { name: /What do you usually/ })).toBeVisible();

@@ -14,7 +14,7 @@ import { CURRENCIES, formatCents } from '@/lib/logic/currencyUtils';
 import type { AccountKind } from '@/lib/logic/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { AnimatedWords, Confetti, CYAN, PressableScale, Rise } from './motion';
@@ -77,17 +77,23 @@ const POPULAR = [
   { code: 'AUD', flag: '🇦🇺' }, { code: 'CAD', flag: '🇨🇦' }, { code: 'JPY', flag: '🇯🇵' },
 ];
 
-export function CurrencyStep() {
+export function CurrencyStep({ bindNext }: { bindNext: BindNext }) {
   const router = useRouter();
   const { settings, updateSettings } = useUserSettings();
   const current = settings?.currencyCode ?? 'INR';
   const [selected, setSelected] = useState(current);
+  // "Another currency…" saves through the full picker; follow it when it changes.
   useEffect(() => setSelected(current), [current]);
 
-  const choose = (code: string) => {
-    setSelected(code);
-    void updateSettings({ currencyCode: code });
-  };
+  // Saved only on Continue, so Back or Close leaves the setting untouched.
+  useEffect(() => {
+    bindNext(async () => {
+      if (selected !== current) await updateSettings({ currencyCode: selected });
+    });
+    return () => bindNext(null);
+  }, [bindNext, current, selected, updateSettings]);
+
+  const choose = (code: string) => setSelected(code);
   const listed = POPULAR.some((p) => p.code === selected);
   return (
     <SceneScroll>
@@ -143,6 +149,8 @@ export function SpendStep({ bindNext, firstRun, onSummary }: { bindNext: BindNex
   const { data: categories, loading } = useCategories();
   const live = useMemo(() => categories.filter((c) => !c.deletedAtMs && !c.isSystem), [categories]);
   const [picked, setPicked] = useState<Set<string> | null>(null);
+  // Names created by earlier attempts, so a retry after a partial failure never duplicates.
+  const created = useRef(new Set<string>());
 
   // Initial selection: what the user already has.
   useEffect(() => {
@@ -162,14 +170,18 @@ export function SpendStep({ bindNext, firstRun, onSummary }: { bindNext: BindNex
       let added = 0;
       for (const o of options) {
         const key = o.name.toLowerCase();
-        if (picked.has(key) && !have.has(key)) {
+        if (picked.has(key) && !have.has(key) && !created.current.has(key)) {
           await CategoryRepository.create({ name: o.name, emoji: o.emoji, isSystem: false });
+          created.current.add(key);
           added++;
         }
       }
       // Only on first run: drop default categories the user turned off (soft delete, undoable).
       if (firstRun) {
-        for (const [key, c] of have) if (!picked.has(key)) await CategoryRepository.delete(c.id);
+        for (const [key, c] of have) if (!picked.has(key) && !created.current.has(`deleted:${key}`)) {
+          await CategoryRepository.delete(c.id);
+          created.current.add(`deleted:${key}`);
+        }
       }
       onSummary({ categoriesAdded: added });
     });
@@ -177,6 +189,7 @@ export function SpendStep({ bindNext, firstRun, onSummary }: { bindNext: BindNex
   }, [bindNext, firstRun, live, onSummary, options, picked]);
 
   const toggle = (name: string) => {
+    if (!picked) return; // wait until the existing categories are part of the selection
     const key = name.toLowerCase();
     const isExisting = live.some((c) => c.name.toLowerCase() === key);
     if (isExisting && !firstRun) return; // replay: never remove existing categories here
@@ -203,7 +216,8 @@ export function SpendStep({ bindNext, firstRun, onSummary }: { bindNext: BindNex
                 accessibilityLabel={`Category ${o.name}`}
                 accessibilityState={{ selected: on }}
                 onPress={() => toggle(o.name)}
-                style={[styles.chip, on && styles.chipOn]}
+                disabled={!picked}
+                style={[styles.chip, on && styles.chipOn, !picked && { opacity: 0.5 }]}
               >
                 <Text style={styles.chipEmoji}>{o.emoji}</Text>
                 <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.name}</Text>
@@ -231,9 +245,12 @@ const ACCOUNT_OPTIONS: Array<{ key: string; emoji: string; label: string; kind: 
   { key: 'savings', emoji: '🐷', label: 'Savings pot', kind: 'savings', placeholder: 'e.g. Emergency fund', amountLabel: 'Current balance' },
 ];
 
-function toCents(s: string): number | undefined {
-  const n = parseFloat(s.replace(/[^0-9.]/g, ''));
-  return Number.isFinite(n) ? Math.round(n * 100) : undefined;
+/** Empty → undefined; otherwise a signed decimal (thousands separators allowed) or an error. */
+function toCents(s: string, label: string): number | undefined {
+  const clean = s.replace(/[\s,]/g, '');
+  if (!clean) return undefined;
+  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(clean)) throw new Error(`${label} isn't a valid amount.`);
+  return Math.round(parseFloat(clean) * 100);
 }
 
 type Draft = { on: boolean; name: string; amount: string };
@@ -246,6 +263,7 @@ export function AccountsStep({ bindNext, onSummary }: { bindNext: BindNext; onSu
   const live = useMemo(() => accounts.filter((a) => !a.deletedAtMs), [accounts]);
   const cash = live.find((a) => a.kind === 'cash' && a.name.toLowerCase() === 'cash');
   const [cashAmount, setCashAmount] = useState('');
+  const created = useRef(new Set<string>());
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
     Object.fromEntries(ACCOUNT_OPTIONS.map((o) => [o.key, { on: false, name: '', amount: '' }]))
   );
@@ -255,17 +273,19 @@ export function AccountsStep({ bindNext, onSummary }: { bindNext: BindNext; onSu
       let added = 0;
       for (const o of ACCOUNT_OPTIONS) {
         const d = drafts[o.key];
-        if (!d.on) continue;
-        const cents = toCents(d.amount);
+        if (!d.on || created.current.has(o.key)) continue;
+        const cents = toCents(d.amount, `${o.label} ${o.amountLabel.toLowerCase()}`);
+        if (o.kind === 'card' && cents !== undefined && cents < 0) throw new Error('A credit limit can\'t be negative.');
         await AccountRepository.create({
           name: d.name.trim() || o.label,
           emoji: o.emoji,
           kind: o.kind,
           ...(o.kind === 'card' ? { limitAmountCents: cents } : { openingBalanceCents: cents }),
         });
+        created.current.add(o.key);
         added++;
       }
-      const cashCents = toCents(cashAmount);
+      const cashCents = toCents(cashAmount, 'Cash in hand');
       if (cash && cashCents !== undefined) await AccountRepository.update(cash.id, { openingBalanceCents: cashCents });
       onSummary({ accountsAdded: added });
     });

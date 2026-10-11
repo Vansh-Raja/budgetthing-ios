@@ -142,7 +142,7 @@ export function AgentsScene({ currencyCode }: { currencyCode: string }) {
           </AnimatedView>
           <AnimatedView style={[styles.receipt, receipt]}>
             <Ionicons name="mail" size={14} color="#000" />
-            <Text style={styles.receiptText}>Swiggy · ₹486</Text>
+            <Text style={styles.receiptText}>Swiggy · {formatCents(48600, currencyCode)}</Text>
           </AnimatedView>
         </View>
         <AnimatedView style={[styles.agentCard, card]}>

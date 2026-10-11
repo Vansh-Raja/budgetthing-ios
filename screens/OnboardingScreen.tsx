@@ -9,7 +9,7 @@ import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,8 +34,12 @@ export function OnboardingScreen() {
   const fromSettings = params.fromSettings === 'true';
   const { settings, updateSettings } = useUserSettings();
   const currencyCode = settings?.currencyCode ?? 'INR';
-  // Captured once: whether this is the real first run (replays never delete anything).
-  const firstRun = useRef(!fromSettings && settings?.hasSeenOnboarding === false).current;
+  // Whether this is the real first run (replays never delete anything). Settings load
+  // asynchronously, so decide once they are known and keep that answer.
+  const [firstRun, setFirstRun] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (firstRun === null && settings) setFirstRun(!fromSettings && settings.hasSeenOnboarding === false);
+  }, [firstRun, settings, fromSettings]);
 
   const [wantsSetup, setWantsSetup] = useState<boolean | null>(null);
   const steps = useMemo<Step[]>(() => [...STORY, ...(wantsSetup ? SETUP : []), ...END], [wantsSetup]);
@@ -50,6 +54,7 @@ export function OnboardingScreen() {
   const commits = useRef<Partial<Record<Step, () => Promise<void>>>>({});
 
   const step = steps[index];
+  const bindCurrency = useCallback((fn: (() => Promise<void>) | null) => { commits.current.currency = fn ?? undefined; }, []);
   const bindSpend = useCallback((fn: (() => Promise<void>) | null) => { commits.current.spend = fn ?? undefined; }, []);
   const bindAccounts = useCallback((fn: (() => Promise<void>) | null) => { commits.current.accounts = fn ?? undefined; }, []);
   const onSummary = useCallback((s: Partial<SetupSummary>) => setSummary((p) => ({ ...p, ...s })), []);
@@ -126,7 +131,7 @@ export function OnboardingScreen() {
 
       <View style={styles.topBar}>
         {index > 0 && step !== 'done' ? (
-          <PressableScale accessibilityRole="button" accessibilityLabel="Back" onPress={() => goTo(index - 1)} style={styles.iconBtn}>
+          <PressableScale accessibilityRole="button" accessibilityLabel="Back" disabled={busy} onPress={() => goTo(index - 1)} style={[styles.iconBtn, busy && { opacity: 0.4 }]}>
             <Ionicons name="chevron-back" size={22} color={Colors.textSecondary} />
           </PressableScale>
         ) : fromSettings && step !== 'done' ? (
@@ -138,7 +143,7 @@ export function OnboardingScreen() {
           <ProgressBar value={(index + 1) / steps.length} />
         </View>
         {inStory ? (
-          <PressableScale accessibilityRole="button" onPress={skipToAsk} style={styles.skip}>
+          <PressableScale accessibilityRole="button" disabled={busy} onPress={skipToAsk} style={styles.skip}>
             <Text style={styles.skipText}>Skip</Text>
           </PressableScale>
         ) : <View style={styles.skip} />}
@@ -152,8 +157,8 @@ export function OnboardingScreen() {
           {step === 'swipe' && <SwipeDemoScene currencyCode={currencyCode} />}
           {step === 'diy' && <DiyScene />}
           {step === 'ask' && <AskStep onChoose={chooseSetup} />}
-          {step === 'currency' && <CurrencyStep />}
-          {step === 'spend' && <SpendStep bindNext={bindSpend} firstRun={firstRun} onSummary={onSummary} />}
+          {step === 'currency' && <CurrencyStep bindNext={bindCurrency} />}
+          {step === 'spend' && <SpendStep bindNext={bindSpend} firstRun={firstRun === true} onSummary={onSummary} />}
           {step === 'accounts' && <AccountsStep bindNext={bindAccounts} onSummary={onSummary} />}
           {step === 'connect' && <ConnectStep onFirstImport={onFirstImport} onKeyCreated={onKeyCreated} />}
           {step === 'done' && <DoneStep summary={summary} agentConnected={agentConnected} firstImport={firstImport} />}
