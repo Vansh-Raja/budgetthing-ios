@@ -37,25 +37,25 @@ test.describe('Onboarding', () => {
       // First run: the app sends a new account to onboarding.
       await page.goto('/');
       await expect(page.getByTestId('onboarding')).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByText('Stop logging')).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Stop logging/ })).toBeVisible();
       await page.waitForTimeout(2800);
       await shot('1-hook');
 
       const next = page.getByTestId('onboarding-primary');
       await next.click();
-      await expect(page.getByText('Your agent reads')).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Your agent reads/ })).toBeVisible();
       await expect(page.getByText('OpenClaw').first()).toBeVisible();
       await page.waitForTimeout(3200);
       await shot('2-agents');
 
       await next.click();
-      await expect(page.getByText('Tap to pay.')).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Tap to pay/ })).toBeVisible();
       await page.waitForTimeout(3000);
       await shot('3-applepay');
 
       // Swipe demo: right confirms, left opens the editor; buttons do the same.
       await next.click();
-      await expect(page.getByText('Swipe to approve.')).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Swipe to approve/ })).toBeVisible();
       await page.waitForTimeout(500);
       await shot('4-swipe');
       await drag(page, 'onboarding-swipe-card', 240);
@@ -66,24 +66,45 @@ test.describe('Onboarding', () => {
       await expect(page.getByText("That's the whole job.")).toBeVisible();
 
       await next.click();
-      await expect(page.getByText('Do it yourself,')).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Do it yourself/ })).toBeVisible();
       await page.waitForTimeout(1200);
       await shot('5-diy');
 
-      // Setup: add an account.
+      // "Set me up" → currency → categories → accounts.
       await next.click();
-      await expect(page.getByText('Make it yours.')).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Let's make it/ })).toBeVisible();
+      await page.waitForTimeout(900);
+      await shot('6-ask');
+      await page.getByTestId('onboarding-setup-yes').click();
+      await expect(page.getByRole('heading', { name: /Your currency/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: `Currency ${before.settings?.currencyCode ?? 'INR'}` })).toBeVisible();
+      await page.waitForTimeout(900);
+      await shot('7-currency');
+
+      await next.click();
+      await expect(page.getByRole('heading', { name: /What do you usually/ })).toBeVisible();
+      const newCat = ['Pets', 'Gifts', 'Education', 'Fitness', 'Coffee'].find((n) => !(before.categories as any[]).some((c) => !c.deletedAtMs && c.name === n))!;
+      await page.getByRole('button', { name: `Category ${newCat}` }).click();
+      await page.waitForTimeout(900);
+      await shot('8-spend');
+      await next.click();
+      await expect(page.getByRole('heading', { name: /Where does your/ })).toBeVisible({ timeout: 15_000 });
+      await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).categories as any[]).some((c) => !c.deletedAtMs && c.name === newCat)).toBe(true);
+
       await page.getByRole('button', { name: 'Add Credit card' }).click();
-      await expect(page.getByRole('button', { name: 'Add Credit card' })).toHaveCount(0, { timeout: 15_000 });
-      await shot('6-setup');
+      await page.getByLabel('Credit card name').fill(`Onb card ${run}`);
+      await page.getByLabel('Credit card Credit limit').fill('50000');
+      await page.waitForTimeout(600);
+      await shot('9-accounts');
+      await next.click();
+      await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts as any[]).find((a) => a.name === `Onb card ${run}`)?.limitAmountCents, { timeout: 15_000 }).toBe(5_000_000);
 
       // Connect: create a key, then a real import arrives while the page waits.
-      await next.click();
-      await expect(page.getByText('Connect your helpers.')).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Connect your/ })).toBeVisible();
       await page.getByRole('button', { name: 'Create my agent key' }).click();
       await expect(page.getByText(/Set up BudgetThing for me\./)).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Waiting for your first import/)).toBeVisible();
-      await shot('7-connect');
+      await shot('10-connect');
 
       const message = await page.getByText(/Set up BudgetThing for me\./).innerText();
       const rawKey = message.match(/BUDGETTHING_API_KEY \(keep it secret\): (\S+)/)?.[1];
@@ -97,8 +118,12 @@ test.describe('Onboarding', () => {
       });
       expect(res.status(), await res.text()).toBe(200);
       await expect(page.getByText('🎉 Your first import arrived')).toBeVisible({ timeout: 20_000 });
-      await shot('8-arrived');
+      await shot('11-arrived');
 
+      await next.click();
+      await expect(page.getByRole('heading', { name: /You're all set/ })).toBeVisible();
+      await page.waitForTimeout(1400);
+      await shot('12-done');
       await page.getByRole('button', { name: 'Open my Inbox' }).click();
       await expect(page.getByText(`Onboard ${run}`)).toBeVisible({ timeout: 20_000 });
       const settings: any = (await convexQuery(page, 'pwaPersonal:getSnapshot')).settings;
@@ -117,6 +142,10 @@ test.describe('Onboarding', () => {
         if (!keysBefore.has(k.id) && k.revokedAtMs == null) await convexMutation(page, 'apiImportKeys:revoke', { id: k.id }).catch(() => undefined);
       }
       const after: any = await convexQuery(page, 'pwaPersonal:getSnapshot').catch(() => null);
+      const catsBefore = new Set((before.categories as any[]).map((c) => c.id));
+      for (const c of (after?.categories ?? []) as any[]) {
+        if (!catsBefore.has(c.id) && !c.deletedAtMs) await convexMutation(page, 'pwaPersonal:deleteCategory', { id: c.id }).catch(() => undefined);
+      }
       for (const a of (after?.accounts ?? []) as any[]) {
         if (!accountsBefore.has(a.id)) await convexMutation(page, 'pwaPersonal:archiveAccount', { id: a.id }).catch(() => undefined);
       }

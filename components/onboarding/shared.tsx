@@ -1,52 +1,14 @@
 /**
- * Shared building blocks for the onboarding story: a looping animation clock,
- * the demo inbox card, and the AI-agent badges.
+ * Shared onboarding pieces: the AI-agent badges, the demo inbox card, and page styles.
  */
 import { Text } from '@/components/ui/LockedText';
-import React, { useEffect } from 'react';
+import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useReducedMotion,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-  type SharedValue,
-} from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { Colors, Fonts } from '@/constants/theme';
 import { formatCents } from '@/lib/logic/currencyUtils';
 
-/**
- * A 0→1 clock that repeats every `durationMs`. Scenes derive every keyframe from it.
- * With Reduce Motion on, it holds at `restAt` (a representative still frame).
- */
-export function useLoop(durationMs: number, restAt = 0.6): SharedValue<number> {
-  const reduced = useReducedMotion();
-  const t = useSharedValue(reduced ? restAt : 0);
-  useEffect(() => {
-    if (reduced) {
-      t.value = restAt;
-      return;
-    }
-    t.value = 0;
-    t.value = withRepeat(withTiming(1, { duration: durationMs, easing: Easing.linear }), -1, false);
-    return () => cancelAnimation(t);
-  }, [durationMs, reduced, restAt, t]);
-  return t;
-}
-
-/** A 0→1 progress that plays once over `durationMs` (instantly complete with Reduce Motion). */
-export function useOnce(durationMs: number): SharedValue<number> {
-  const reduced = useReducedMotion();
-  const t = useSharedValue(reduced ? 1 : 0);
-  useEffect(() => {
-    if (reduced) return;
-    t.value = withTiming(1, { duration: durationMs, easing: Easing.out(Easing.cubic) });
-    return () => cancelAnimation(t);
-  }, [durationMs, reduced, t]);
-  return t;
-}
+export { useLoop, useOnce } from './motion';
 
 /** Personal AI agents shown as examples. Stylised badges, not official logos. */
 export const AGENTS = [
@@ -54,7 +16,7 @@ export const AGENTS = [
   { name: 'Grok Bot', by: 'xAI', glyph: '✦', bg: '#F2F2F2', fg: '#000000' },
   { name: 'Muse', by: 'Meta', glyph: '∞', bg: '#0866FF', fg: '#FFFFFF' },
   { name: 'Hermes', by: 'open source', glyph: '☤', bg: '#7C3AED', fg: '#FFFFFF' },
-  { name: 'OpenClaw', by: 'open source', glyph: '🦞', bg: '#2A0E0E', fg: '#FFFFFF' },
+  { name: 'OpenClaw', by: 'open source', glyph: '🦞', bg: '#3A1212', fg: '#FFFFFF' },
 ] as const;
 
 export type Agent = (typeof AGENTS)[number];
@@ -79,15 +41,16 @@ export interface DemoItem {
 }
 
 /** Looks like a row in the import inbox. */
-export function DemoInboxCard({ item, currencyCode, style }: { item: DemoItem; currencyCode: string; style?: StyleProp<ViewStyle> }) {
+export function DemoInboxCard({ item, currencyCode, style, badge }: { item: DemoItem; currencyCode: string; style?: StyleProp<ViewStyle>; badge?: React.ReactNode }) {
   return (
     <View style={[styles.card, style]}>
-      <Text style={styles.cardEmoji}>{item.emoji}</Text>
+      <View style={styles.cardEmojiWrap}><Text style={styles.cardEmoji}>{item.emoji}</Text></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle} numberOfLines={1}>{item.merchant}</Text>
         <Text style={styles.cardMeta} numberOfLines={1}>via {item.via}</Text>
       </View>
       <Text style={styles.cardAmount}>{formatCents(item.amountCents, currencyCode)}</Text>
+      {badge}
     </View>
   );
 }
@@ -95,10 +58,10 @@ export function DemoInboxCard({ item, currencyCode, style }: { item: DemoItem; c
 export const AnimatedView = Animated.View;
 
 export const sceneStyles = StyleSheet.create({
-  scene: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
-  stage: { width: '100%', maxWidth: 360, height: 260, alignItems: 'center', justifyContent: 'center', marginBottom: 28 },
-  kicker: { fontFamily: Fonts.demiBold, fontSize: 14, letterSpacing: 1.6, color: Colors.accent, textTransform: 'uppercase', marginBottom: 10, textAlign: 'center' },
-  title: { fontFamily: Fonts.heavy, fontSize: 40, lineHeight: 44, color: Colors.textPrimary, textAlign: 'center' },
+  scene: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26 },
+  stage: { width: '100%', maxWidth: 360, height: 270, alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
+  kicker: { fontFamily: Fonts.demiBold, fontSize: 13, letterSpacing: 2, color: Colors.accent, textTransform: 'uppercase', marginBottom: 10, textAlign: 'center' },
+  title: { fontFamily: Fonts.heavy, fontSize: 42, lineHeight: 46, color: Colors.textPrimary, textAlign: 'center' },
   subtitle: { fontFamily: Fonts.medium, fontSize: 18, lineHeight: 25, color: Colors.textSecondary, textAlign: 'center', marginTop: 14, maxWidth: 340 },
   fine: { fontFamily: Fonts.medium, fontSize: 13, lineHeight: 18, color: Colors.textTertiary, textAlign: 'center', marginTop: 12, maxWidth: 320 },
 });
@@ -110,10 +73,11 @@ const styles = StyleSheet.create({
   badgeName: { fontFamily: Fonts.demiBold, fontSize: 12, color: Colors.textSecondary },
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 12, width: '100%', maxWidth: 330,
-    paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16,
-    backgroundColor: '#161616', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 12, paddingHorizontal: 14, borderRadius: 18,
+    backgroundColor: 'rgba(28,28,30,0.92)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
-  cardEmoji: { fontSize: 24 },
+  cardEmojiWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
+  cardEmoji: { fontSize: 22 },
   cardTitle: { fontFamily: Fonts.demiBold, fontSize: 17, color: Colors.textPrimary },
   cardMeta: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.textTertiary },
   cardAmount: { fontFamily: Fonts.heavy, fontSize: 20, color: Colors.textPrimary },

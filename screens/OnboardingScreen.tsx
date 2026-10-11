@@ -1,29 +1,31 @@
 /**
  * Onboarding: "Stop logging expenses."
  *
- * Story first (AI agents and Apple Pay fill the inbox, you swipe to approve, or do it
- * yourself), then setup (currency, accounts) and an optional "connect your helpers"
- * page that creates an agent key and waits live for the first import.
+ * Story (AI agents and Apple Pay fill the inbox, you swipe to approve, or do it yourself)
+ * → "set me up?" → optional currency / categories / accounts → connect helpers → finale.
  * Shared by web and native; also reachable from Settings › View Tutorial.
  */
 import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ConnectStep, SetupStep } from '@/components/onboarding/SetupSteps';
+import { Aurora, PressableScale, ProgressBar, pageEntering, pageExiting } from '@/components/onboarding/motion';
+import { AccountsStep, AskStep, CurrencyStep, DoneStep, SpendStep, type SetupSummary } from '@/components/onboarding/SetupFlow';
+import { ConnectStep } from '@/components/onboarding/SetupSteps';
 import { AgentsScene, ApplePayScene, DiyScene, HookScene } from '@/components/onboarding/StoryScenes';
 import { SwipeDemoScene } from '@/components/onboarding/SwipeDemo';
 import { Colors, Fonts } from '../constants/theme';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
 
-const STEPS = ['hook', 'agents', 'applepay', 'swipe', 'diy', 'setup', 'connect'] as const;
-type Step = (typeof STEPS)[number];
-const SETUP_INDEX = STEPS.indexOf('setup');
+type Step = 'hook' | 'agents' | 'applepay' | 'swipe' | 'diy' | 'ask' | 'currency' | 'spend' | 'accounts' | 'connect' | 'done';
+const STORY: Step[] = ['hook', 'agents', 'applepay', 'swipe', 'diy', 'ask'];
+const SETUP: Step[] = ['currency', 'spend', 'accounts'];
+const END: Step[] = ['connect', 'done'];
 
 export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
@@ -32,31 +34,44 @@ export function OnboardingScreen() {
   const fromSettings = params.fromSettings === 'true';
   const { settings, updateSettings } = useUserSettings();
   const currencyCode = settings?.currencyCode ?? 'INR';
+  // Captured once: whether this is the real first run (replays never delete anything).
+  const firstRun = useRef(!fromSettings && settings?.hasSeenOnboarding === false).current;
 
+  const [wantsSetup, setWantsSetup] = useState<boolean | null>(null);
+  const steps = useMemo<Step[]>(() => [...STORY, ...(wantsSetup ? SETUP : []), ...END], [wantsSetup]);
   const [index, setIndex] = useState(0);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [firstImport, setFirstImport] = useState(false);
-  const [finishing, setFinishing] = useState(false);
-  const [finishError, setFinishError] = useState<string | null>(null);
-  const step: Step = STEPS[index];
-  const last = index === STEPS.length - 1;
+  const [agentConnected, setAgentConnected] = useState(false);
+  const [summary, setSummary] = useState<SetupSummary>({});
+  // Save actions per step: a page that is still animating out can't overwrite the next page's.
+  const commits = useRef<Partial<Record<Step, () => Promise<void>>>>({});
 
-  const go = useCallback((next: number) => {
-    Haptics.selectionAsync().catch(() => {});
-    setIndex(Math.max(0, Math.min(STEPS.length - 1, next)));
-  }, []);
+  const step = steps[index];
+  const bindSpend = useCallback((fn: (() => Promise<void>) | null) => { commits.current.spend = fn ?? undefined; }, []);
+  const bindAccounts = useCallback((fn: (() => Promise<void>) | null) => { commits.current.accounts = fn ?? undefined; }, []);
+  const onSummary = useCallback((s: Partial<SetupSummary>) => setSummary((p) => ({ ...p, ...s })), []);
+  const onFirstImport = useCallback(() => setFirstImport(true), []);
+  const onKeyCreated = useCallback(() => setAgentConnected(true), []);
+
+  const goTo = useCallback((next: number, list: Step[] = steps) => {
+    setDirection(next >= index ? 1 : -1);
+    setError(null);
+    setIndex(Math.max(0, Math.min(list.length - 1, next)));
+  }, [index, steps]);
 
   const finish = useCallback(async () => {
-    if (finishing) return;
-    setFinishing(true);
-    setFinishError(null);
+    setBusy(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     try {
       if (!settings?.hasSeenOnboarding) await updateSettings({ hasSeenOnboarding: true });
     } catch (e) {
       // Don't leave without saving: the first-run gate would just bring the user back.
       console.warn('[Onboarding] could not save completion', e);
-      setFinishing(false);
-      setFinishError("Couldn't save your setup. Check your connection and try again.");
+      setBusy(false);
+      setError("Couldn't save your setup. Check your connection and try again.");
       return;
     }
     if (fromSettings && router.canGoBack()) {
@@ -66,76 +81,115 @@ export function OnboardingScreen() {
     }
     router.replace('/(tabs)');
     if (firstImport) router.push('/import-inbox');
-  }, [finishing, settings?.hasSeenOnboarding, updateSettings, fromSettings, router, firstImport]);
+  }, [settings?.hasSeenOnboarding, updateSettings, fromSettings, router, firstImport]);
 
-  const onFirstImport = useCallback(() => setFirstImport(true), []);
+  const next = useCallback(async () => {
+    if (busy) return;
+    if (step === 'done') return finish();
+    const save = commits.current[step];
+    if (save) {
+      setBusy(true);
+      try {
+        await save();
+      } catch (e: any) {
+        setBusy(false);
+        setError(e?.message ?? "Couldn't save that. Try again.");
+        return;
+      }
+      setBusy(false);
+    }
+    goTo(index + 1);
+  }, [busy, finish, goTo, index, step]);
 
-  const primaryLabel = last ? (firstImport ? 'Open my Inbox' : 'Start using BudgetThing') : step === 'hook' ? 'Show me how' : 'Next';
+  const chooseSetup = useCallback((yes: boolean) => {
+    setWantsSetup(yes);
+    const list = [...STORY, ...(yes ? SETUP : []), ...END];
+    setDirection(1);
+    setIndex(list.indexOf(yes ? 'currency' : 'connect'));
+  }, []);
+
+  const skipToAsk = () => goTo(STORY.indexOf('ask'));
+
+  const inStory = STORY.indexOf(step) >= 0 && step !== 'ask';
+  const label =
+    step === 'hook' ? 'Show me how'
+    : step === 'done' ? (firstImport ? 'Open my Inbox' : 'Open BudgetThing')
+    : step === 'connect' ? (agentConnected ? 'Continue' : 'Skip for now')
+    : step === 'accounts' ? 'Save and continue'
+    : 'Next';
+  const scene = Math.max(0, index);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]} testID="onboarding">
       <StatusBar barStyle="light-content" />
+      <Aurora scene={scene} />
+
       <View style={styles.topBar}>
-        {index > 0 ? (
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" onPress={() => go(index - 1)} style={styles.iconBtn}>
+        {index > 0 && step !== 'done' ? (
+          <PressableScale accessibilityRole="button" accessibilityLabel="Back" onPress={() => goTo(index - 1)} style={styles.iconBtn}>
             <Ionicons name="chevron-back" size={22} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        ) : fromSettings ? (
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => router.back()} style={styles.iconBtn}>
+          </PressableScale>
+        ) : fromSettings && step !== 'done' ? (
+          <PressableScale accessibilityRole="button" accessibilityLabel="Close" onPress={() => router.back()} style={styles.iconBtn}>
             <Ionicons name="close" size={22} color={Colors.textSecondary} />
-          </TouchableOpacity>
+          </PressableScale>
         ) : <View style={styles.iconBtn} />}
-        <View style={styles.dots} accessibilityLabel={`Step ${index + 1} of ${STEPS.length}`}>
-          {STEPS.map((s, i) => <View key={s} style={[styles.dot, i === index && styles.dotActive, i < index && styles.dotDone]} />)}
+        <View style={styles.progress} accessibilityLabel={`Step ${index + 1} of ${steps.length}`}>
+          <ProgressBar value={(index + 1) / steps.length} />
         </View>
-        {index < SETUP_INDEX ? (
-          <TouchableOpacity accessibilityRole="button" onPress={() => go(SETUP_INDEX)} style={styles.skip}>
+        {inStory ? (
+          <PressableScale accessibilityRole="button" onPress={skipToAsk} style={styles.skip}>
             <Text style={styles.skipText}>Skip</Text>
-          </TouchableOpacity>
+          </PressableScale>
         ) : <View style={styles.skip} />}
       </View>
 
-      <Animated.View key={step} entering={FadeIn.duration(260)} style={styles.body}>
-        {step === 'hook' && <HookScene currencyCode={currencyCode} />}
-        {step === 'agents' && <AgentsScene currencyCode={currencyCode} />}
-        {step === 'applepay' && <ApplePayScene currencyCode={currencyCode} />}
-        {step === 'swipe' && <SwipeDemoScene currencyCode={currencyCode} />}
-        {step === 'diy' && <DiyScene />}
-        {step === 'setup' && <SetupStep />}
-        {step === 'connect' && <ConnectStep onFirstImport={onFirstImport} />}
-      </Animated.View>
-
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
-        {finishError ? <Text style={styles.error} accessibilityRole="alert">{finishError}</Text> : null}
-        <TouchableOpacity
-          accessibilityRole="button"
-          testID="onboarding-primary"
-          onPress={() => (last ? finish() : go(index + 1))}
-          style={[styles.button, finishing && { opacity: 0.6 }]}
-          activeOpacity={0.85}
-          disabled={finishing}
-        >
-          <Text style={styles.buttonText}>{primaryLabel}</Text>
-          <Ionicons name={last ? 'checkmark' : 'arrow-forward'} size={20} color="#000" />
-        </TouchableOpacity>
+      <View style={styles.body}>
+        <Animated.View key={step} entering={pageEntering(direction)} exiting={pageExiting(direction)} style={StyleSheet.absoluteFill}>
+          {step === 'hook' && <HookScene currencyCode={currencyCode} />}
+          {step === 'agents' && <AgentsScene currencyCode={currencyCode} />}
+          {step === 'applepay' && <ApplePayScene currencyCode={currencyCode} />}
+          {step === 'swipe' && <SwipeDemoScene currencyCode={currencyCode} />}
+          {step === 'diy' && <DiyScene />}
+          {step === 'ask' && <AskStep onChoose={chooseSetup} />}
+          {step === 'currency' && <CurrencyStep />}
+          {step === 'spend' && <SpendStep bindNext={bindSpend} firstRun={firstRun} onSummary={onSummary} />}
+          {step === 'accounts' && <AccountsStep bindNext={bindAccounts} onSummary={onSummary} />}
+          {step === 'connect' && <ConnectStep onFirstImport={onFirstImport} onKeyCreated={onKeyCreated} />}
+          {step === 'done' && <DoneStep summary={summary} agentConnected={agentConnected} firstImport={firstImport} />}
+        </Animated.View>
       </View>
+
+      {step !== 'ask' ? (
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
+          {error ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
+          <PressableScale
+            accessibilityRole="button"
+            testID="onboarding-primary"
+            onPress={next}
+            disabled={busy}
+            style={[styles.button, busy && { opacity: 0.7 }]}
+          >
+            {busy ? <ActivityIndicator color="#000" /> : null}
+            <Text style={styles.buttonText}>{label}</Text>
+            {!busy ? <Ionicons name={step === 'done' ? 'sparkles' : 'arrow-forward'} size={20} color="#000" /> : null}
+          </PressableScale>
+        </View>
+      ) : <View style={{ height: insets.bottom + 18 }} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, height: 52, width: '100%', maxWidth: 560, alignSelf: 'center' },
-  iconBtn: { width: 64, height: 40, justifyContent: 'center', paddingLeft: 4 },
-  skip: { width: 64, height: 40, alignItems: 'flex-end', justifyContent: 'center', paddingRight: 8 },
+  container: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, height: 52, width: '100%', maxWidth: 560, alignSelf: 'center', gap: 8 },
+  iconBtn: { width: 44, height: 40, justifyContent: 'center', paddingLeft: 4 },
+  progress: { flex: 1, flexDirection: 'row', paddingHorizontal: 8 },
+  skip: { width: 52, height: 40, alignItems: 'flex-end', justifyContent: 'center', paddingRight: 6 },
   skipText: { fontFamily: Fonts.demiBold, fontSize: 16, color: Colors.textTertiary },
-  dots: { flexDirection: 'row', gap: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.2)' },
-  dotDone: { backgroundColor: 'rgba(255,149,0,0.5)' },
-  dotActive: { width: 20, backgroundColor: Colors.accent },
   body: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   footer: { paddingHorizontal: 24, paddingTop: 10, width: '100%', maxWidth: 520, alignSelf: 'center' },
-  button: { height: 56, borderRadius: 28, backgroundColor: Colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  buttonText: { fontFamily: Fonts.heavy, fontSize: 20, color: '#000' },
+  button: { height: 58, borderRadius: 29, backgroundColor: Colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  buttonText: { fontFamily: Fonts.heavy, fontSize: 21, color: '#000' },
   error: { fontFamily: Fonts.medium, fontSize: 14, color: Colors.error, textAlign: 'center', marginBottom: 10 },
 });

@@ -1,8 +1,6 @@
 /**
- * The two hands-on onboarding pages:
- * - SetupStep: currency and accounts.
- * - ConnectStep: connect an AI agent and the Apple Pay Shortcut (optional), with a
- *   live "waiting for your first import" check.
+ * "Connect your helpers": create an AI-agent key, copy a setup message, Apple Pay
+ * Shortcut steps, and a live "waiting for your first import" check.
  */
 import { AppleSignInButton } from '@/components/auth';
 import { Text } from '@/components/ui/LockedText';
@@ -10,106 +8,21 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { Colors, Fonts } from '@/constants/theme';
 import { api } from '@/convex/_generated/api';
 import { useAuthState } from '@/lib/auth/useAuthHooks';
-import { AccountRepository, ImportInboxRepository } from '@/lib/db/repositories';
-import { useAccounts } from '@/lib/hooks/useData';
-import { useUserSettings } from '@/lib/hooks/useUserSettings';
-import { CURRENCIES } from '@/lib/logic/currencyUtils';
-import type { AccountKind } from '@/lib/logic/types';
+import { ImportInboxRepository } from '@/lib/db/repositories';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation } from 'convex/react';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import Animated, { ZoomIn } from 'react-native-reanimated';
+import { AnimatedWords, Rise } from './motion';
 import { AGENTS, AgentBadge, sceneStyles } from './shared';
-
-const QUICK_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED'];
-
-const QUICK_ACCOUNTS: Array<{ name: string; emoji: string; kind: AccountKind }> = [
-  { name: 'Bank', emoji: '🏦', kind: 'savings' },
-  { name: 'Credit card', emoji: '💳', kind: 'card' },
-  { name: 'UPI wallet', emoji: '📱', kind: 'cash' },
-];
 
 export const SKILL_URL = 'https://budgetthing.vanshraja.me/agents/budgetthing/SKILL.md';
 // The import API lives on the same deployment as this build's Convex client (no hardcoded fallback).
 const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL;
 const IMPORT_BASE = CONVEX_URL ? CONVEX_URL.replace(/\.convex\.cloud\/?$/, '.convex.site') + '/v1' : null;
-
-export function SetupStep() {
-  const router = useRouter();
-  const toast = useToast();
-  const { settings, updateSettings } = useUserSettings();
-  const { data: accounts } = useAccounts();
-  const [adding, setAdding] = useState<string | null>(null);
-  const currency = settings?.currencyCode ?? 'INR';
-  const currencyChoices = QUICK_CURRENCIES.includes(currency) ? QUICK_CURRENCIES : [currency, ...QUICK_CURRENCIES.slice(0, 4)];
-
-  const addAccount = async (a: (typeof QUICK_ACCOUNTS)[number]) => {
-    if (adding) return;
-    setAdding(a.name);
-    Haptics.selectionAsync().catch(() => {});
-    try {
-      await AccountRepository.create({ name: a.name, emoji: a.emoji, kind: a.kind });
-    } catch (e: any) {
-      toast.show(e?.message ?? 'Could not add the account', { kind: 'error' });
-    } finally {
-      setAdding(null);
-    }
-  };
-
-  const live = accounts.filter((a) => !a.deletedAtMs);
-  return (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <Text style={sceneStyles.kicker}>Set up</Text>
-      <Text style={sceneStyles.title}>Make it yours.</Text>
-
-      <Text style={styles.label}>Currency</Text>
-      <View style={styles.chips}>
-        {currencyChoices.map((code) => {
-          const c = CURRENCIES.find((x) => x.code === code);
-          const active = code === currency;
-          return (
-            <TouchableOpacity
-              key={code}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); void updateSettings({ currencyCode: code }); }}
-              style={[styles.chip, active && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{c?.symbol ?? ''} {code}</Text>
-            </TouchableOpacity>
-          );
-        })}
-        <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/settings/currency')} style={styles.chip}>
-          <Text style={styles.chipText}>More…</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.label}>Your accounts</Text>
-      <View style={styles.chips}>
-        {live.slice(0, 6).map((a) => (
-          <View key={a.id} style={[styles.chip, styles.chipOwned]}>
-            <Text style={styles.chipTextActive}>{a.emoji} {a.name}</Text>
-          </View>
-        ))}
-        {live.length > 6 ? (
-          <View style={[styles.chip, styles.chipOwned]}><Text style={styles.chipTextActive}>+{live.length - 6} more</Text></View>
-        ) : null}
-      </View>
-      <Text style={styles.hint}>Add the ones you use. You can set balances later in Accounts.</Text>
-      <View style={styles.chips}>
-        {QUICK_ACCOUNTS.filter((q) => !live.some((a) => a.name.toLowerCase() === q.name.toLowerCase())).map((q) => (
-          <TouchableOpacity key={q.name} accessibilityRole="button" accessibilityLabel={`Add ${q.name}`} onPress={() => addAccount(q)} style={[styles.chip, styles.chipAdd]}>
-            {adding === q.name ? <ActivityIndicator size="small" color={Colors.accent} /> : <Ionicons name="add" size={16} color={Colors.accent} />}
-            <Text style={styles.chipText}>{q.emoji} {q.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
-  );
-}
 
 function setupMessage(key: string) {
   return [
@@ -129,7 +42,7 @@ const SHORTCUT_STEPS = (key: string | null) => [
   'JSON body: source "apple-pay", items = [{ externalId: same as Idempotency-Key, type "expense", amountCents: Rounded Number, currencyCode: your currency, occurredAt: Current Date (ISO 8601), merchantName: Merchant }].',
 ];
 
-export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
+export function ConnectStep({ onFirstImport, onKeyCreated }: { onFirstImport: () => void; onKeyCreated: () => void }) {
   const { isSignedIn } = useAuthState();
   const createKey = useMutation(api.apiImportKeys.create);
   const toast = useToast();
@@ -170,6 +83,7 @@ export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
       baseline.current = await ImportInboxRepository.countPending().catch(() => null);
       const r = await createKey({ name: 'My AI agent', expiresIn: '1y' });
       setKey(r.rawKey);
+      onKeyCreated();
     } catch (e: any) {
       toast.show(e?.message ?? 'Could not create a key', { kind: 'error' });
     } finally {
@@ -186,10 +100,11 @@ export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <Text style={sceneStyles.kicker}>Optional · 2 minutes</Text>
-      <Text style={sceneStyles.title}>Connect your helpers.</Text>
-      <Text style={[sceneStyles.subtitle, { marginBottom: 18 }]}>Set up automatic imports now, or later from Settings › Agent Import API.</Text>
+      <Rise><Text style={sceneStyles.kicker}>Optional · 2 minutes</Text></Rise>
+      <AnimatedWords text={'Connect your\nhelpers.'} style={sceneStyles.title} delay={60} accentWords={['helpers']} />
+      <Rise delay={320}><Text style={[sceneStyles.subtitle, { marginBottom: 18 }]}>Set up automatic imports now, or later from Settings › Agent Import API.</Text></Rise>
 
+      <Rise delay={440} style={{ alignSelf: 'stretch' }}>
       {!isSignedIn ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Sign in to connect</Text>
@@ -237,7 +152,7 @@ export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
           </View>
 
           {key ? (
-            <View style={[styles.card, arrived && styles.cardSuccess]} testID="onboarding-first-import">
+            <Animated.View key={arrived ? 'arrived' : 'waiting'} entering={ZoomIn.springify().damping(14)} style={[styles.card, arrived && styles.cardSuccess]} testID="onboarding-first-import">
               {arrived ? (
                 <>
                   <Text style={styles.cardTitle}>🎉 Your first import arrived</Text>
@@ -249,10 +164,11 @@ export function ConnectStep({ onFirstImport }: { onFirstImport: () => void }) {
                   <Text style={styles.cardBody}>Waiting for your first import… Ask your agent to send one, or pay with Apple Pay.</Text>
                 </View>
               )}
-            </View>
+            </Animated.View>
           ) : null}
         </>
       )}
+      </Rise>
     </ScrollView>
   );
 }

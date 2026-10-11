@@ -7,6 +7,8 @@ First-run story that leads with automatic imports (AI agents + Apple Pay Shortcu
 - [x] Connect: create an agent key, copy a setup message (skill URL + key), Apple Pay Shortcut steps, live "waiting for your first import" that lands on the Inbox. Native guests see Sign in with Apple instead.
 - [x] Web first-run gate: brand-new accounts (seeded by `seedDefaultsIfEmpty`) start with `hasSeenOnboarding = 0`; existing settings are never reset. Settings › View Tutorial replays it.
 - [x] Tests: `e2e/onboarding.spec.ts` (mobile WebKit + desktop Chromium, real key and real import), convex seed tests; native checked in the iOS Simulator.
+- [x] v2 (2026-10-11): Reanimated motion system (word-by-word titles, spring pressables, 3D agent orbit, soft radial-gradient glows, directional page transitions, confetti), swipe deck with stamps and threshold haptics.
+- [x] v2: optional "Set me up" sub-flow: currency grid with live preview, "What do you usually spend on?" (18 suggested categories; first run can drop unused defaults), "Where does your money live?" (bank / card / UPI / savings with name and balance or limit, cash in hand), and a "You're all set" finale.
 - [ ] Publish a ready-made iCloud Shortcut link for Apple Pay and verify the Wallet automation with Indian cards on a real iPhone.
 
 ## Mobile-first Expo PWA execution plan (published 2026-09-18)
