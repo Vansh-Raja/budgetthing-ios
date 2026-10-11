@@ -1,212 +1,349 @@
 /**
- * The animated story pages of onboarding: the hook, AI agents, Apple Pay, and
- * "do it yourself". Each scene loops a short animation driven by one clock.
+ * The animated story pages: the hook, AI agents, Apple Pay, and "do it yourself".
+ * Each scene loops one clock and derives every keyframe from it.
  */
 import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { Extrapolation, interpolate, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { Colors, Fonts } from '@/constants/theme';
-import { AGENTS, AgentBadge, AnimatedView, DemoInboxCard, sceneStyles, useLoop, useOnce, type DemoItem } from './shared';
+import { formatCents } from '@/lib/logic/currencyUtils';
+import { AnimatedWords, CYAN, Rise, useLoop } from './motion';
+import { AGENTS, AgentBadge, AnimatedView, DemoInboxCard, sceneStyles, type DemoItem } from './shared';
 
 const clamp = Extrapolation.CLAMP;
+const LOGO = require('../../assets/images/onboarding-logo.png');
 
-/** Fade/slide in over [start, start+0.08] and out over [end, end+0.06] of the loop. */
-function useWindow(t: SharedValue<number>, start: number, end: number, fromY = 16) {
-  return useAnimatedStyle(() => {
-    const inP = interpolate(t.value, [start, start + 0.08], [0, 1], clamp);
-    const outP = interpolate(t.value, [end, end + 0.06], [0, 1], clamp);
-    return { opacity: inP * (1 - outP), transform: [{ translateY: (1 - inP) * fromY }] };
-  });
+/** Scrolls only if the device is too short; otherwise centred. */
+export function SceneScroll({ children }: { children: React.ReactNode }) {
+  return (
+    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
+      {children}
+    </ScrollView>
+  );
 }
 
+/** Spring-like pop: 0 → overshoot → settle, between `a` and `b` of the loop. */
+function pop(t: number, a: number, b: number) {
+  'worklet';
+  return interpolate(t, [a, a + (b - a) * 0.6, b], [0, 1.12, 1], clamp);
+}
+
+// ---------------------------------------------------------------------------
+// 1. Hook
+// ---------------------------------------------------------------------------
+
 const HOOK_ITEMS: DemoItem[] = [
-  { id: 'h1', emoji: '🍔', merchant: 'Swiggy', amountCents: 48600, via: 'your agent' },
-  { id: 'h2', emoji: '🚕', merchant: 'Uber', amountCents: 21200, via: 'your agent' },
+  { id: 'h1', emoji: '🍔', merchant: 'Swiggy', amountCents: 48600, via: 'your AI agent' },
+  { id: 'h2', emoji: '🚕', merchant: 'Uber', amountCents: 21200, via: 'your AI agent' },
   { id: 'h3', emoji: '☕', merchant: 'Blue Tokai', amountCents: 24000, via: 'Apple Pay' },
 ];
 
 function HookCard({ t, index, item, currencyCode }: { t: SharedValue<number>; index: number; item: DemoItem; currencyCode: string }) {
-  const style = useWindow(t, 0.06 + index * 0.14, 0.88, -24);
+  const start = 0.04 + index * 0.13;
+  const card = useAnimatedStyle(() => {
+    const p = interpolate(t.value, [start, start + 0.1, start + 0.14], [0, 1.04, 1], clamp);
+    const out = interpolate(t.value, [0.9, 0.97], [0, 1], clamp);
+    return {
+      opacity: Math.min(1, p) * (1 - out),
+      transform: [
+        { translateY: (1 - p) * -70 + out * 30 },
+        { rotate: `${(1 - Math.min(1, p)) * (index % 2 ? 7 : -7)}deg` },
+        { scale: 0.9 + 0.1 * p },
+      ],
+    };
+  });
+  const check = useAnimatedStyle(() => ({ transform: [{ scale: pop(t.value, start + 0.2, start + 0.27) }] }));
   return (
-    <AnimatedView style={[{ width: '100%', alignItems: 'center' }, style]}>
-      <DemoInboxCard item={item} currencyCode={currencyCode} />
+    <AnimatedView style={[{ width: '100%', alignItems: 'center' }, card]}>
+      <DemoInboxCard
+        item={item}
+        currencyCode={currencyCode}
+        badge={
+          <AnimatedView style={[styles.check, check]}>
+            <Ionicons name="checkmark" size={14} color="#000" />
+          </AnimatedView>
+        }
+      />
     </AnimatedView>
   );
 }
 
 export function HookScene({ currencyCode }: { currencyCode: string }) {
-  const t = useLoop(6000, 0.7);
+  const t = useLoop(7000, 0.8);
   return (
-    <View style={sceneStyles.scene}>
+    <SceneScroll>
       <View style={[sceneStyles.stage, { gap: 10 }]}>
         {HOOK_ITEMS.map((item, i) => <HookCard key={item.id} t={t} index={i} item={item} currencyCode={currencyCode} />)}
       </View>
-      <Text style={sceneStyles.title}>Stop logging{'\n'}expenses.</Text>
-      <Text style={sceneStyles.subtitle}>Let BudgetThing do it. Your expenses arrive on their own. You just approve them.</Text>
-    </View>
+      <AnimatedWords text={'Stop logging\nexpenses.'} style={[sceneStyles.title, styles.hero]} delay={120} accentWords={['expenses']} />
+      <Rise delay={520}>
+        <Text style={sceneStyles.subtitle}>Let BudgetThing do it. Your expenses arrive on their own. You just approve them.</Text>
+      </Rise>
+    </SceneScroll>
   );
 }
 
-function BobbingBadge({ t, index }: { t: SharedValue<number>; index: number }) {
+// ---------------------------------------------------------------------------
+// 2. AI agents: badges orbit the app in 3D; a receipt flies into the centre.
+// ---------------------------------------------------------------------------
+
+const RX = 136;
+const RY = 58;
+
+function OrbitBadge({ t, index }: { t: SharedValue<number>; index: number }) {
   const style = useAnimatedStyle(() => {
-    const phase = (t.value + index / AGENTS.length) % 1;
-    const active = interpolate(t.value, [index / AGENTS.length, index / AGENTS.length + 0.1, (index + 1) / AGENTS.length], [0, 1, 0], clamp);
-    return { transform: [{ translateY: Math.sin(phase * Math.PI * 2) * 4 }, { scale: 1 + active * 0.14 }] };
+    const a = (t.value + index / AGENTS.length) * Math.PI * 2;
+    const depth = (Math.sin(a) + 1) / 2; // 0 = back, 1 = front
+    return {
+      zIndex: depth > 0.5 ? 3 : 1,
+      opacity: 0.45 + depth * 0.55,
+      transform: [{ translateX: Math.cos(a) * RX }, { translateY: Math.sin(a) * RY }, { scale: 0.72 + depth * 0.38 }],
+    };
   });
   return (
-    <AnimatedView style={style}>
-      <AgentBadge agent={AGENTS[index]} size={46} />
+    <AnimatedView style={[styles.orbitItem, style]}>
+      <AgentBadge agent={AGENTS[index]} size={48} showName={false} />
     </AnimatedView>
   );
 }
 
 export function AgentsScene({ currencyCode }: { currencyCode: string }) {
-  const t = useLoop(5000, 0.75);
-  const email = useWindow(t, 0.02, 0.4, 12);
-  const flow = useAnimatedStyle(() => {
-    const p = interpolate(t.value, [0.32, 0.55], [0, 1], clamp);
-    return { opacity: p > 0 && p < 1 ? 1 : 0, transform: [{ translateY: p * 46 }] };
+  const orbit = useLoop(16000, 0.15);
+  const beat = useLoop(3200, 0.85);
+  const receipt = useAnimatedStyle(() => {
+    const p = interpolate(beat.value, [0.05, 0.42], [0, 1], clamp);
+    return {
+      opacity: interpolate(beat.value, [0.05, 0.12, 0.36, 0.44], [0, 1, 1, 0], clamp),
+      transform: [{ translateX: (1 - p) * -120 }, { translateY: (1 - p) * -96 + Math.sin(p * Math.PI) * -18 }, { scale: 1 - p * 0.55 }],
+    };
   });
-  const card = useWindow(t, 0.52, 0.92, 18);
+  const logo = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(beat.value, [0.4, 0.47, 0.6], [1, 1.14, 1], clamp) }],
+  }));
+  const ring = useAnimatedStyle(() => {
+    const p = interpolate(beat.value, [0.42, 0.8], [0, 1], clamp);
+    return { opacity: p > 0 && p < 1 ? 0.8 * (1 - p) : 0, transform: [{ scale: 1 + p * 1.4 }] };
+  });
+  const card = useAnimatedStyle(() => {
+    const p = interpolate(beat.value, [0.5, 0.64, 0.7], [0, 1.05, 1], clamp);
+    const out = interpolate(beat.value, [0.92, 0.99], [0, 1], clamp);
+    return { opacity: Math.min(1, p) * (1 - out), transform: [{ translateY: (1 - Math.min(1, p)) * -30 }, { scale: 0.85 + 0.15 * p }] };
+  });
   return (
-    <View style={sceneStyles.scene}>
-      <View style={sceneStyles.stage}>
-        <View style={styles.badgeRow}>
-          {AGENTS.map((_, i) => <BobbingBadge key={i} t={t} index={i} />)}
-        </View>
-        <View style={styles.pipeline}>
-          <AnimatedView style={[styles.email, email]}>
-            <Ionicons name="mail" size={18} color={Colors.textSecondary} />
-            <Text style={styles.emailText} numberOfLines={1}>Your Swiggy order is delivered · ₹486</Text>
+    <SceneScroll>
+      <View style={[sceneStyles.stage, { height: 250 }]}>
+        <View style={styles.orbit}>
+          {AGENTS.map((_, i) => <OrbitBadge key={i} t={orbit} index={i} />)}
+          <AnimatedView style={[styles.pulseRing, ring]} />
+          <AnimatedView style={[styles.logoWrap, logo]}>
+            <Image source={LOGO} style={styles.logo} accessibilityIgnoresInvertColors />
           </AnimatedView>
-          <AnimatedView style={[styles.spark, flow]}>
-            <Ionicons name="sparkles" size={18} color={Colors.accent} />
-          </AnimatedView>
-          <AnimatedView style={[styles.cardSlot, card]}>
-            <DemoInboxCard item={{ id: 'a1', emoji: '🍔', merchant: 'Swiggy', amountCents: 48600, via: 'your AI agent' }} currencyCode={currencyCode} />
+          <AnimatedView style={[styles.receipt, receipt]}>
+            <Ionicons name="mail" size={14} color="#000" />
+            <Text style={styles.receiptText}>Swiggy · {formatCents(48600, currencyCode)}</Text>
           </AnimatedView>
         </View>
+        <AnimatedView style={[styles.agentCard, card]}>
+          <DemoInboxCard item={{ id: 'a1', emoji: '🍔', merchant: 'Swiggy', amountCents: 48600, via: 'your AI agent' }} currencyCode={currencyCode} />
+        </AnimatedView>
       </View>
-      <Text style={sceneStyles.kicker}>AI agents</Text>
-      <Text style={sceneStyles.title}>Your agent reads{'\n'}the receipts.</Text>
-      <Text style={sceneStyles.subtitle}>
-        Give your personal AI agent the BudgetThing skill. It spots charges in your email and bank alerts and sends them straight to your inbox.
-      </Text>
-      <Text style={sceneStyles.fine}>Works with Dots, Grok Bot, Muse, Hermes, OpenClaw and other agents. BudgetThing never reads your email.</Text>
-    </View>
+      <Rise><Text style={sceneStyles.kicker}>AI agents</Text></Rise>
+      <AnimatedWords text={'Your agent reads\nthe receipts.'} style={sceneStyles.title} delay={80} accentWords={['receipts']} />
+      <Rise delay={420}>
+        <Text style={sceneStyles.subtitle}>
+          Give your personal AI agent the BudgetThing skill. It spots charges in your email and bank alerts and sends them straight to your inbox.
+        </Text>
+      </Rise>
+      <Rise delay={560}>
+        <Text style={sceneStyles.fine}>Works with Dots, Grok Bot, Muse, Hermes, OpenClaw and other agents. BudgetThing never reads your email.</Text>
+      </Rise>
+    </SceneScroll>
   );
 }
 
-function Ring({ t, delay }: { t: SharedValue<number>; delay: number }) {
+// ---------------------------------------------------------------------------
+// 3. Apple Pay: the phone taps the reader, Face ID confirms, the charge flies in.
+// ---------------------------------------------------------------------------
+
+function NfcRing({ t, delay }: { t: SharedValue<number>; delay: number }) {
   const style = useAnimatedStyle(() => {
-    const p = interpolate(t.value, [0.25 + delay, 0.5 + delay], [0, 1], clamp);
-    return { opacity: p > 0 && p < 1 ? 1 - p : 0, transform: [{ scale: 0.6 + p * 1.2 }] };
+    const p = interpolate(t.value, [0.24 + delay, 0.52 + delay], [0, 1], clamp);
+    return { opacity: p > 0 && p < 1 ? 1 - p : 0, transform: [{ scale: 0.5 + p * 1.4 }] };
   });
-  return <AnimatedView style={[styles.ring, style]} />;
+  return <AnimatedView style={[styles.nfc, style]} />;
 }
 
 export function ApplePayScene({ currencyCode }: { currencyCode: string }) {
-  const t = useLoop(4600, 0.8);
+  const t = useLoop(5200, 0.8);
   const phone = useAnimatedStyle(() => ({
-    transform: [{ translateX: interpolate(t.value, [0, 0.25, 0.5, 0.95, 1], [-70, -18, -18, -70, -70], clamp) }],
+    transform: [
+      { translateX: interpolate(t.value, [0, 0.2, 0.24, 0.6, 0.9, 1], [-74, -6, -12, -12, -74, -74], clamp) },
+      { rotate: `${interpolate(t.value, [0, 0.2, 0.6, 0.9], [-8, 0, 0, -8], clamp)}deg` },
+    ],
   }));
-  const done = useAnimatedStyle(() => ({ opacity: interpolate(t.value, [0.42, 0.48, 0.9, 0.96], [0, 1, 1, 0], clamp) }));
-  const card = useWindow(t, 0.5, 0.9, 24);
+  const card = useAnimatedStyle(() => ({ opacity: interpolate(t.value, [0.36, 0.42], [1, 0], clamp) }));
+  const done = useAnimatedStyle(() => ({
+    opacity: interpolate(t.value, [0.38, 0.44, 0.86, 0.92], [0, 1, 1, 0], clamp),
+    transform: [{ scale: pop(t.value, 0.38, 0.48) }],
+  }));
+  const inbox = useAnimatedStyle(() => {
+    const p = interpolate(t.value, [0.5, 0.62, 0.67], [0, 1.06, 1], clamp);
+    const out = interpolate(t.value, [0.9, 0.98], [0, 1], clamp);
+    return { opacity: Math.min(1, p) * (1 - out), transform: [{ translateY: (1 - Math.min(1, p)) * -60 }, { scale: 0.8 + 0.2 * p }] };
+  });
+  const amount = useAnimatedStyle(() => ({ opacity: interpolate(t.value, [0.62, 0.7, 0.88, 0.94], [0, 1, 1, 0], clamp) }));
   return (
-    <View style={sceneStyles.scene}>
-      <View style={sceneStyles.stage}>
+    <SceneScroll>
+      <View style={[sceneStyles.stage, { height: 290 }]}>
         <View style={styles.payRow}>
           <AnimatedView style={phone}>
             <View style={styles.phone}>
-              <Ionicons name="logo-apple" size={22} color="#fff" />
-              <Text style={styles.phoneText}>Pay</Text>
-              <AnimatedView style={done}>
-                <Ionicons name="checkmark-circle" size={26} color={Colors.success} />
+              <View style={styles.notch} />
+              <AnimatedView style={[styles.walletCard, card]}>
+                <Text style={styles.walletBank}>BANK</Text>
+                <Text style={styles.walletDigits}>•••• 4321</Text>
+              </AnimatedView>
+              <AnimatedView style={[styles.doneWrap, done]}>
+                <Ionicons name="checkmark-circle" size={40} color={Colors.success} />
+                <Text style={styles.doneText}>Done</Text>
               </AnimatedView>
             </View>
           </AnimatedView>
           <View style={styles.reader}>
-            <Ring t={t} delay={0} />
-            <Ring t={t} delay={0.08} />
+            <NfcRing t={t} delay={0} />
+            <NfcRing t={t} delay={0.07} />
+            <NfcRing t={t} delay={0.14} />
             <Ionicons name="wifi" size={26} color={Colors.textSecondary} style={{ transform: [{ rotate: '90deg' }] }} />
           </View>
         </View>
-        <AnimatedView style={[styles.payCard, card]}>
+        <AnimatedView style={[styles.payCard, inbox]}>
           <DemoInboxCard item={{ id: 'p1', emoji: '☕', merchant: 'Blue Tokai', amountCents: 24000, via: 'Apple Pay' }} currencyCode={currencyCode} />
         </AnimatedView>
+        <AnimatedView style={[styles.loggedChip, amount]}>
+          <Text style={styles.loggedText}>Logged {formatCents(24000, currencyCode)} in 0.4s</Text>
+        </AnimatedView>
       </View>
-      <Text style={sceneStyles.kicker}>Apple Pay + Shortcuts</Text>
-      <Text style={sceneStyles.title}>Tap to pay.{'\n'}It's already logged.</Text>
-      <Text style={sceneStyles.subtitle}>
-        An Apple Shortcut runs when you pay with your iPhone and drops the charge into BudgetThing before you've put your phone away.
-      </Text>
-      <Text style={sceneStyles.fine}>Uses the Shortcuts Wallet automation with supported cards.</Text>
+      <Rise><Text style={sceneStyles.kicker}>Apple Pay + Shortcuts</Text></Rise>
+      <AnimatedWords text={"Tap to pay.\nIt's already logged."} style={sceneStyles.title} delay={80} accentWords={['logged']} />
+      <Rise delay={420}>
+        <Text style={sceneStyles.subtitle}>
+          An Apple Shortcut runs when you pay with your iPhone and drops the charge into BudgetThing before you've put your phone away.
+        </Text>
+      </Rise>
+      <Rise delay={540}><Text style={sceneStyles.fine}>Uses the Shortcuts Wallet automation with supported cards.</Text></Rise>
+    </SceneScroll>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 5. Do it yourself: four tiles, each with its own little loop.
+// ---------------------------------------------------------------------------
+
+function CalcIcon() {
+  const t = useLoop(2400, 1);
+  const a = useAnimatedStyle(() => ({ opacity: interpolate(t.value, [0, 0.1, 0.45, 0.55], [0, 1, 1, 0], clamp) }));
+  const b = useAnimatedStyle(() => ({ opacity: interpolate(t.value, [0.5, 0.6, 0.9, 1], [0, 1, 1, 0], clamp) }));
+  return (
+    <View style={styles.tileIcon}>
+      <AnimatedView style={[StyleSheet.absoluteFill, styles.center, a]}><Text style={styles.calcText}>₹240</Text></AnimatedView>
+      <AnimatedView style={[StyleSheet.absoluteFill, styles.center, b]}><Text style={styles.calcText}>☕ ✓</Text></AnimatedView>
     </View>
   );
+}
+
+function Bar({ t, i }: { t: SharedValue<number>; i: number }) {
+  const s = useAnimatedStyle(() => ({ height: 8 + Math.abs(Math.sin((t.value + i * 0.21) * Math.PI)) * 22 }));
+  return <AnimatedView style={[styles.bar, s, i === 1 && { backgroundColor: CYAN }]} />;
+}
+
+function BarsIcon() {
+  const t = useLoop(2600, 0.4);
+  return <View style={[styles.tileIcon, styles.bars]}>{[0, 1, 2].map((i) => <Bar key={i} t={t} i={i} />)}</View>;
+}
+
+function PlaneIcon() {
+  const t = useLoop(2800, 0.5);
+  const s = useAnimatedStyle(() => ({ transform: [{ translateX: interpolate(t.value, [0, 1], [-16, 16]) }, { translateY: Math.sin(t.value * Math.PI * 2) * 4 }] }));
+  return <View style={styles.tileIcon}><AnimatedView style={s}><Text style={{ fontSize: 24 }}>✈️</Text></AnimatedView></View>;
+}
+
+function UndoIcon() {
+  const t = useLoop(3000, 1);
+  const s = useAnimatedStyle(() => ({ transform: [{ rotate: `${interpolate(t.value, [0.6, 0.85], [0, -360], clamp)}deg` }] }));
+  return <View style={styles.tileIcon}><AnimatedView style={s}><Ionicons name="arrow-undo" size={24} color={Colors.accent} /></AnimatedView></View>;
 }
 
 const DIY = [
-  { emoji: '🧮', title: 'Two-tap entry', body: 'Type the amount, pick an emoji. Done.' },
-  { emoji: '🏦', title: 'Accounts that add up', body: 'Cash, bank and cards, with transfers.' },
-  { emoji: '✈️', title: 'Trips with friends', body: 'Split any way, settle up in one tap.' },
-  { emoji: '↩️', title: 'Undo anything', body: 'Every change is kept. Nothing is lost.' },
+  { icon: <CalcIcon />, title: 'Two-tap entry', body: 'Type the amount, pick an emoji. Done.' },
+  { icon: <BarsIcon />, title: 'Accounts that add up', body: 'Cash, bank and cards, with transfers.' },
+  { icon: <PlaneIcon />, title: 'Trips with friends', body: 'Split any way, settle up in one tap.' },
+  { icon: <UndoIcon />, title: 'Undo anything', body: 'Every change is kept. Nothing is lost.' },
 ];
 
-function DiyTile({ t, index }: { t: SharedValue<number>; index: number }) {
-  const style = useAnimatedStyle(() => {
-    const p = interpolate(t.value, [index * 0.18, index * 0.18 + 0.46], [0, 1], clamp);
-    return { opacity: p, transform: [{ translateY: (1 - p) * 14 }] };
-  });
-  const tile = DIY[index];
-  return (
-    <AnimatedView style={[styles.tile, style]}>
-      <Text style={styles.tileEmoji}>{tile.emoji}</Text>
-      <Text style={styles.tileTitle}>{tile.title}</Text>
-      <Text style={styles.tileBody}>{tile.body}</Text>
-    </AnimatedView>
-  );
-}
-
 export function DiyScene() {
-  const t = useOnce(900);
   return (
-    <View style={sceneStyles.scene}>
-      <Text style={sceneStyles.kicker}>And when you want to</Text>
-      <Text style={[sceneStyles.title, { marginBottom: 22 }]}>Do it yourself,{'\n'}fast.</Text>
+    <SceneScroll>
+      <Rise><Text style={sceneStyles.kicker}>And when you want to</Text></Rise>
+      <AnimatedWords text={'Do it yourself,\nfast.'} style={[sceneStyles.title, { marginBottom: 22 }]} delay={60} accentWords={['fast']} />
       <View style={styles.grid}>
-        {DIY.map((_, i) => <DiyTile key={i} t={t} index={i} />)}
+        {DIY.map((tile, i) => (
+          <Rise key={tile.title} delay={260 + i * 90} style={styles.tileWrap}>
+            <View style={styles.tile}>
+              {tile.icon}
+              <Text style={styles.tileTitle}>{tile.title}</Text>
+              <Text style={styles.tileBody}>{tile.body}</Text>
+            </View>
+          </Rise>
+        ))}
       </View>
-    </View>
+    </SceneScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  badgeRow: { flexDirection: 'row', justifyContent: 'center', gap: 4, marginBottom: 18 },
-  pipeline: { width: '100%', alignItems: 'center', height: 150 },
-  email: {
-    position: 'absolute', top: 0, flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 330,
-    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: '#0E0E0E', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+  scroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26, paddingVertical: 12 },
+  hero: { fontSize: 54, lineHeight: 56 },
+  center: { alignItems: 'center', justifyContent: 'center' },
+  check: { position: 'absolute', right: -6, top: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.success, alignItems: 'center', justifyContent: 'center' },
+  orbit: { width: 320, height: 170, alignItems: 'center', justifyContent: 'center' },
+  orbitItem: { position: 'absolute' },
+  logoWrap: { zIndex: 2, width: 78, height: 78, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(61,224,245,0.5)' },
+  logo: { width: 78, height: 78 },
+  pulseRing: { position: 'absolute', zIndex: 2, width: 84, height: 84, borderRadius: 24, borderWidth: 2, borderColor: CYAN },
+  receipt: {
+    position: 'absolute', zIndex: 4, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, height: 28, borderRadius: 14,
+    backgroundColor: '#fff',
   },
-  emailText: { fontFamily: Fonts.medium, fontSize: 14, color: Colors.textSecondary },
-  spark: { position: 'absolute', top: 40 },
-  cardSlot: { position: 'absolute', top: 84, width: '100%', alignItems: 'center' },
-  payCard: { width: '100%', alignItems: 'center', marginTop: 22 },
-  payRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 0, height: 140 },
+  receiptText: { fontFamily: Fonts.demiBold, fontSize: 13, color: '#000' },
+  agentCard: { width: '100%', alignItems: 'center', marginTop: 4 },
+  payRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 160 },
   phone: {
-    width: 74, height: 132, borderRadius: 18, borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)', backgroundColor: '#0A0A0A',
-    alignItems: 'center', justifyContent: 'center', gap: 2,
+    width: 84, height: 156, borderRadius: 22, borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', backgroundColor: '#070707',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  phoneText: { fontFamily: Fonts.demiBold, fontSize: 15, color: '#fff' },
+  notch: { position: 'absolute', top: 7, width: 28, height: 7, borderRadius: 4, backgroundColor: '#222' },
+  walletCard: { width: 66, height: 42, borderRadius: 7, backgroundColor: '#1E4ED8', padding: 6, justifyContent: 'space-between' },
+  walletBank: { fontFamily: Fonts.heavy, fontSize: 9, color: '#fff', letterSpacing: 1 },
+  walletDigits: { fontFamily: Fonts.demiBold, fontSize: 9, color: 'rgba(255,255,255,0.85)' },
+  doneWrap: { position: 'absolute', alignItems: 'center', gap: 2 },
+  doneText: { fontFamily: Fonts.demiBold, fontSize: 13, color: '#fff' },
   reader: {
-    width: 92, height: 92, borderRadius: 20, backgroundColor: '#141414', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center', marginLeft: 10,
+    width: 96, height: 96, borderRadius: 22, backgroundColor: '#141414', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center', marginLeft: 8,
   },
-  ring: { position: 'absolute', width: 70, height: 70, borderRadius: 35, borderWidth: 2, borderColor: Colors.accent },
+  nfc: { position: 'absolute', width: 70, height: 70, borderRadius: 35, borderWidth: 2, borderColor: Colors.accent },
+  payCard: { width: '100%', alignItems: 'center', marginTop: 20 },
+  loggedChip: { marginTop: 10, paddingHorizontal: 12, height: 26, borderRadius: 13, backgroundColor: 'rgba(52,199,89,0.16)', justifyContent: 'center' },
+  loggedText: { fontFamily: Fonts.demiBold, fontSize: 13, color: Colors.success },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12, width: '100%', maxWidth: 360 },
-  tile: { width: '48.3%', minHeight: 124, borderRadius: 18, padding: 14, backgroundColor: '#121212', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  tileEmoji: { fontSize: 28, marginBottom: 8 },
+  tileWrap: { width: '48.3%' },
+  tile: { minHeight: 150, borderRadius: 20, padding: 14, backgroundColor: 'rgba(22,22,24,0.9)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  tileIcon: { height: 40, marginBottom: 10, justifyContent: 'center' },
+  calcText: { fontFamily: Fonts.heavy, fontSize: 22, color: Colors.textPrimary, alignSelf: 'flex-start' },
+  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
+  bar: { width: 9, borderRadius: 3, backgroundColor: Colors.accent },
   tileTitle: { fontFamily: Fonts.heavy, fontSize: 19, color: Colors.textPrimary, marginBottom: 4 },
   tileBody: { fontFamily: Fonts.medium, fontSize: 14, lineHeight: 19, color: Colors.textTertiary },
 });
