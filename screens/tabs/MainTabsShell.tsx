@@ -95,6 +95,10 @@ export default function MainTabsScreen() {
     if (!isDesktop || typeof window === 'undefined') return;
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      // Option+number types characters on macOS (¡ ™ £…): leave text fields alone, and don't
+      // switch sections behind an open dialog.
+      if (e.target instanceof Element && e.target.closest('input, textarea, [contenteditable="true"], [role="textbox"]')) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
       const m = /^Digit([1-9])$/.exec(e.code);
       if (!m) return;
       const index = Number(m[1]) - 1;
