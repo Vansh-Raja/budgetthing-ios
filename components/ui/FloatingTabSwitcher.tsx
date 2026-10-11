@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Colors, Sizes, Tabs } from '../../constants/theme';
+import { useIsDesktop } from '../../lib/web/useIsDesktop';
 
 interface FloatingTabSwitcherProps {
   selectedIndex: number;
@@ -29,10 +30,14 @@ const getIconName = (key: number): keyof typeof Ionicons.glyphMap => {
 };
 
 export function FloatingTabSwitcher({ selectedIndex, onSelectIndex }: FloatingTabSwitcherProps) {
+  // Desktop browsers navigate with the sidebar instead.
+  const isDesktop = useIsDesktop();
   const handlePress = (index: number) => {
     Haptics.selectionAsync();
     onSelectIndex(index);
   };
+
+  if (isDesktop) return null;
 
   return (
     <View style={styles.container} pointerEvents="box-none">

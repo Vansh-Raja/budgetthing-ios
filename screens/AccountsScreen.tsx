@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
+import { useIsDesktop } from '../lib/web/useIsDesktop';
 import { useAccounts, useTransactions } from '../lib/hooks/useData';
 import { computeAccountTileValueCents, getTransactionsForAccount } from '../lib/logic/accountBalance';
 import { formatCents } from '../lib/logic/currencyUtils';
@@ -73,6 +74,7 @@ function billingCycleEnd(reference: Date, day: number): Date {
 // ============================================================================
 
 export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenProps) {
+  const isDesktop = useIsDesktop();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data: accounts, refresh: refreshAccounts } = useAccounts();
@@ -173,7 +175,7 @@ export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenP
           </View>
         ) : (
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, isDesktop && styles.gridContent]}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -197,7 +199,7 @@ export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenP
                     router.push(`/account/${acc.id}`);
                   }}
                   activeOpacity={0.7}
-                  style={styles.card}
+                  style={[styles.card, isDesktop && styles.gridCard]}
                 >
                   <View style={styles.cardHeader}>
                     <View style={styles.emojiContainer}>
@@ -228,7 +230,7 @@ export function AccountsScreen({ selectedIndex, onSelectIndex }: AccountsScreenP
                 Haptics.selectionAsync();
                 router.push('/transfer');
               }}
-              style={styles.transferButton}
+              style={[styles.transferButton, isDesktop && styles.gridFull]}
             >
               <Text style={styles.transferButtonText}>Transfer Money</Text>
             </TouchableOpacity>
@@ -355,4 +357,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#FFFFFF',
   },
+  // Desktop: accounts as a responsive grid of cards.
+  gridContent: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, alignItems: 'stretch' },
+  gridCard: { width: 'auto', flexGrow: 1, flexBasis: 300, maxWidth: '49%', marginBottom: 0 } as any,
+  gridFull: { width: '100%' },
 });
