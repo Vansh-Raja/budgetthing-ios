@@ -98,6 +98,11 @@ test.describe('Onboarding', () => {
       const newCat = ['Pets', 'Gifts', 'Education', 'Fitness', 'Coffee'].find((n) => !(before.categories as any[]).some((c) => !c.deletedAtMs && c.name === n))!;
       await page.getByRole('button', { name: `Category ${newCat}` }).click();
       // Existing categories can be unselected and are removed on Continue (a throwaway one here).
+      // A category of their own: emoji + name, selected and created on Continue.
+      await page.getByRole('button', { name: 'Add your own category' }).click();
+      await page.getByLabel('Custom category name').fill(`Onb own ${run}`);
+      await page.getByRole('button', { name: 'Add category', exact: true }).click();
+      await expect(page.getByRole('button', { name: `Category Onb own ${run}` })).toBeVisible();
       const tempChip = page.getByRole('button', { name: `Category ${tempCat.name}` });
       await tempChip.click();
       await expect(page.getByText(/1 will be removed/)).toBeVisible();
@@ -106,6 +111,7 @@ test.describe('Onboarding', () => {
       await next.click();
       await expect(page.getByRole('heading', { name: /Where does your/ })).toBeVisible({ timeout: 15_000 });
       await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).categories as any[]).some((c) => !c.deletedAtMs && c.name === newCat)).toBe(true);
+      await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).categories as any[]).some((c) => !c.deletedAtMs && c.name === `Onb own ${run}`)).toBe(true);
       // The snapshot lists live categories only: the removed one is gone from it.
       await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).categories as any[]).some((c) => c.id === tempCat.id && !c.deletedAtMs)).toBe(false);
 

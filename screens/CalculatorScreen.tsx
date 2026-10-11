@@ -10,11 +10,13 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -37,6 +39,7 @@ import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
 import { SplitType } from '../lib/logic/types';
 import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
 import { SplitEditorScreen } from './SplitEditorScreen';
+import { useIsDesktop } from '../lib/web/useIsDesktop';
 
 // ============================================================================
 // Types
@@ -355,13 +358,24 @@ interface CalculatorScreenProps {
    * Disable selecting/deselecting trips in the trip emoji row.
    */
   tripSelectionDisabled?: boolean;
+
+  /**
+   * Web: accept a physical keyboard (digits, operators, Enter to save, Esc to clear)
+   * while this calculator is the visible, focused screen. Defaults to true.
+   */
+  keyboardActive?: boolean;
 }
 
-export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, tripItemsOverride, tripSelectionDisabled }: CalculatorScreenProps) {
+export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, tripItemsOverride, tripSelectionDisabled, keyboardActive = true }: CalculatorScreenProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { settings } = useUserSettings();
-  const { width, height } = Dimensions.get('window');
+  // Size from the space the calculator actually has (web: a centred card on desktop, or a
+  // sheet); native keeps the window size, matching the Swift GeometryReader layout.
+  const windowSize = Dimensions.get('window');
+  const isDesktop = useIsDesktop();
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
+  const { width, height } = Platform.OS === 'web' && box ? box : windowSize;
   const toast = useToast();
   const { showPopup } = useCustomPopup();
 
@@ -388,7 +402,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
   // Data Hooks
   const { data: categoriesData } = useCategories();
-  const { data: accountsData } = useAccounts();
+  const { data: accountsData, loading: accountsLoading } = useAccounts();
   const { trips } = useTrips();
   const { trips: sharedTrips } = useSharedTrips();
   const { isSignedIn, userId } = useAuth();
@@ -444,7 +458,8 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
 
   // Layout matching Swift GeometryReader logic
   // topHeight = proxy.size.height * 0.42
-  const topHeight = height * (isVeryCompactHeight ? 0.34 : 0.42);
+  // Desktop card: no pill and no notch; a shorter display leaves the keypad room.
+  const topHeight = height * (isVeryCompactHeight || (isDesktop && height < 920) ? 0.3 : 0.42);
   // amountFontSize = min(proxy.size.width * 0.22, 120)
   const amountFontSize = Math.min(width * 0.22, isCompactHeight ? 108 : 120);
   // keyHeight = max(56, proxy.size.height * 0.064)
@@ -516,7 +531,8 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
     // Shared trip expenses do not care about accounts.
     // We still require accounts for normal (non-shared-trip) saves.
     if (!currentAccount && !(selectedTripIsShared && mode === 'expense')) {
-      setErrorToast('Create an account to save.');
+      // Right after opening, accounts may still be loading: say so instead of "create one".
+      setErrorToast(accountsLoading ? 'Loading your accounts… try again in a moment.' : 'Create an account to save.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setTimeout(() => setErrorToast(null), 1400);
       return;
@@ -587,7 +603,6 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
       } else {
         await TransactionRepository.create(txData);
       }
-
       calculator.clearAll();
       setNoteText('');
       setShowNoteField(false);
@@ -604,7 +619,8 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
       });
       setErrorToast('Failed to save');
     }
-  }, [calculator, mode, selectedCategoryId, selectedAccountId, noteText, selectedTripId, onSave, accounts, openTrips, selectedTripIsShared, selectedSharedTrip, isSignedIn, userId]);
+  // currentAccount must be a dependency: it resolves from settings, which can load after accounts.
+  }, [calculator, mode, selectedCategoryId, selectedAccountId, currentAccount, accountsLoading, noteText, selectedTripId, onSave, accounts, openTrips, selectedTripIsShared, selectedSharedTrip, isSignedIn, userId]);
 
   const toggleNoteField = useCallback(() => {
     const newValue = !showNoteField;
@@ -626,6 +642,42 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
       calculator.handleKey(key);
     }
   }, [calculator, handleSave]);
+
+  // Web keyboard support. Only while this screen is focused (stack screens above it keep it
+  // mounted), nothing else has focus (inputs, popups), and no modifier is held.
+  const isFocused = useIsFocused();
+  const [flashLabel, setFlashLabel] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !keyboardActive || !isFocused || showSplitEditor || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      let key: KeyType | null = null;
+      let label = '';
+      if (/^[0-9]$/.test(e.key)) { key = { type: 'digit', value: Number(e.key) }; label = e.key; }
+      else if (e.key === '.' || e.key === ',') { key = { type: 'dot' }; label = '.'; }
+      else if (e.key === '+') { key = { type: 'op', symbol: '+' }; label = '+'; }
+      else if (e.key === '-') { key = { type: 'op', symbol: '−' }; label = '−'; }
+      else if (e.key === '*' || e.key === 'x' || e.key === 'X') { key = { type: 'op', symbol: '×' }; label = '×'; }
+      else if (e.key === '/') { key = { type: 'op', symbol: '÷' }; label = '÷'; }
+      else if (e.key === '=') { key = { type: 'op', symbol: '=' }; label = '='; }
+      else if (e.key === '%') { key = { type: 'percent' }; label = '%'; }
+      else if (e.key === 'Backspace') { key = { type: 'backspace' }; label = '⌫'; }
+      else if (e.key === 'Escape' || e.key === 'Delete') { key = { type: 'clear' }; label = 'C'; }
+      else if (e.key === 'Enter') { key = { type: 'save' }; label = '✓'; }
+      if (!key) return;
+      e.preventDefault();
+      onKeyPress(key);
+      setFlashLabel(label);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setFlashLabel(null), 140);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [keyboardActive, isFocused, showSplitEditor, onKeyPress]);
 
   const handleSplitSave = async (splitType: SplitType, splitData: Record<string, number>) => {
     try {
@@ -761,11 +813,17 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
     const fontFamily = isOperator ? 'AvenirNextCondensed-DemiBold' : 'AvenirNextCondensed-Medium';
 
     return (
-      <TouchableOpacity
+      <Pressable
         key={label}
-        style={[styles.keyButton, { height: keyHeight, marginBottom: keyButtonMarginBottom }]}
+        style={(state: any) => [
+          styles.keyButton,
+          { height: keyHeight, marginBottom: keyButtonMarginBottom },
+          // Same press feedback as before (dim), plus web hover and keyboard-press highlights.
+          state.pressed && { opacity: 0.7 },
+          state.hovered && styles.keyButtonHover,
+          (flashLabel === label || (isIcon && flashLabel === '⌫')) && styles.keyButtonFlash,
+        ]}
         onPress={() => onKeyPress(key)}
-        activeOpacity={0.7}
         accessibilityLabel={label}
       >
         {isIcon ? (
@@ -780,7 +838,7 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
             {label}
           </Text>
         )}
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
@@ -859,7 +917,13 @@ export function CalculatorScreen({ initialTripId, onSave, onRequestAddTrip, trip
   // ============================================================================
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={Platform.OS === 'web' ? (e) => {
+        const { width: w, height: h } = e.nativeEvent.layout;
+        if (w > 0 && h > 0 && (!box || Math.abs(box.width - w) > 1 || Math.abs(box.height - h) > 1)) setBox({ width: w, height: h });
+      } : undefined}
+    >
       <StatusBar barStyle="light-content" />
 
       {/* Tap backdrop to dismiss dropdowns */}
@@ -1447,6 +1511,8 @@ const styles = StyleSheet.create({
     gap: 12, // Horizontal spacing
     justifyContent: 'space-between',
   },
+  keyButtonHover: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 18 },
+  keyButtonFlash: { backgroundColor: 'rgba(255,149,0,0.22)', borderRadius: 18 },
   keyButton: {
     // 4 columns with 12px gap
     // (100% - 3 * 12) / 4 = 25% - 9px

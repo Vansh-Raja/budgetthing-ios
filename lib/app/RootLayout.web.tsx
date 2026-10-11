@@ -22,6 +22,7 @@ import 'react-native-get-random-values';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/LockedText';
+import { DesktopModalFrame } from '@/components/web/DesktopModalFrame';
 import { WebBootstrap } from '@/components/web/WebBootstrap';
 import { WebConnectionBanner } from '@/components/web/WebConnectionBanner';
 import { WebUpdateBanner } from '@/components/web/WebUpdateBanner.web';
@@ -30,6 +31,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { UserSettingsProvider } from '../hooks/useUserSettings';
 import { SyncProvider } from '../sync/SyncProvider';
 import { setWebConvexClient } from '../web/convexClient';
+import { useIsDesktop } from '../web/useIsDesktop';
 
 /** Web root error boundary: on-brand, with Retry and a full reload (expo-router contract). */
 export function ErrorBoundary({ error, retry }: { error: Error; retry: () => Promise<void> }) {
@@ -137,6 +139,7 @@ function RootLayoutProviders() {
 
 function WebAuthGate() {
   const { isLoaded, isSignedIn } = useAuth();
+  const isDesktop = useIsDesktop();
 
   if (!isLoaded) {
     // Clerk loads from its own servers; offline it never finishes. Say why instead of
@@ -152,10 +155,17 @@ function WebAuthGate() {
   }
 
   const signedIn = isSignedIn === true;
+  // Desktop: pushed screens (details, settings pages, sheets) read as a centred page
+  // instead of stretching across a wide window. Full-bleed routes opt out below.
+  const contentStyle = isDesktop
+    ? { backgroundColor: '#000000', width: '100%' as const, maxWidth: 820, alignSelf: 'center' as const, borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }
+    : { backgroundColor: '#000000' };
+  const fullBleed = { contentStyle: { backgroundColor: '#000000' } };
 
   return (
     <>
     <WebUpdateBanner />
+    <DesktopModalFrame />
     <WebConnectionBanner />
     {signedIn ? <WebBootstrap /> : null}
     <Stack
@@ -164,21 +174,21 @@ function WebAuthGate() {
         headerStyle: { backgroundColor: '#000000' },
         headerTintColor: '#FFFFFF',
         headerTitleStyle: { fontFamily: Fonts.demiBold, fontSize: 18 },
-        contentStyle: { backgroundColor: '#000000' },
+        contentStyle,
       }}
     >
       <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false, ...fullBleed }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="import-inbox" options={{ headerShown: false, presentation: 'modal' }} />
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false, ...fullBleed }} />
         <Stack.Screen name="account/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="category/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="transfer" options={{ headerShown: false, presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="sign-in" options={{ headerShown: false }} />
-        <Stack.Screen name="sign-up" options={{ headerShown: false }} />
+        <Stack.Screen name="sign-in" options={{ headerShown: false, ...fullBleed }} />
+        <Stack.Screen name="sign-up" options={{ headerShown: false, ...fullBleed }} />
       </Stack.Protected>
     </Stack>
     </>

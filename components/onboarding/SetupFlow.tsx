@@ -17,6 +17,8 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition, ZoomIn } from 'react-native-reanimated';
+import { EmojiPickerModal } from '@/components/emoji/EmojiPickerModal';
+import { RECOMMENDED_CATEGORY_EMOJIS } from '@/lib/emoji/recommendedEmojis';
 import { AnimatedWords, Confetti, CYAN, PressableScale, Rise } from './motion';
 import { SceneScroll } from './StoryScenes';
 import { sceneStyles } from './shared';
@@ -158,10 +160,38 @@ export function SpendStep({ bindNext, onSummary }: { bindNext: BindNext; onSumma
     setPicked(new Set(live.map((c) => c.name.toLowerCase())));
   }, [live, loading, picked]);
 
+  // Categories the user typed in themselves (created on Continue like the suggestions).
+  const [customs, setCustoms] = useState<Array<{ emoji: string; name: string }>>([]);
+  const [adding, setAdding] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customEmoji, setCustomEmoji] = useState('🏷️');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [customError, setCustomError] = useState<string | null>(null);
+
   const options = useMemo(() => {
-    const extra = live.filter((c) => !SUGGESTED.some((s) => s.name.toLowerCase() === c.name.toLowerCase())).map((c) => ({ emoji: c.emoji, name: c.name }));
-    return [...SUGGESTED, ...extra];
-  }, [live]);
+    const known = (n: string) => SUGGESTED.some((s) => s.name.toLowerCase() === n.toLowerCase());
+    const extra = live.filter((c) => !known(c.name)).map((c) => ({ emoji: c.emoji, name: c.name }));
+    const mine = customs.filter((c) => !known(c.name) && !extra.some((e) => e.name.toLowerCase() === c.name.toLowerCase()));
+    return [...SUGGESTED, ...extra, ...mine];
+  }, [customs, live]);
+
+  const addCustom = () => {
+    const name = customName.trim().replace(/\s+/g, ' ');
+    if (!name) { setCustomError('Give it a name.'); return; }
+    if (name.length > 40) { setCustomError('Keep it under 40 characters.'); return; }
+    const key = name.toLowerCase();
+    if (options.some((o) => o.name.toLowerCase() === key)) {
+      // Already listed: just make sure it's selected.
+      setPicked((p) => new Set([...(p ?? []), key]));
+    } else {
+      setCustoms((c) => [...c, { emoji: customEmoji, name }]);
+      setPicked((p) => new Set([...(p ?? []), key]));
+    }
+    setCustomName('');
+    setCustomEmoji('🏷️');
+    setCustomError(null);
+    setAdding(false);
+  };
 
   useEffect(() => {
     if (!picked) return;
@@ -233,7 +263,49 @@ export function SpendStep({ bindNext, onSummary }: { bindNext: BindNext; onSumma
             </Animated.View>
           );
         })}
+        {!adding ? (
+          <Animated.View entering={FadeIn.delay(220 + options.length * 14).duration(220)}>
+            <PressableScale accessibilityRole="button" accessibilityLabel="Add your own category" onPress={() => setAdding(true)} disabled={!picked} style={[styles.chip, styles.chipAdd]}>
+              <Ionicons name="add" size={18} color={Colors.accent} />
+              <Text style={[styles.chipText, { color: Colors.accent }]}>Add your own</Text>
+            </PressableScale>
+          </Animated.View>
+        ) : null}
       </View>
+      {adding ? (
+        <Animated.View entering={FadeInDown.duration(200)} style={styles.customRow}>
+          <PressableScale accessibilityRole="button" accessibilityLabel="Choose an emoji" onPress={() => setPickerOpen(true)} style={styles.customEmoji}>
+            <Text style={{ fontSize: 22 }}>{customEmoji}</Text>
+          </PressableScale>
+          <TextInput
+            value={customName}
+            onChangeText={(t) => { setCustomName(t); setCustomError(null); }}
+            placeholder="e.g. Kids, Car, Side hustle"
+            placeholderTextColor={Colors.textMuted}
+            style={styles.customInput}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={addCustom}
+            maxLength={40}
+            accessibilityLabel="Custom category name"
+          />
+          <PressableScale accessibilityRole="button" accessibilityLabel="Add category" onPress={addCustom} style={styles.customAdd}>
+            <Ionicons name="checkmark" size={20} color="#000" />
+          </PressableScale>
+          <PressableScale accessibilityRole="button" accessibilityLabel="Cancel" onPress={() => { setAdding(false); setCustomError(null); }} style={styles.customCancel}>
+            <Ionicons name="close" size={18} color={Colors.textSecondary} />
+          </PressableScale>
+        </Animated.View>
+      ) : null}
+      {customError ? <Text style={styles.customError} accessibilityRole="alert">{customError}</Text> : null}
+      <EmojiPickerModal
+        visible={pickerOpen}
+        title="Category emoji"
+        value={customEmoji}
+        recommendedEmojis={RECOMMENDED_CATEGORY_EMOJIS}
+        onSelect={(e) => setCustomEmoji(e)}
+        onClose={() => setPickerOpen(false)}
+      />
       <Text style={styles.counter}>
         {picked?.size ?? 0} selected{removedCount ? ` · ${removedCount} will be removed` : ''}
       </Text>
@@ -474,6 +546,13 @@ const styles = StyleSheet.create({
   chipEmoji: { fontSize: 18 },
   chipText: { fontFamily: Fonts.demiBold, fontSize: 16, color: Colors.textSecondary },
   chipTextOn: { color: '#000' },
+  chipAdd: { borderStyle: 'dashed', borderColor: 'rgba(255,149,0,0.6)', backgroundColor: 'transparent' },
+  customRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', maxWidth: 400, marginTop: 14 },
+  customEmoji: { width: 46, height: 46, borderRadius: 14, backgroundColor: 'rgba(28,28,30,0.95)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  customInput: { flex: 1, height: 46, borderRadius: 14, paddingHorizontal: 14, backgroundColor: 'rgba(28,28,30,0.95)', borderWidth: 1, borderColor: 'rgba(255,149,0,0.5)', color: Colors.textPrimary, fontFamily: Fonts.demiBold, fontSize: 16 },
+  customAdd: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.accent, alignItems: 'center', justifyContent: 'center' },
+  customCancel: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  customError: { fontFamily: Fonts.medium, fontSize: 14, color: Colors.error, marginTop: 8 },
   chipRemoving: { borderColor: 'rgba(255,59,48,0.6)', borderStyle: 'dashed' },
   chipTextRemoving: { color: Colors.textTertiary, textDecorationLine: 'line-through' },
   counter: { fontFamily: Fonts.demiBold, fontSize: 14, color: Colors.textTertiary, marginTop: 16 },

@@ -376,18 +376,21 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
         <View style={styles.section}>
           <SectionHeader title="Basics" />
 
-          <SettingsItem
-            label="Haptics"
-            rightElement={
-              <Switch
-                value={hapticsEnabled}
-                onValueChange={toggleHaptics}
-                trackColor={{ false: '#3a3a3c', true: '#34C759' }}
-                thumbColor="#FFFFFF"
-                ios_backgroundColor="#3a3a3c"
-              />
-            }
-          />
+          {/* Web has no haptics, so the switch would do nothing there. */}
+          {Platform.OS !== 'web' ? (
+            <SettingsItem
+              label="Haptics"
+              rightElement={
+                <Switch
+                  value={hapticsEnabled}
+                  onValueChange={toggleHaptics}
+                  trackColor={{ false: '#3a3a3c', true: '#34C759' }}
+                  thumbColor="#FFFFFF"
+                  ios_backgroundColor="#3a3a3c"
+                />
+              }
+            />
+          ) : null}
 
           <SettingsItem
             label="Currency"
