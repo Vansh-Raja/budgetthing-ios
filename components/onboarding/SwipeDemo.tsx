@@ -148,8 +148,11 @@ export function SwipeDemoScene({ currencyCode }: { currencyCode: string }) {
         ) : (
           <>
             {DEMO.slice(index + 1, index + 3).map((it, k) => (
-              <Animated.View key={it.id} layout={LinearTransition.springify().damping(16)} style={[styles.behind, { top: 10 + k * 10, transform: [{ scale: 0.94 - k * 0.05 }], opacity: 0.5 - k * 0.2 }]} pointerEvents="none">
-                <DemoInboxCard item={it} currencyCode={currencyCode} />
+              <Animated.View key={it.id} layout={LinearTransition.duration(220)} style={[styles.behind, { top: 10 + k * 10, opacity: 0.5 - k * 0.2 }]} pointerEvents="none">
+                {/* Scale lives on an inner view so it never fights the layout animation. */}
+                <View style={{ width: '100%', alignItems: 'center', transform: [{ scale: 0.94 - k * 0.05 }] }}>
+                  <DemoInboxCard item={it} currencyCode={currencyCode} />
+                </View>
               </Animated.View>
             )).reverse()}
             <TopCard key={DEMO[index].id} item={DEMO[index]} currencyCode={currencyCode} onDone={onDone} />

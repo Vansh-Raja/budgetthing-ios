@@ -67,7 +67,9 @@ test.describe('Onboarding', () => {
 
       await next.click();
       await expect(page.getByRole('heading', { name: /Do it yourself/ })).toBeVisible();
-      await page.waitForTimeout(1200);
+      await page.waitForTimeout(1500);
+      await shot('5a-diy');
+      await page.waitForTimeout(2800);
       await shot('5-diy');
 
       // "Set me up" → currency → categories → accounts.
@@ -94,19 +96,40 @@ test.describe('Onboarding', () => {
       await expect(page.getByRole('heading', { name: /What do you usually/ })).toBeVisible();
       const newCat = ['Pets', 'Gifts', 'Education', 'Fitness', 'Coffee'].find((n) => !(before.categories as any[]).some((c) => !c.deletedAtMs && c.name === n))!;
       await page.getByRole('button', { name: `Category ${newCat}` }).click();
+      // Existing categories can be unselected too (they'd be removed on Continue); re-select to keep the data.
+      const existing = (before.categories as any[]).find((c) => !c.deletedAtMs && !c.isSystem);
+      if (existing) {
+        const chip = page.getByRole('button', { name: `Category ${existing.name}` });
+        await chip.click();
+        await expect(page.getByText(/1 will be removed/)).toBeVisible();
+        await chip.click();
+        await expect(page.getByText(/will be removed/)).toHaveCount(0);
+      }
       await page.waitForTimeout(900);
       await shot('8-spend');
       await next.click();
       await expect(page.getByRole('heading', { name: /Where does your/ })).toBeVisible({ timeout: 15_000 });
       await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).categories as any[]).some((c) => !c.deletedAtMs && c.name === newCat)).toBe(true);
 
+      // Several accounts of the same type, plus a card with limit and statement day.
+      await page.getByRole('button', { name: 'Add Bank account' }).click();
+      await page.getByRole('button', { name: 'Add Bank account' }).click();
+      const bankNames = page.getByLabel('Bank account name');
+      await bankNames.nth(-2).fill(`Onb bank A ${run}`);
+      await bankNames.nth(-1).fill(`Onb bank B ${run}`);
+      await page.getByLabel(`Onb bank B ${run} balance`).fill('1,234.50');
       await page.getByRole('button', { name: 'Add Credit card' }).click();
-      await page.getByLabel('Credit card name').fill(`Onb card ${run}`);
-      await page.getByLabel('Credit card Credit limit').fill('50000');
+      await page.getByLabel('Credit card name').last().fill(`Onb card ${run}`);
+      await page.getByLabel(`Onb card ${run} credit limit`).fill('50000');
+      await page.getByLabel(`Onb card ${run} statement day`).fill('12');
       await page.waitForTimeout(600);
       await shot('9-accounts');
       await next.click();
       await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts as any[]).find((a) => a.name === `Onb card ${run}`)?.limitAmountCents, { timeout: 15_000 }).toBe(5_000_000);
+      const accts: any[] = (await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts;
+      expect(accts.find((a) => a.name === `Onb card ${run}`).billingCycleDay).toBe(12);
+      expect(accts.find((a) => a.name === `Onb bank A ${run}`)).toBeTruthy();
+      expect(accts.find((a) => a.name === `Onb bank B ${run}`).openingBalanceCents).toBe(123_450);
 
       // Connect: create a key, then a real import arrives while the page waits.
       await expect(page.getByRole('heading', { name: /Connect your/ })).toBeVisible();

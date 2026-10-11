@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown, LinearTransition, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { AnimatedWords, Confetti, CYAN, PressableScale, Rise } from './motion';
 import { SceneScroll } from './StoryScenes';
 import { sceneStyles } from './shared';
@@ -145,7 +145,7 @@ const SUGGESTED = [
   { emoji: '💇', name: 'Personal care' }, { emoji: '🐶', name: 'Pets' }, { emoji: '👨‍👩‍👧', name: 'Family' },
 ];
 
-export function SpendStep({ bindNext, firstRun, onSummary }: { bindNext: BindNext; firstRun: boolean; onSummary: (s: Partial<SetupSummary>) => void }) {
+export function SpendStep({ bindNext, onSummary }: { bindNext: BindNext; onSummary: (s: Partial<SetupSummary>) => void }) {
   const { data: categories, loading } = useCategories();
   const live = useMemo(() => categories.filter((c) => !c.deletedAtMs && !c.isSystem), [categories]);
   const [picked, setPicked] = useState<Set<string> | null>(null);
@@ -176,23 +176,22 @@ export function SpendStep({ bindNext, firstRun, onSummary }: { bindNext: BindNex
           added++;
         }
       }
-      // Only on first run: drop default categories the user turned off (soft delete, undoable).
-      if (firstRun) {
-        for (const [key, c] of have) if (!picked.has(key) && !created.current.has(`deleted:${key}`)) {
-          await CategoryRepository.delete(c.id);
-          created.current.add(`deleted:${key}`);
-        }
+      // Existing categories the user turned off are removed (soft delete, undoable in History).
+      for (const [key, c] of have) if (!picked.has(key) && !created.current.has(`deleted:${key}`)) {
+        await CategoryRepository.delete(c.id);
+        created.current.add(`deleted:${key}`);
       }
       onSummary({ categoriesAdded: added });
     });
     return () => bindNext(null);
-  }, [bindNext, firstRun, live, onSummary, options, picked]);
+  }, [bindNext, live, onSummary, options, picked]);
+
+  const existingKeys = useMemo(() => new Set(live.map((c) => c.name.toLowerCase())), [live]);
+  const removedCount = picked ? [...existingKeys].filter((k) => !picked.has(k)).length : 0;
 
   const toggle = (name: string) => {
     if (!picked) return; // wait until the existing categories are part of the selection
     const key = name.toLowerCase();
-    const isExisting = live.some((c) => c.name.toLowerCase() === key);
-    if (isExisting && !firstRun) return; // replay: never remove existing categories here
     setPicked((p) => {
       const next = new Set(p ?? []);
       if (next.has(key)) next.delete(key);
@@ -208,28 +207,36 @@ export function SpendStep({ bindNext, firstRun, onSummary }: { bindNext: BindNex
       <Rise delay={320}><Text style={[sceneStyles.subtitle, { marginBottom: 18 }]}>Pick everything that fits. These become your categories.</Text></Rise>
       <View style={styles.chips}>
         {options.map((o, i) => {
-          const on = picked?.has(o.name.toLowerCase()) ?? false;
+          const key = o.name.toLowerCase();
+          const on = picked?.has(key) ?? false;
+          const removing = !on && existingKeys.has(key);
           return (
-            <Animated.View key={o.name} entering={ZoomIn.delay(260 + i * 28).springify().damping(13)}>
+            // Chips fade in once, quickly; toggling never changes a chip's size, so nothing reflows.
+            <Animated.View key={o.name} entering={FadeIn.delay(220 + i * 14).duration(220)}>
               <PressableScale
                 accessibilityRole="button"
                 accessibilityLabel={`Category ${o.name}`}
                 accessibilityState={{ selected: on }}
+                accessibilityHint={removing ? 'Will be removed' : undefined}
                 onPress={() => toggle(o.name)}
                 disabled={!picked}
-                style={[styles.chip, on && styles.chipOn, !picked && { opacity: 0.5 }]}
+                style={[styles.chip, on && styles.chipOn, removing && styles.chipRemoving, !picked && { opacity: 0.5 }]}
               >
                 <Text style={styles.chipEmoji}>{o.emoji}</Text>
-                <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.name}</Text>
-                {on ? <Animated.View entering={ZoomIn.springify().damping(10)}><Ionicons name="checkmark-circle" size={18} color="#000" /></Animated.View> : null}
+                <Text style={[styles.chipText, on && styles.chipTextOn, removing && styles.chipTextRemoving]}>{o.name}</Text>
+                <Ionicons
+                  name={on ? 'checkmark-circle' : removing ? 'remove-circle' : 'add-circle-outline'}
+                  size={18}
+                  color={on ? '#000' : removing ? Colors.error : Colors.textMuted}
+                />
               </PressableScale>
             </Animated.View>
           );
         })}
       </View>
-      <Animated.Text key={picked?.size ?? 0} entering={FadeIn} style={styles.counter}>
-        {picked?.size ?? 0} selected
-      </Animated.Text>
+      <Text style={styles.counter}>
+        {picked?.size ?? 0} selected{removedCount ? ` · ${removedCount} will be removed` : ''}
+      </Text>
     </SceneScroll>
   );
 }
@@ -238,12 +245,16 @@ export function SpendStep({ bindNext, firstRun, onSummary }: { bindNext: BindNex
 // Accounts
 // ---------------------------------------------------------------------------
 
-const ACCOUNT_OPTIONS: Array<{ key: string; emoji: string; label: string; kind: AccountKind; placeholder: string; amountLabel: string }> = [
-  { key: 'bank', emoji: '🏦', label: 'Bank account', kind: 'savings', placeholder: 'e.g. HDFC Savings', amountLabel: 'Current balance' },
-  { key: 'card', emoji: '💳', label: 'Credit card', kind: 'card', placeholder: 'e.g. Amex Platinum', amountLabel: 'Credit limit' },
-  { key: 'upi', emoji: '📱', label: 'UPI / wallet', kind: 'cash', placeholder: 'e.g. Paytm', amountLabel: 'Current balance' },
-  { key: 'savings', emoji: '🐷', label: 'Savings pot', kind: 'savings', placeholder: 'e.g. Emergency fund', amountLabel: 'Current balance' },
-];
+type AccountType = 'bank' | 'card' | 'cash' | 'upi' | 'savings';
+
+const ACCOUNT_TYPES: Record<AccountType, { label: string; emoji: string; icon: keyof typeof Ionicons.glyphMap; kind: AccountKind; placeholder: string }> = {
+  bank: { label: 'Bank account', emoji: '🏦', icon: 'business-outline', kind: 'savings', placeholder: 'e.g. HDFC Savings' },
+  card: { label: 'Credit card', emoji: '💳', icon: 'card-outline', kind: 'card', placeholder: 'e.g. Amex Platinum' },
+  cash: { label: 'Cash', emoji: '💵', icon: 'cash-outline', kind: 'cash', placeholder: 'e.g. Wallet cash' },
+  upi: { label: 'UPI / wallet', emoji: '📱', icon: 'phone-portrait-outline', kind: 'cash', placeholder: 'e.g. Paytm' },
+  savings: { label: 'Savings pot', emoji: '🐷', icon: 'trending-up-outline', kind: 'savings', placeholder: 'e.g. Emergency fund' },
+};
+const TYPE_ORDER: AccountType[] = ['bank', 'card', 'cash', 'upi', 'savings'];
 
 /** Empty → undefined; otherwise a signed decimal (thousands separators allowed) or an error. */
 function toCents(s: string, label: string): number | undefined {
@@ -253,103 +264,142 @@ function toCents(s: string, label: string): number | undefined {
   return Math.round(parseFloat(clean) * 100);
 }
 
-type Draft = { on: boolean; name: string; amount: string };
+function toDay(s: string, label: string): number | undefined {
+  const clean = s.trim();
+  if (!clean) return undefined;
+  const n = Number(clean);
+  if (!Number.isInteger(n) || n < 1 || n > 31) throw new Error(`${label}: the statement day must be 1–31.`);
+  return n;
+}
+
+const centsText = (c?: number) => (c === undefined || c === null ? '' : String(c / 100));
+
+/** One editable account row; `existingId` marks rows that already exist. */
+interface Row { id: string; type: AccountType; name: string; amount: string; day: string; existingId?: string; original?: { name: string; amount: string; day: string } }
+
+function typeOf(a: { kind: AccountKind; emoji: string }): AccountType {
+  if (a.kind === 'card') return 'card';
+  if (a.kind === 'savings') return a.emoji === '🐷' ? 'savings' : 'bank';
+  return a.emoji === '📱' ? 'upi' : 'cash';
+}
+
+let rowSeq = 0;
+const newRowId = () => `row-${Date.now().toString(36)}-${rowSeq++}`;
 
 export function AccountsStep({ bindNext, onSummary }: { bindNext: BindNext; onSummary: (s: Partial<SetupSummary>) => void }) {
   const { settings } = useUserSettings();
   const currency = settings?.currencyCode ?? 'INR';
   const symbol = CURRENCIES.find((c) => c.code === currency)?.symbol ?? '';
-  const { data: accounts } = useAccounts();
-  const live = useMemo(() => accounts.filter((a) => !a.deletedAtMs), [accounts]);
-  const cash = live.find((a) => a.kind === 'cash' && a.name.toLowerCase() === 'cash');
-  const [cashAmount, setCashAmount] = useState('');
+  const { data: accounts, loading } = useAccounts();
+  const [rows, setRows] = useState<Row[] | null>(null);
   const created = useRef(new Set<string>());
-  const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
-    Object.fromEntries(ACCOUNT_OPTIONS.map((o) => [o.key, { on: false, name: '', amount: '' }]))
-  );
+
+  // Start from the accounts the user already has (editable), once they've loaded.
+  useEffect(() => {
+    if (rows || loading) return;
+    setRows(accounts.filter((a) => !a.deletedAtMs).map((a) => {
+      const type = typeOf(a);
+      const amount = centsText(a.kind === 'card' ? a.limitAmountCents : a.openingBalanceCents);
+      const day = a.billingCycleDay ? String(a.billingCycleDay) : '';
+      return { id: a.id, type, name: a.name, amount, day, existingId: a.id, original: { name: a.name, amount, day } };
+    }));
+  }, [accounts, loading, rows]);
 
   useEffect(() => {
+    if (!rows) return;
     bindNext(async () => {
-      // Validate every amount on the page before writing anything.
-      const cashCents = toCents(cashAmount, 'Cash in hand');
-      const plan = ACCOUNT_OPTIONS.filter((o) => drafts[o.key].on && !created.current.has(o.key)).map((o) => {
-        const cents = toCents(drafts[o.key].amount, `${o.label} ${o.amountLabel.toLowerCase()}`);
-        if (o.kind === 'card' && cents !== undefined && cents < 0) throw new Error('A credit limit can\'t be negative.');
-        return { o, cents };
+      // Validate the whole page first, then write: a bad entry never leaves a partial save.
+      const counts: Partial<Record<AccountType, number>> = {};
+      const plan = rows.map((r) => {
+        const t = ACCOUNT_TYPES[r.type];
+        counts[r.type] = (counts[r.type] ?? 0) + 1;
+        const name = r.name.trim() || (counts[r.type]! > 1 ? `${t.label} ${counts[r.type]}` : t.label);
+        const label = r.name.trim() || t.label;
+        const cents = toCents(r.amount, `${label} ${r.type === 'card' ? 'credit limit' : 'balance'}`);
+        if (r.type === 'card' && cents !== undefined && cents < 0) throw new Error(`${label}: a credit limit can't be negative.`);
+        const day = r.type === 'card' ? toDay(r.day, label) : undefined;
+        return { r, t, name, cents, day };
       });
       let added = 0;
-      for (const { o, cents } of plan) {
-        await AccountRepository.create({
-          name: drafts[o.key].name.trim() || o.label,
-          emoji: o.emoji,
-          kind: o.kind,
-          ...(o.kind === 'card' ? { limitAmountCents: cents } : { openingBalanceCents: cents }),
-        });
-        created.current.add(o.key);
-        added++;
+      for (const { r, t, name, cents, day } of plan) {
+        const money = r.type === 'card' ? { limitAmountCents: cents, billingCycleDay: day } : { openingBalanceCents: cents };
+        if (r.existingId) {
+          const o = r.original!;
+          if (o.name === r.name && o.amount === r.amount && o.day === r.day) continue;
+          await AccountRepository.update(r.existingId, { name, ...money });
+          r.original = { name: r.name, amount: r.amount, day: r.day };
+        } else if (!created.current.has(r.id)) {
+          await AccountRepository.create({ name, emoji: t.emoji, kind: t.kind, ...money });
+          created.current.add(r.id);
+          added++;
+        }
       }
-      if (cash && cashCents !== undefined) await AccountRepository.update(cash.id, { openingBalanceCents: cashCents });
       onSummary({ accountsAdded: added });
     });
     return () => bindNext(null);
-  }, [bindNext, cash, cashAmount, drafts, onSummary]);
+  }, [bindNext, onSummary, rows]);
 
-  const set = (key: string, patch: Partial<Draft>) => setDrafts((d) => ({ ...d, [key]: { ...d[key], ...patch } }));
+  const add = (type: AccountType) => setRows((rs) => [...(rs ?? []), { id: newRowId(), type, name: '', amount: '', day: '' }]);
+  const update = (id: string, patch: Partial<Row>) => setRows((rs) => (rs ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const remove = (id: string) => setRows((rs) => (rs ?? []).filter((r) => r.id !== id || r.existingId || created.current.has(r.id)));
 
   return (
     <SceneScroll>
       <Rise><Text style={sceneStyles.kicker}>Step 3 of 3</Text></Rise>
       <AnimatedWords text={'Where does your\nmoney live?'} style={sceneStyles.title} delay={60} accentWords={['money']} />
-      <Rise delay={320}><Text style={[sceneStyles.subtitle, { marginBottom: 18 }]}>Add the accounts you use. Balances are optional; you can change everything later.</Text></Rise>
+      <Rise delay={300}><Text style={[sceneStyles.subtitle, { marginBottom: 18 }]}>Add every account you use, as many of each as you need. Balances and limits are optional.</Text></Rise>
 
       <View style={styles.accounts}>
-        {cash ? (
-          <Rise delay={380}>
-            <View style={[styles.acct, styles.acctOn]}>
-              <View style={styles.acctHead}>
-                <Text style={styles.acctEmoji}>💵</Text>
-                <Text style={styles.acctLabel}>Cash</Text>
-                <Text style={styles.already}>Ready</Text>
-              </View>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Cash in hand</Text>
-                <View style={styles.amountBox}>
-                  <Text style={styles.sym}>{symbol}</Text>
-                  <TextInput value={cashAmount} onChangeText={setCashAmount} placeholder="0" placeholderTextColor={Colors.textMuted} keyboardType="decimal-pad" style={styles.amountInput} accessibilityLabel="Cash in hand" />
-                </View>
-              </View>
-            </View>
-          </Rise>
-        ) : null}
-        {ACCOUNT_OPTIONS.map((o, i) => {
-          const d = drafts[o.key];
+        {(rows ?? []).map((r) => {
+          const t = ACCOUNT_TYPES[r.type];
+          const isNew = !r.existingId;
           return (
-            <Animated.View key={o.key} entering={FadeInDown.delay(440 + i * 70).springify()} layout={LinearTransition.springify().damping(18)}>
-              <View style={[styles.acct, d.on && styles.acctOn]}>
-                <PressableScale accessibilityRole="button" accessibilityLabel={`Add ${o.label}`} accessibilityState={{ selected: d.on }} onPress={() => set(o.key, { on: !d.on })} style={styles.acctHead}>
-                  <Text style={styles.acctEmoji}>{o.emoji}</Text>
-                  <Text style={styles.acctLabel}>{o.label}</Text>
-                  <View style={[styles.toggle, d.on && styles.toggleOn]}>
-                    <Ionicons name={d.on ? 'checkmark' : 'add'} size={18} color={d.on ? '#000' : Colors.textSecondary} />
+            <Animated.View key={r.id} entering={FadeInDown.duration(220)} exiting={FadeOut.duration(150)} layout={LinearTransition.duration(200)} style={styles.acct}>
+              <View style={styles.acctHead}>
+                <View style={styles.acctIcon}><Ionicons name={t.icon} size={18} color={Colors.accent} /></View>
+                <TextInput
+                  value={r.name}
+                  onChangeText={(name) => update(r.id, { name })}
+                  placeholder={t.placeholder}
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.nameInput}
+                  accessibilityLabel={`${t.label} name`}
+                />
+                {isNew && !created.current.has(r.id) ? (
+                  <PressableScale accessibilityRole="button" accessibilityLabel={`Remove ${r.name || t.label}`} onPress={() => remove(r.id)} style={styles.removeBtn}>
+                    <Ionicons name="close" size={16} color={Colors.textSecondary} />
+                  </PressableScale>
+                ) : <Text style={styles.typeTag}>{t.label}</Text>}
+              </View>
+              <View style={styles.fields}>
+                <View style={[styles.amountBox, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>{r.type === 'card' ? 'Limit' : 'Balance'}</Text>
+                  <Text style={styles.sym}>{symbol}</Text>
+                  <TextInput value={r.amount} onChangeText={(amount) => update(r.id, { amount })} placeholder="0" placeholderTextColor={Colors.textMuted} keyboardType="decimal-pad" style={styles.amountInput} accessibilityLabel={`${r.name || t.label} ${r.type === 'card' ? 'credit limit' : 'balance'}`} />
+                </View>
+                {r.type === 'card' ? (
+                  <View style={[styles.amountBox, { width: 118 }]}>
+                    <Text style={styles.fieldLabel}>Bill day</Text>
+                    <TextInput value={r.day} onChangeText={(day) => update(r.id, { day: day.replace(/[^0-9]/g, '').slice(0, 2) })} placeholder="–" placeholderTextColor={Colors.textMuted} keyboardType="number-pad" style={styles.amountInput} accessibilityLabel={`${r.name || t.label} statement day`} />
                   </View>
-                </PressableScale>
-                {d.on ? (
-                  <Animated.View entering={FadeInDown.springify().damping(16)} style={{ gap: 10, marginTop: 12 }}>
-                    <TextInput value={d.name} onChangeText={(name) => set(o.key, { name })} placeholder={o.placeholder} placeholderTextColor={Colors.textMuted} style={styles.nameInput} accessibilityLabel={`${o.label} name`} />
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>{o.amountLabel}</Text>
-                      <View style={styles.amountBox}>
-                        <Text style={styles.sym}>{symbol}</Text>
-                        <TextInput value={d.amount} onChangeText={(amount) => set(o.key, { amount })} placeholder="0" placeholderTextColor={Colors.textMuted} keyboardType="decimal-pad" style={styles.amountInput} accessibilityLabel={`${o.label} ${o.amountLabel}`} />
-                      </View>
-                    </View>
-                  </Animated.View>
                 ) : null}
               </View>
             </Animated.View>
           );
         })}
       </View>
+
+      <Rise delay={420} style={{ width: '100%', maxWidth: 400 }}>
+        <Text style={styles.addLabel}>Add an account</Text>
+        <View style={styles.addRow}>
+          {TYPE_ORDER.map((type) => (
+            <PressableScale key={type} accessibilityRole="button" accessibilityLabel={`Add ${ACCOUNT_TYPES[type].label}`} onPress={() => add(type)} disabled={!rows} style={styles.addChip}>
+              <Ionicons name="add" size={16} color={Colors.accent} />
+              <Text style={styles.addText}>{ACCOUNT_TYPES[type].label}</Text>
+            </PressableScale>
+          ))}
+        </View>
+      </Rise>
     </SceneScroll>
   );
 }
@@ -420,22 +470,25 @@ const styles = StyleSheet.create({
   chipEmoji: { fontSize: 18 },
   chipText: { fontFamily: Fonts.demiBold, fontSize: 16, color: Colors.textSecondary },
   chipTextOn: { color: '#000' },
+  chipRemoving: { borderColor: 'rgba(255,59,48,0.6)', borderStyle: 'dashed' },
+  chipTextRemoving: { color: Colors.textTertiary, textDecorationLine: 'line-through' },
   counter: { fontFamily: Fonts.demiBold, fontSize: 14, color: Colors.textTertiary, marginTop: 16 },
   accounts: { width: '100%', maxWidth: 400, gap: 10 },
-  acct: { borderRadius: 20, padding: 14, backgroundColor: 'rgba(28,28,30,0.9)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  acctOn: { borderColor: 'rgba(255,149,0,0.6)' },
-  acctHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  acctEmoji: { fontSize: 26 },
-  acctLabel: { flex: 1, fontFamily: Fonts.heavy, fontSize: 19, color: Colors.textPrimary },
-  already: { fontFamily: Fonts.demiBold, fontSize: 13, color: Colors.success },
-  toggle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
-  toggleOn: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  nameInput: { height: 44, borderRadius: 12, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.5)', color: Colors.textPrimary, fontFamily: Fonts.demiBold, fontSize: 16 },
-  fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  fieldLabel: { flexShrink: 0, fontFamily: Fonts.medium, fontSize: 15, color: Colors.textSecondary },
-  amountBox: { flex: 1, maxWidth: 200, flexDirection: 'row', alignItems: 'center', height: 44, borderRadius: 12, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.5)' },
+  acctIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255,149,0,0.12)', alignItems: 'center', justifyContent: 'center' },
+  removeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
+  typeTag: { fontFamily: Fonts.demiBold, fontSize: 12, color: Colors.textTertiary },
+  fields: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  addLabel: { fontFamily: Fonts.demiBold, fontSize: 13, letterSpacing: 1.2, textTransform: 'uppercase', color: Colors.textTertiary, marginTop: 18, marginBottom: 10 },
+  addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  addChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 38, borderRadius: 19, borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(255,149,0,0.55)' },
+  addText: { fontFamily: Fonts.demiBold, fontSize: 15, color: Colors.textSecondary },
+  acct: { borderRadius: 18, padding: 12, backgroundColor: 'rgba(28,28,30,0.92)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  acctHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nameInput: { flex: 1, height: 40, borderRadius: 10, paddingHorizontal: 10, backgroundColor: 'rgba(0,0,0,0.45)', color: Colors.textPrimary, fontFamily: Fonts.demiBold, fontSize: 16 },
+  fieldLabel: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.textTertiary, marginRight: 6 },
+  amountBox: { flexDirection: 'row', alignItems: 'center', height: 40, borderRadius: 10, paddingHorizontal: 10, backgroundColor: 'rgba(0,0,0,0.45)' },
   sym: { fontFamily: Fonts.heavy, fontSize: 18, color: Colors.textTertiary, marginRight: 4 },
-  amountInput: { flex: 1, color: Colors.textPrimary, fontFamily: Fonts.heavy, fontSize: 18, textAlign: 'right', minWidth: 80 },
+  amountInput: { flex: 1, minWidth: 30, color: Colors.textPrimary, fontFamily: Fonts.heavy, fontSize: 17, textAlign: 'right' },
   trophy: { width: 110, height: 110, borderRadius: 55, backgroundColor: 'rgba(255,149,0,0.12)', borderWidth: 1, borderColor: 'rgba(255,149,0,0.4)', alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
   summary: { width: '100%', maxWidth: 380, gap: 10, marginTop: 24 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, height: 52, borderRadius: 16, backgroundColor: 'rgba(28,28,30,0.9)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
