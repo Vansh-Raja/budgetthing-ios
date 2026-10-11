@@ -22,6 +22,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
 import { TransactionDetailScreen } from '../../screens/TransactionDetailScreen';
+import { useDayKey } from '@/lib/web/useDayKey';
 
 const RECENT_LIMIT = 14;
 
@@ -45,6 +46,7 @@ export function DesktopLedgerPane() {
   const { trips } = useTrips();
   const [pending, setPending] = useState(0);
   const [openTx, setOpenTx] = useState<Transaction | null>(null);
+  const dayKey = useDayKey(); // "this month" and Today/Yesterday labels roll over at midnight
 
   useEffect(() => {
     let alive = true;
@@ -71,7 +73,7 @@ export function DesktopLedgerPane() {
       if (r.tx.date >= monthStart && !r.info.isIncome && shouldCountInMonthlySpentTotals(r.tx)) total += r.info.amount;
     }
     return { spent: total, monthName: now.toLocaleDateString(undefined, { month: 'long' }), recent: visible.slice(0, RECENT_LIMIT) };
-  }, [transactions, tripMap]);
+  }, [transactions, tripMap, dayKey]);
 
   const now = new Date();
   let lastLabel = '';

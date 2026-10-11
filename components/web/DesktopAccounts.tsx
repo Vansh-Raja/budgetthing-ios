@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { EditAccountScreen } from '../../screens/EditAccountScreen';
+import { useDayKey } from '@/lib/web/useDayKey';
 
 const KIND_LABEL: Record<string, string> = { cash: 'Cash', savings: 'Bank', card: 'Credit card' };
 
@@ -36,20 +37,23 @@ export function DesktopAccounts({ accounts, transactions, getAccountDisplay }: {
   const { settings } = useUserSettings();
   const currency = settings?.currencyCode ?? 'INR';
   const [adding, setAdding] = useState(false);
+  const dayKey = useDayKey(); // spending windows (month / billing cycle) roll over at midnight
 
   const rows = useMemo(() => accounts.map((acc) => {
     const txs = getTransactionsForAccount(transactions, acc.id);
     const { spentThisWindow } = getAccountDisplay(acc);
     const isCard = acc.kind === 'card';
     const flows = summarizeAccountFlows(acc, txs);
-    const owed = isCard ? Math.max(0, flows.expensesCents - flows.incomesCents) : 0;
+    // Signed: positive = owed on the card, negative = the card is in credit (refund/overpayment).
+    const owed = isCard ? flows.expensesCents - flows.incomesCents : 0;
     const value = computeAccountHeaderValueCents(acc, txs) ?? 0;
     const cycle = isCard && acc.billingCycleDay && acc.billingCycleDay >= 1 && acc.billingCycleDay <= 28;
     return { acc, isCard, owed, value, spent: spentThisWindow, windowLabel: cycle ? 'this cycle' : 'this month' };
-  }), [accounts, transactions, getAccountDisplay]);
+  }), [accounts, transactions, getAccountDisplay, dayKey]);
 
   const { have, owedTotal } = useMemo(() => ({
     have: rows.filter((r) => !r.isCard).reduce((s, r) => s + r.value, 0),
+    // Net card position: credits count in your favour.
     owedTotal: rows.filter((r) => r.isCard).reduce((s, r) => s + r.owed, 0),
   }), [rows]);
 
@@ -63,11 +67,12 @@ export function DesktopAccounts({ accounts, transactions, getAccountDisplay }: {
         <HeaderButton icon="add" label="Add account" primary onPress={() => setAdding(true)} />
       </View>
 
-      <Text style={styles.kicker}>{owedTotal > 0 ? 'Net of card balances' : 'Across your accounts'}</Text>
+      <Text style={styles.kicker}>{owedTotal !== 0 ? 'Net of card balances' : 'Across your accounts'}</Text>
       <Text style={[styles.headline, have - owedTotal < 0 && { color: Colors.error }]} numberOfLines={1}>{formatCents(have - owedTotal, currency)}</Text>
       <Text style={styles.sub}>
         {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
         {owedTotal > 0 ? ` · ${formatCents(have, currency)} in hand · ${formatCents(owedTotal, currency)} owed on cards` : ''}
+        {owedTotal < 0 ? ` · ${formatCents(have, currency)} in hand · ${formatCents(-owedTotal, currency)} credit on cards` : ''}
       </Text>
 
       <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
@@ -94,8 +99,8 @@ export function DesktopAccounts({ accounts, transactions, getAccountDisplay }: {
               <Text style={styles.kind}>{windowLabel}</Text>
             </View>
             <View style={styles.colBalance}>
-              <Text style={[styles.balance, value < 0 && { color: Colors.error }]}>{formatCents(isCard && acc.limitAmountCents == null ? owed : value, currency)}</Text>
-              {isCard ? <Text style={styles.kind}>{acc.limitAmountCents != null ? 'available' : 'owed'}</Text> : null}
+              <Text style={[styles.balance, value < 0 && { color: Colors.error }]}>{formatCents(isCard && acc.limitAmountCents == null ? Math.abs(owed) : value, currency)}</Text>
+              {isCard ? <Text style={styles.kind}>{acc.limitAmountCents != null ? 'available' : owed < 0 ? 'credit' : 'owed'}</Text> : null}
             </View>
             <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
           </Pressable>
