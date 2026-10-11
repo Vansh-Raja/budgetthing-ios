@@ -131,6 +131,13 @@ test.describe('Onboarding', () => {
       expect(accts.find((a) => a.name === `Onb bank A ${run}`)).toBeTruthy();
       expect(accts.find((a) => a.name === `Onb bank B ${run}`).openingBalanceCents).toBe(123_450);
 
+      // Clearing an existing account's balance on a replay really clears it.
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByRole('heading', { name: /Where does your/ })).toBeVisible();
+      await page.getByLabel(`Onb bank B ${run} balance`).fill('');
+      await next.click();
+      await expect.poll(async () => ((await convexQuery(page, 'pwaPersonal:getSnapshot')).accounts as any[]).find((a) => a.name === `Onb bank B ${run}`)?.openingBalanceCents ?? null, { timeout: 15_000 }).toBe(null);
+
       // Connect: create a key, then a real import arrives while the page waits.
       await expect(page.getByRole('heading', { name: /Connect your/ })).toBeVisible();
       await page.getByRole('button', { name: 'Create my agent key' }).click();

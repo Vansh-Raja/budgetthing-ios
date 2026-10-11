@@ -326,7 +326,11 @@ export function AccountsStep({ bindNext, onSummary }: { bindNext: BindNext; onSu
         if (r.existingId) {
           const o = r.original!;
           if (o.name === r.name && o.amount === r.amount && o.day === r.day) continue;
-          await AccountRepository.update(r.existingId, { name, ...money });
+          // Explicit nulls so clearing a balance, limit or bill day really clears it (native skips undefined).
+          const cleared: any = r.type === 'card'
+            ? { limitAmountCents: cents ?? null, billingCycleDay: day ?? null }
+            : { openingBalanceCents: cents ?? null };
+          await AccountRepository.update(r.existingId, { name, ...cleared });
           r.original = { name: r.name, amount: r.amount, day: r.day };
         } else if (!created.current.has(r.id)) {
           await AccountRepository.create({ name, emoji: t.emoji, kind: t.kind, ...money });
