@@ -16,6 +16,7 @@ import { AccountsScreen } from '../AccountsScreen';
 import { TripsScreen } from '../TripsScreen';
 import { SettingsScreen } from '../SettingsScreen';
 import { Colors, Tabs } from '../../constants/theme';
+import { DesktopLedgerPane } from '../../components/web/DesktopLedgerPane';
 import { DesktopSidebar } from '../../components/web/DesktopSidebar';
 import { useIsDesktop } from '../../lib/web/useIsDesktop';
 
@@ -127,9 +128,18 @@ export default function MainTabsScreen() {
               role="tabpanel"
               aria-label={tab.label}
             >
-              <View style={tab.key === 0 ? styles.desktopCalc : [styles.desktopContent, { maxWidth: DESKTOP_WIDTHS[tab.key] ?? 1080 }]}>
-                {visited.has(index) ? renderScreen(tab.key) : null}
-              </View>
+              {tab.key === 0 ? (
+                // Calculator workspace: the calculator as a full-height pane, and beside it
+                // what you've logged (so Enter visibly lands somewhere).
+                <View style={styles.calcWorkspace}>
+                  <View style={styles.desktopCalc}>{visited.has(index) ? renderScreen(tab.key) : null}</View>
+                  {visited.has(index) ? <DesktopLedgerPane /> : null}
+                </View>
+              ) : (
+                <View style={[styles.desktopContent, { maxWidth: DESKTOP_WIDTHS[tab.key] ?? 1080 }]}>
+                  {visited.has(index) ? renderScreen(tab.key) : null}
+                </View>
+              )}
             </View>
           ))}
         </View>
@@ -159,7 +169,7 @@ export default function MainTabsScreen() {
 }
 
 /** Readable widths per section on desktop (accounts use a card grid, so they get more). */
-const DESKTOP_WIDTHS: Record<number, number> = { 1: 960, 2: 1120, 4: 960, 3: 760 };
+const DESKTOP_WIDTHS: Record<number, number> = { 1: 960, 2: 960, 4: 960, 3: 760 };
 
 function clampTabIndex(raw: string | string[] | undefined): number {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -185,9 +195,7 @@ const styles = StyleSheet.create({
   hidden: { display: 'none' },
   // Readable column for lists and settings.
   desktopContent: { flex: 1, width: '100%', maxWidth: 1080, alignSelf: 'center', paddingHorizontal: 24 },
-  // The calculator as a focused card in the middle of the window.
-  desktopCalc: {
-    width: 440, maxWidth: '100%', alignSelf: 'center', marginVertical: 28, flex: 1, maxHeight: 860,
-    borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: '#050505',
-  },
+  calcWorkspace: { flex: 1, flexDirection: 'row' },
+  // The calculator as a full-height pane with a hairline edge (no floating phone card).
+  desktopCalc: { width: 420, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.08)', backgroundColor: '#030303' },
 });

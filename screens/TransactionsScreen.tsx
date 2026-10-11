@@ -38,7 +38,6 @@ import { useTrips } from '../lib/hooks/useTrips';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
 import { Actions } from '../lib/logic/actions';
 import { formatCents } from '../lib/logic/currencyUtils';
-import { TripSplitCalculator } from '../lib/logic/tripSplitCalculator';
 import { Category, Transaction } from '../lib/logic/types';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import {
@@ -57,6 +56,7 @@ import {
   shouldCountInMonthlySpentTotals,
   shouldRenderInTransactions,
 } from '../lib/ui/transactionRules';
+import { buildTripExpenseMap, getEffectiveDisplayInfo as effectiveDisplayInfo } from '../lib/ui/effectiveDisplay';
 import { TransactionDetailScreen } from './TransactionDetailScreen';
 
 // ============================================================================
@@ -302,114 +302,10 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
   }, [resetFiltersOnReopen, persistFilters]);
 
   // Map to find trip expense info for a transaction
-  const tripExpenseMap = useMemo(() => {
-    const map = new Map<string, { tripId: string; tripName: string; tripEmoji: string; isGroup: boolean; paidByParticipantId?: string; splitType: string; computedSplits?: Record<string, number>; participants: any[] }>();
-    trips.forEach(trip => {
-      trip.expenses?.forEach(exp => {
-        if (exp.transactionId) {
-          map.set(exp.transactionId, {
-            tripId: trip.id,
-            tripName: trip.name,
-            tripEmoji: trip.emoji,
-            isGroup: trip.isGroup,
-            paidByParticipantId: exp.paidByParticipantId,
-            splitType: exp.splitType,
-            computedSplits: exp.computedSplits,
-            participants: trip.participants || []
-          });
-        }
-      });
-    });
-    return map;
-  }, [trips]);
+  const tripExpenseMap = useMemo(() => buildTripExpenseMap(trips), [trips]);
 
-  // Helper to calculate effective display info for personal budget
-  const getEffectiveDisplayInfo = useCallback((tx: Transaction) => {
-    // Income: always show full amount as income
-    if (tx.type === 'income') {
-      return { amount: Math.abs(tx.amountCents), isIncome: true, shouldHide: false };
-    }
-
-    // Transfers and adjustments: show full amount
-    if (tx.systemType === 'transfer' || tx.systemType === 'adjustment') {
-      return { amount: Math.abs(tx.amountCents), isIncome: false, shouldHide: false };
-    }
-
-    // Check if this is a trip expense
-    const tripInfo = tripExpenseMap.get(tx.id);
-    if (tripInfo?.isGroup) {
-      // Local group trip expense rows are ledger-only; derived rows handle display.
-      return { amount: 0, isIncome: false, shouldHide: true };
-    }
-    if (!tripInfo) {
-      // Regular expense: show full amount
-      return { amount: Math.abs(tx.amountCents), isIncome: false, shouldHide: false };
-    }
-
-    // Find current user in trip participants
-    const currentUser = tripInfo.participants.find((p: any) => p.isCurrentUser);
-    if (!currentUser) {
-      return { amount: Math.abs(tx.amountCents), isIncome: false, shouldHide: false };
-    }
-
-    // Get computed splits (use stored or calculate)
-    const splits = tripInfo.computedSplits || TripSplitCalculator.calculateSplits(
-      Math.abs(tx.amountCents),
-      tripInfo.splitType as any,
-      tripInfo.participants,
-      undefined
-    );
-
-    const totalAmount = Math.abs(tx.amountCents);
-    const myShare = splits[currentUser.id] ?? 0;
-    const iPaid = tripInfo.paidByParticipantId === currentUser.id;
-    const payer = tripInfo.participants.find((p: any) => p.id === tripInfo.paidByParticipantId);
-    const payerName = payer?.name || 'them';
-
-    if (myShare <= 0) {
-      if (iPaid) {
-        // I paid but not included in split - effectively income (getting all money back)
-        return {
-          amount: totalAmount,
-          isIncome: true,
-          shouldHide: false,
-          netInfo: { text: `You get back ${formatCents(totalAmount)}`, color: Colors.success }
-        };
-      } else {
-        // Someone else paid and I'm not included - hide
-        return { amount: 0, isIncome: false, shouldHide: true };
-      }
-    } else {
-      // I have a share
-      if (iPaid) {
-        // I paid, so I get back (total - myShare)
-        const netBack = totalAmount - myShare;
-        if (netBack <= 0) {
-          // No net change or I owe more (shouldn't happen normally)
-          return {
-            amount: myShare,
-            isIncome: false,
-            shouldHide: false,
-            netInfo: { text: 'Settled', color: 'rgba(255, 255, 255, 0.4)' }
-          };
-        }
-        return {
-          amount: myShare,
-          isIncome: false,
-          shouldHide: false,
-          netInfo: { text: `You get back ${formatCents(netBack)}`, color: Colors.success }
-        };
-      } else {
-        // Someone else paid, I owe them my share
-        return {
-          amount: myShare,
-          isIncome: false,
-          shouldHide: false,
-          netInfo: { text: `You owe ${payerName} ${formatCents(myShare)}`, color: Colors.accent }
-        };
-      }
-    }
-  }, [tripExpenseMap]);
+  // Helper to calculate effective display info for personal budget (shared rules)
+  const getEffectiveDisplayInfo = useCallback((tx: Transaction) => effectiveDisplayInfo(tx, tripExpenseMap), [tripExpenseMap]);
 
   // Create category map for lookup
   const categoryMap = useMemo(() => {
