@@ -1,3 +1,13 @@
+## Android self-update (2026-10-28)
+
+The sideloaded APK updates itself from a feed, ported from BookThing (`docs/android-updates.md`).
+
+- [x] Feed `budgetthing-updates.vanshraja.me`: static server + Cloudflare tunnel as user services on the Main Ubuntu server.
+- [x] Local Expo module `modules/budgetthing-updater`: download, SHA-256 check, PackageInstaller session (silent on Android 12+ after the first update), status receiver, "updated, tap to open" notice, fallback to Android's installer.
+- [x] `lib/updates/androidUpdater.ts` + `AndroidUpdateBanner` (banner + Settings › About row with version and manual check).
+- [x] `scripts/android-release.sh` bumps `android.versionCode`, builds and publishes `latest.json`.
+- [ ] Maintainer: install a release, then confirm the next one arrives and installs from inside the app.
+
 ## Android port (2026-10-28)
 
 First real Android build: a local release APK for the maintainer's phone, on production Convex and Clerk, plus an Android parity pass. Build steps: `docs/android-build.md`.

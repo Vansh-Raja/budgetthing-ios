@@ -76,7 +76,7 @@ Every update must be signed with the same key, or Android refuses to install it 
 
 ### Disk
 
-A single-ABI release build needs about 4 GB: Gradle caches plus `android/app/.cxx` and `android/*/build`. Afterwards, `rm -rf android/app/.cxx android/app/build/intermediates node_modules/*/android/build` frees most of it. The APK is in `outputs`.
+A single-ABI release build needs about 4 GB: Gradle caches plus `android/app/.cxx` and `android/*/build`. Afterwards, `rm -rf android/app/.cxx android/app/build/intermediates node_modules/*/android/build modules/*/android/build` frees most of it. The APK is in `outputs`.
 
 ## Install on a phone
 

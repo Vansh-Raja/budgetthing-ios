@@ -9,6 +9,9 @@ expo-env.d.ts
 .metro-health-check*
 /ios
 /android
+# Local Expo modules: Gradle output
+modules/*/android/build/
+modules/*/android/.cxx/
 
 # Environment
 .env*.local

@@ -78,6 +78,7 @@ Same native (local-first) runtime as iOS. Android-only code lives in `*.android.
 - **Build:** `docs/android-build.md`, `scripts/android-build.sh`, `plugins/withAndroidLocalBuild.js`. `android/` is generated and git-ignored; change `app.json` or a plugin instead.
 - **Fonts:** `lib/ui/fonts.ts` maps the Avenir Next Condensed names to bundled Barlow Condensed.
 - **Sign-in:** `components/auth/SignInButton.android.tsx` (email/password + SSO). iOS uses `SignInButton.tsx` → Apple.
+- **Self-update:** `modules/budgetthing-updater` (local Expo module, Android only), `lib/updates/androidUpdater.ts`, `scripts/android-release.sh`. Feed and release steps are in `docs/android-updates.md`.
 - **Platform helpers:** `useAndroidBack` (hardware back), `androidInsets` (sheet top inset, floating bottom offset), `AndroidKeyboardAvoider`, `openAndroidDateTimePicker`.
 
 ---
