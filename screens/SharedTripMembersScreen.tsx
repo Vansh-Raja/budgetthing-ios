@@ -11,6 +11,7 @@ import { Colors } from '../constants/theme';
 import { SharedTripParticipantLocalRepository } from '../lib/db/sharedTripLocalRepository';
 import type { Trip, TripParticipant } from '../lib/logic/types';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
+import { useAndroidSheetTopInset } from '../lib/ui/androidInsets';
 
 interface SharedTripMembersScreenProps {
   trip: Trip;
@@ -20,6 +21,7 @@ interface SharedTripMembersScreenProps {
 }
 
 export function SharedTripMembersScreen({ trip, participants, onDismiss, onChanged }: SharedTripMembersScreenProps) {
+  const sheetTopInset = useAndroidSheetTopInset();
   const { syncNow } = useSyncStatus();
   const removeMemberMutation = useMutation(api.sharedTrips.removeMember);
   const { showPopup } = useCustomPopup();
@@ -148,7 +150,7 @@ export function SharedTripMembersScreen({ trip, participants, onDismiss, onChang
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: 14 + sheetTopInset }]}>
         <TouchableOpacity onPress={onDismiss} style={styles.headerButton}>
           <Ionicons name="close" size={24} color="#FFFFFF" />
         </TouchableOpacity>

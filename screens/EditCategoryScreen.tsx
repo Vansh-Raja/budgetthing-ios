@@ -23,6 +23,7 @@ import { Colors } from '../constants/theme';
 import { CategoryRepository } from '../lib/db/repositories';
 import { RECOMMENDED_CATEGORY_EMOJIS } from '../lib/emoji/recommendedEmojis';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
+import { AndroidKeyboardAvoider } from '@/components/ui/AndroidKeyboardAvoider';
 
 interface EditCategoryScreenProps {
     categoryId?: string;
@@ -174,54 +175,56 @@ export function EditCategoryScreen({ categoryId, onDismiss, onSave }: EditCatego
                 </View>
             )}
 
-            <ScrollView contentContainerStyle={styles.content}>
-                <View style={styles.formSection}>
-                    <View style={styles.row}>
-                        <TouchableOpacity
-                            style={styles.emojiButton}
-                            onPress={() => {
-                                Haptics.selectionAsync();
-                                setShowEmojiPicker(true);
-                            }}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.emoji}>{emoji}</Text>
-                        </TouchableOpacity>
-                        <TextInput
-                            style={styles.nameInput}
-                            value={name}
-                            onChangeText={setName}
-                            placeholder="Category Name"
-                            placeholderTextColor="rgba(255, 255, 255, 0.3)"
-                            autoFocus={!categoryId}
-                        />
-                    </View>
-
-                </View>
-
-                <View style={styles.formSection}>
-                    <View style={styles.inputRow}>
-                        <Text style={styles.label}>Monthly Budget</Text>
-                        <View style={styles.amountInputContainer}>
-                            <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
+            <AndroidKeyboardAvoider>
+                <ScrollView contentContainerStyle={styles.content}>
+                    <View style={styles.formSection}>
+                        <View style={styles.row}>
+                            <TouchableOpacity
+                                style={styles.emojiButton}
+                                onPress={() => {
+                                    Haptics.selectionAsync();
+                                    setShowEmojiPicker(true);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.emoji}>{emoji}</Text>
+                            </TouchableOpacity>
                             <TextInput
-                                style={styles.amountInput}
-                                value={budgetStr}
-                                onChangeText={setBudgetStr}
-                                keyboardType="decimal-pad"
-                                placeholder="Optional"
+                                style={styles.nameInput}
+                                value={name}
+                                onChangeText={setName}
+                                placeholder="Category Name"
                                 placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                                autoFocus={!categoryId}
                             />
                         </View>
-                    </View>
-                </View>
 
-                {categoryId && (
-                    <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-                        <Text style={styles.deleteText}>Delete Category</Text>
-                    </TouchableOpacity>
-                )}
-            </ScrollView>
+                    </View>
+
+                    <View style={styles.formSection}>
+                        <View style={styles.inputRow}>
+                            <Text style={styles.label}>Monthly Budget</Text>
+                            <View style={styles.amountInputContainer}>
+                                <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
+                                <TextInput
+                                    style={styles.amountInput}
+                                    value={budgetStr}
+                                    onChangeText={setBudgetStr}
+                                    keyboardType="decimal-pad"
+                                    placeholder="Optional"
+                                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                                />
+                            </View>
+                        </View>
+                    </View>
+
+                    {categoryId && (
+                        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+                            <Text style={styles.deleteText}>Delete Category</Text>
+                        </TouchableOpacity>
+                    )}
+                </ScrollView>
+            </AndroidKeyboardAvoider>
 
             <EmojiPickerModal
                 visible={showEmojiPicker}

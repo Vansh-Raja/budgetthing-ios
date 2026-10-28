@@ -20,12 +20,14 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAndroidSheetTopInset } from '../lib/ui/androidInsets';
 
 import { Colors } from '../constants/theme';
 import { TransactionRepository } from '../lib/db/repositories';
 import { useAccounts } from '../lib/hooks/useData';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { Account } from '../lib/logic/types';
+import { AndroidKeyboardAvoider } from '@/components/ui/AndroidKeyboardAvoider';
 
 interface TransferMoneyScreenProps {
     onDismiss: () => void;
@@ -33,6 +35,7 @@ interface TransferMoneyScreenProps {
 
 export function TransferMoneyScreen({ onDismiss }: TransferMoneyScreenProps) {
     const insets = useSafeAreaInsets();
+    const sheetTopInset = useAndroidSheetTopInset();
     const router = useRouter();
     const { showPopup } = useCustomPopup();
 
@@ -147,65 +150,67 @@ export function TransferMoneyScreen({ onDismiss }: TransferMoneyScreenProps) {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.content}>
-                <View style={styles.formSection}>
-                    {/* From */}
-                    <TouchableOpacity style={styles.row} onPress={() => openPicker('from')}>
-                        <Text style={styles.label}>From</Text>
-                        <View style={styles.valueContainer}>
-                            <Text style={[styles.value, !fromAccount && styles.placeholder]}>
-                                {fromAccount ? `${fromAccount.emoji} ${fromAccount.name}` : 'Select Account'}
-                            </Text>
-                            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" />
-                        </View>
-                    </TouchableOpacity>
+            <AndroidKeyboardAvoider>
+                <ScrollView contentContainerStyle={styles.content}>
+                    <View style={styles.formSection}>
+                        {/* From */}
+                        <TouchableOpacity style={styles.row} onPress={() => openPicker('from')}>
+                            <Text style={styles.label}>From</Text>
+                            <View style={styles.valueContainer}>
+                                <Text style={[styles.value, !fromAccount && styles.placeholder]}>
+                                    {fromAccount ? `${fromAccount.emoji} ${fromAccount.name}` : 'Select Account'}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" />
+                            </View>
+                        </TouchableOpacity>
 
-                    <View style={styles.divider} />
+                        <View style={styles.divider} />
 
-                    {/* To */}
-                    <TouchableOpacity style={styles.row} onPress={() => openPicker('to')}>
-                        <Text style={styles.label}>To</Text>
-                        <View style={styles.valueContainer}>
-                            <Text style={[styles.value, !toAccount && styles.placeholder]}>
-                                {toAccount ? `${toAccount.emoji} ${toAccount.name}` : 'Select Account'}
-                            </Text>
-                            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" />
-                        </View>
-                    </TouchableOpacity>
-                </View>
-
-                <View style={styles.formSection}>
-                    <View style={styles.inputRow}>
-                        <Text style={styles.label}>Amount</Text>
-                        <View style={styles.amountInputContainer}>
-                            <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
-                            <TextInput
-                                style={styles.amountInput}
-                                value={amountStr}
-                                onChangeText={setAmountStr}
-                                keyboardType="decimal-pad"
-                                placeholder="0"
-                                placeholderTextColor="rgba(255, 255, 255, 0.3)"
-                                autoFocus
-                            />
-                        </View>
+                        {/* To */}
+                        <TouchableOpacity style={styles.row} onPress={() => openPicker('to')}>
+                            <Text style={styles.label}>To</Text>
+                            <View style={styles.valueContainer}>
+                                <Text style={[styles.value, !toAccount && styles.placeholder]}>
+                                    {toAccount ? `${toAccount.emoji} ${toAccount.name}` : 'Select Account'}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" />
+                            </View>
+                        </TouchableOpacity>
                     </View>
 
-                    <View style={styles.divider} />
+                    <View style={styles.formSection}>
+                        <View style={styles.inputRow}>
+                            <Text style={styles.label}>Amount</Text>
+                            <View style={styles.amountInputContainer}>
+                                <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
+                                <TextInput
+                                    style={styles.amountInput}
+                                    value={amountStr}
+                                    onChangeText={setAmountStr}
+                                    keyboardType="decimal-pad"
+                                    placeholder="0"
+                                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                                    autoFocus
+                                />
+                            </View>
+                        </View>
 
-                    <TextInput
-                        style={styles.noteInput}
-                        value={note}
-                        onChangeText={setNote}
-                        placeholder="Note (optional)"
-                        placeholderTextColor="rgba(255, 255, 255, 0.3)"
-                    />
-                </View>
-            </ScrollView>
+                        <View style={styles.divider} />
+
+                        <TextInput
+                            style={styles.noteInput}
+                            value={note}
+                            onChangeText={setNote}
+                            placeholder="Note (optional)"
+                            placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                        />
+                    </View>
+                </ScrollView>
+            </AndroidKeyboardAvoider>
 
             {/* Account Picker Modal */}
             <Modal visible={pickerVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPickerVisible(false)}>
-                <View style={styles.pickerContainer}>
+                <View style={[styles.pickerContainer, { paddingTop: 20 + sheetTopInset }]}>
                     <View style={styles.pickerHeader}>
                         <Text style={styles.pickerTitle}>Select {pickerMode === 'from' ? 'Source' : 'Destination'}</Text>
                         <TouchableOpacity onPress={() => setPickerVisible(false)} style={styles.pickerClose}>

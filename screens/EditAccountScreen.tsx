@@ -29,6 +29,7 @@ import { useUserSettings } from '../lib/hooks/useUserSettings';
 import { computeAccountBalanceCents } from '../lib/logic/accountBalance';
 import { getCurrencySymbol, parseToCents } from '../lib/logic/currencyUtils';
 import { Account, AccountKind } from '../lib/logic/types';
+import { AndroidKeyboardAvoider } from '@/components/ui/AndroidKeyboardAvoider';
 
 interface EditAccountScreenProps {
     accountId?: string; // If present, edit mode
@@ -381,182 +382,184 @@ export function EditAccountScreen({ accountId, onDismiss, onSave }: EditAccountS
                 </View>
             )}
 
-            <ScrollView contentContainerStyle={styles.content}>
-                <View style={styles.formSection}>
-                    {/* Identity */}
-                    <View style={styles.row}>
-                        <TouchableOpacity
-                            style={styles.emojiButton}
-                            onPress={() => {
-                                Haptics.selectionAsync();
-                                setShowEmojiPicker(true);
-                            }}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.emoji}>{emoji}</Text>
-                        </TouchableOpacity>
-                        <TextInput
-                            style={styles.nameInput}
-                            value={name}
-                            onChangeText={setName}
-                            placeholder="Account Name"
-                            placeholderTextColor="rgba(255, 255, 255, 0.3)"
-                            autoFocus={!accountId}
-                        />
-                    </View>
-
-                    {/* Type Picker */}
-                    <View style={styles.typeContainer}>
-                        {ACCOUNT_KINDS.map(k => (
+            <AndroidKeyboardAvoider>
+                <ScrollView contentContainerStyle={styles.content}>
+                    <View style={styles.formSection}>
+                        {/* Identity */}
+                        <View style={styles.row}>
                             <TouchableOpacity
-                                key={k.type}
-                                style={[styles.typeButton, kind === k.type && styles.typeButtonActive]}
+                                style={styles.emojiButton}
                                 onPress={() => {
                                     Haptics.selectionAsync();
-                                    const nextKind = k.type;
-                                    setKind(nextKind);
-
-                                    if (nextKind === 'card') {
-                                        setStartingBalanceStr('');
-                                        setCurrentBalanceStr('');
-                                        return;
-                                    }
-
-                                    setLimitEnabled(false);
-                                    setLimitStr('');
-                                    setBillingDayStr('');
-
-                                    if (accountId) {
-                                        const account = loadedAccount;
-                                        if (account) {
-                                            TransactionRepository.getAll({ accountId: account.id })
-                                                .then((txs) => {
-                                                    const balanceCents = computeAccountBalanceCents(account, txs);
-                                                    setCurrentBalanceStr((balanceCents / 100).toFixed(2));
-                                                })
-                                                .catch((e) => console.error('[EditAccount] Failed to derive balance', e));
-                                        }
-                                    }
+                                    setShowEmojiPicker(true);
                                 }}
+                                activeOpacity={0.7}
                             >
-                                <Ionicons
-                                    name={k.icon}
-                                    size={18}
-                                    color={kind === k.type ? '#FFFFFF' : 'rgba(255, 255, 255, 0.5)'}
-                                />
-                                <Text style={[styles.typeLabel, kind === k.type && styles.typeLabelActive]}>
-                                    {k.label}
-                                </Text>
+                                <Text style={styles.emoji}>{emoji}</Text>
                             </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
+                            <TextInput
+                                style={styles.nameInput}
+                                value={name}
+                                onChangeText={setName}
+                                placeholder="Account Name"
+                                placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                                autoFocus={!accountId}
+                            />
+                        </View>
 
-                <View style={styles.formSection}>
-                    {/* Cash/Savings: balance */}
-                    {kind !== 'card' && (
-                        <>
-                            <View style={styles.inputRow}>
-                                <Text style={styles.label}>{accountId ? "Current Balance" : "Starting Balance"}</Text>
-                                <View style={styles.amountInputContainer}>
-                                    <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
-                                    <TextInput
-                                        style={styles.amountInput}
-                                        value={accountId ? currentBalanceStr : startingBalanceStr}
-                                        onChangeText={accountId ? setCurrentBalanceStr : setStartingBalanceStr}
-                                        keyboardType="decimal-pad"
-                                        placeholder="0.00"
-                                        placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                        {/* Type Picker */}
+                        <View style={styles.typeContainer}>
+                            {ACCOUNT_KINDS.map(k => (
+                                <TouchableOpacity
+                                    key={k.type}
+                                    style={[styles.typeButton, kind === k.type && styles.typeButtonActive]}
+                                    onPress={() => {
+                                        Haptics.selectionAsync();
+                                        const nextKind = k.type;
+                                        setKind(nextKind);
+
+                                        if (nextKind === 'card') {
+                                            setStartingBalanceStr('');
+                                            setCurrentBalanceStr('');
+                                            return;
+                                        }
+
+                                        setLimitEnabled(false);
+                                        setLimitStr('');
+                                        setBillingDayStr('');
+
+                                        if (accountId) {
+                                            const account = loadedAccount;
+                                            if (account) {
+                                                TransactionRepository.getAll({ accountId: account.id })
+                                                    .then((txs) => {
+                                                        const balanceCents = computeAccountBalanceCents(account, txs);
+                                                        setCurrentBalanceStr((balanceCents / 100).toFixed(2));
+                                                    })
+                                                    .catch((e) => console.error('[EditAccount] Failed to derive balance', e));
+                                            }
+                                        }
+                                    }}
+                                >
+                                    <Ionicons
+                                        name={k.icon}
+                                        size={18}
+                                        color={kind === k.type ? '#FFFFFF' : 'rgba(255, 255, 255, 0.5)'}
+                                    />
+                                    <Text style={[styles.typeLabel, kind === k.type && styles.typeLabelActive]}>
+                                        {k.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    <View style={styles.formSection}>
+                        {/* Cash/Savings: balance */}
+                        {kind !== 'card' && (
+                            <>
+                                <View style={styles.inputRow}>
+                                    <Text style={styles.label}>{accountId ? "Current Balance" : "Starting Balance"}</Text>
+                                    <View style={styles.amountInputContainer}>
+                                        <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
+                                        <TextInput
+                                            style={styles.amountInput}
+                                            value={accountId ? currentBalanceStr : startingBalanceStr}
+                                            onChangeText={accountId ? setCurrentBalanceStr : setStartingBalanceStr}
+                                            keyboardType="decimal-pad"
+                                            placeholder="0.00"
+                                            placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                                        />
+                                    </View>
+                                </View>
+
+                                <Text style={styles.helperText}>
+                                    {accountId
+                                        ? "Adjusts via an automatic balance adjustment entry."
+                                        : "Leave empty to start from 0."}
+                                </Text>
+                            </>
+                        )}
+
+                        {/* Card: limit + billing cycle */}
+                        {kind === 'card' && (
+                            <>
+                                <View style={[styles.inputRow, { justifyContent: 'space-between' }]}>
+                                    <Text style={styles.label}>Credit Limit</Text>
+                                    <Switch
+                                        value={limitEnabled}
+                                        onValueChange={(v) => {
+                                            Haptics.selectionAsync();
+                                            setLimitEnabled(v);
+                                        }}
+                                        trackColor={{ false: '#3a3a3c', true: Colors.accent }}
                                     />
                                 </View>
-                            </View>
 
-                            <Text style={styles.helperText}>
-                                {accountId
-                                    ? "Adjusts via an automatic balance adjustment entry."
-                                    : "Leave empty to start from 0."}
-                            </Text>
-                        </>
-                    )}
-
-                    {/* Card: limit + billing cycle */}
-                    {kind === 'card' && (
-                        <>
-                            <View style={[styles.inputRow, { justifyContent: 'space-between' }]}>
-                                <Text style={styles.label}>Credit Limit</Text>
-                                <Switch
-                                    value={limitEnabled}
-                                    onValueChange={(v) => {
-                                        Haptics.selectionAsync();
-                                        setLimitEnabled(v);
-                                    }}
-                                    trackColor={{ false: '#3a3a3c', true: Colors.accent }}
-                                />
-                            </View>
-
-                            {limitEnabled && (
-                                <>
-                                    <View style={styles.divider} />
-                                    <View style={styles.subInputRow}>
-                                        <Text style={styles.subLabel}>Limit Amount</Text>
-                                        <View style={styles.amountInputContainer}>
-                                            <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
-                                            <TextInput
-                                                style={styles.amountInput}
-                                                value={limitStr}
-                                                onChangeText={setLimitStr}
-                                                keyboardType="decimal-pad"
-                                                placeholder="0.00"
-                                                placeholderTextColor="rgba(255, 255, 255, 0.3)"
-                                            />
+                                {limitEnabled && (
+                                    <>
+                                        <View style={styles.divider} />
+                                        <View style={styles.subInputRow}>
+                                            <Text style={styles.subLabel}>Limit Amount</Text>
+                                            <View style={styles.amountInputContainer}>
+                                                <Text style={styles.currencySymbol}>{getCurrencySymbol('INR')}</Text>
+                                                <TextInput
+                                                    style={styles.amountInput}
+                                                    value={limitStr}
+                                                    onChangeText={setLimitStr}
+                                                    keyboardType="decimal-pad"
+                                                    placeholder="0.00"
+                                                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                                                />
+                                            </View>
                                         </View>
-                                    </View>
-                                </>
-                            )}
+                                    </>
+                                )}
 
-                            <View style={styles.divider} />
+                                <View style={styles.divider} />
 
-                            <View style={styles.subInputRow}>
-                                <Text style={styles.subLabel}>Billing Cycle Day</Text>
-                                <TextInput
-                                    style={styles.amountInput}
-                                    value={billingDayStr}
-                                    onChangeText={setBillingDayStr}
-                                    keyboardType="number-pad"
-                                    placeholder="e.g. 5"
-                                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
-                                    maxLength={2}
-                                />
-                            </View>
+                                <View style={styles.subInputRow}>
+                                    <Text style={styles.subLabel}>Billing Cycle Day</Text>
+                                    <TextInput
+                                        style={styles.amountInput}
+                                        value={billingDayStr}
+                                        onChangeText={setBillingDayStr}
+                                        keyboardType="number-pad"
+                                        placeholder="e.g. 5"
+                                        placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                                        maxLength={2}
+                                    />
+                                </View>
 
-                            <Text style={styles.helperText}>
-                                Used only for “spent this billing cycle”.
-                            </Text>
+                                <Text style={styles.helperText}>
+                                    Used only for “spent this billing cycle”.
+                                </Text>
+                            </>
+                        )}
+                    </View>
+
+                    {accountId && (
+                        <>
+                            <TouchableOpacity
+                                style={[styles.defaultButton, isDefaultAccount && { opacity: 0.6 }]}
+                                onPress={() => {
+                                    Haptics.selectionAsync();
+                                    handleSetDefaultAccount();
+                                }}
+                                disabled={isDefaultAccount}
+                            >
+                                <Text style={styles.defaultText}>
+                                    {isDefaultAccount ? 'Default Account' : 'Set as Default Account'}
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+                                <Text style={styles.deleteText}>Delete Account</Text>
+                            </TouchableOpacity>
                         </>
                     )}
-                </View>
-
-                {accountId && (
-                    <>
-                        <TouchableOpacity
-                            style={[styles.defaultButton, isDefaultAccount && { opacity: 0.6 }]}
-                            onPress={() => {
-                                Haptics.selectionAsync();
-                                handleSetDefaultAccount();
-                            }}
-                            disabled={isDefaultAccount}
-                        >
-                            <Text style={styles.defaultText}>
-                                {isDefaultAccount ? 'Default Account' : 'Set as Default Account'}
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-                            <Text style={styles.deleteText}>Delete Account</Text>
-                        </TouchableOpacity>
-                    </>
-                )}
-            </ScrollView>
+                </ScrollView>
+            </AndroidKeyboardAvoider>
 
             <EmojiPickerModal
                 visible={showEmojiPicker}

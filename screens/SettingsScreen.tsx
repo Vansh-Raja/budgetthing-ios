@@ -26,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
 import { useMutation } from 'convex/react';
 import {
-  AppleSignInButton,
+  SignInButton,
   DeleteAccountDialog,
   SignOutDialog,
   UserProfileCard,
@@ -318,7 +318,7 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
                   Sign in to sync your data across devices
                 </Text>
                 <View style={styles.signInButtonWrapper}>
-                  <AppleSignInButton onSignInComplete={handleSignInComplete} />
+                  <SignInButton onSignInComplete={handleSignInComplete} />
                 </View>
               </View>
             )

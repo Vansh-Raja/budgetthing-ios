@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StatusBar, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,9 +21,11 @@ import { AgentsScene, ApplePayScene, DiyScene, HookScene } from '@/components/on
 import { SwipeDemoScene } from '@/components/onboarding/SwipeDemo';
 import { Colors, Fonts } from '../constants/theme';
 import { useUserSettings } from '../lib/hooks/useUserSettings';
+import { useAndroidBack } from '../lib/ui/useAndroidBack';
 
 type Step = 'hook' | 'agents' | 'applepay' | 'swipe' | 'diy' | 'ask' | 'currency' | 'spend' | 'accounts' | 'connect' | 'done';
-const STORY: Step[] = ['hook', 'agents', 'applepay', 'swipe', 'diy', 'ask'];
+// Apple Pay + Shortcuts automation is iPhone-only, so Android skips that page.
+const STORY: Step[] = ['hook', 'agents', ...(Platform.OS === 'android' ? [] : ['applepay' as const]), 'swipe', 'diy', 'ask'];
 const SETUP: Step[] = ['currency', 'spend', 'accounts'];
 const END: Step[] = ['connect', 'done'];
 
@@ -108,6 +110,15 @@ export function OnboardingScreen() {
   }, []);
 
   const skipToAsk = () => goTo(STORY.indexOf('ask'));
+
+  // Android back steps through the flow (onboarding is entered with replace, so the default would exit).
+  const handleAndroidBack = useCallback(() => {
+    if (busy) return true;
+    if (index === 0) return !fromSettings;
+    goTo(index - 1);
+    return true;
+  }, [busy, index, fromSettings, goTo]);
+  useAndroidBack(handleAndroidBack);
 
   const inStory = STORY.indexOf(step) >= 0 && step !== 'ask';
   const label =

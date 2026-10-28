@@ -19,6 +19,7 @@ import { Colors, Tabs } from '../../constants/theme';
 import { DesktopLedgerPane } from '../../components/web/DesktopLedgerPane';
 import { DesktopSidebar } from '../../components/web/DesktopSidebar';
 import { useIsDesktop } from '../../lib/web/useIsDesktop';
+import { useAndroidBack } from '../../lib/ui/useAndroidBack';
 
 export default function MainTabsScreen() {
   const pagerRef = useRef<PagerHandle>(null);
@@ -70,6 +71,14 @@ export default function MainTabsScreen() {
       setTripsAddRequestId((id) => id + 1);
     }, 0);
   }, [handleSelectIndex]);
+
+  // Android back on any tab other than the calculator returns to it instead of exiting.
+  const handleAndroidBack = useCallback(() => {
+    if (selectedIndex === 0) return false;
+    handleSelectIndex(0);
+    return true;
+  }, [selectedIndex, handleSelectIndex]);
+  useAndroidBack(handleAndroidBack);
 
   // Render screen based on tab key (not index, since order is weird)
   const renderScreen = (tabKey: number) => {
@@ -149,7 +158,7 @@ export default function MainTabsScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
+      <StatusBar barStyle="light-content" />
       
       <PagerView
         ref={pagerRef}

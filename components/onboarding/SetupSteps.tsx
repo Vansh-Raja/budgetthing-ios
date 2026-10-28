@@ -2,7 +2,7 @@
  * "Connect your helpers": create an AI-agent key, copy a setup message, Apple Pay
  * Shortcut steps, and a live "waiting for your first import" check.
  */
-import { AppleSignInButton } from '@/components/auth';
+import { SignInButton } from '@/components/auth';
 import { Text } from '@/components/ui/LockedText';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Colors, Fonts } from '@/constants/theme';
@@ -14,7 +14,7 @@ import { useMutation } from 'convex/react';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 import { AnimatedWords, Rise } from './motion';
 import { AGENTS, AgentBadge, sceneStyles } from './shared';
@@ -108,8 +108,8 @@ export function ConnectStep({ onFirstImport, onKeyCreated }: { onFirstImport: ()
       {!isSignedIn ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Sign in to connect</Text>
-          <Text style={styles.cardBody}>Agents and Shortcuts send expenses to your BudgetThing account, so they need you signed in. You can also keep going as a guest.</Text>
-          <View style={{ marginTop: 12 }}><AppleSignInButton /></View>
+          <Text style={styles.cardBody}>{Platform.OS === 'android' ? 'Agents send' : 'Agents and Shortcuts send'} expenses to your BudgetThing account, so they need you signed in. You can also keep going as a guest.</Text>
+          <View style={{ marginTop: 12 }}><SignInButton /></View>
         </View>
       ) : (
         <>
@@ -139,7 +139,8 @@ export function ConnectStep({ onFirstImport, onKeyCreated }: { onFirstImport: ()
             )}
           </View>
 
-          <View style={styles.card}>
+          {/* Apple Pay automation needs the iOS Shortcuts app. */}
+          {Platform.OS !== 'android' && <View style={styles.card}>
             <Text style={styles.cardTitle}>Apple Pay Shortcut</Text>
             <Text style={styles.cardBody}>Log every tap-to-pay automatically with a Shortcuts automation{key ? ' using the key above.' : '. Create a key first.'}</Text>
             <TouchableOpacity accessibilityRole="button" onPress={() => setShowShortcut((s) => !s)} style={styles.linkRow}>
@@ -149,7 +150,7 @@ export function ConnectStep({ onFirstImport, onKeyCreated }: { onFirstImport: ()
             {showShortcut ? SHORTCUT_STEPS(key).map((s, i) => (
               <Text key={i} style={styles.step}>{i + 1}. {s}</Text>
             )) : null}
-          </View>
+          </View>}
 
           {key ? (
             <Animated.View key={arrived ? 'arrived' : 'waiting'} entering={ZoomIn.springify().damping(14)} style={[styles.card, arrived && styles.cardSuccess]} testID="onboarding-first-import">
@@ -161,7 +162,7 @@ export function ConnectStep({ onFirstImport, onKeyCreated }: { onFirstImport: ()
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <ActivityIndicator color={Colors.accent} />
-                  <Text style={styles.cardBody}>Waiting for your first import… Ask your agent to send one, or pay with Apple Pay.</Text>
+                  <Text style={styles.cardBody}>Waiting for your first import… Ask your agent to send one{Platform.OS === 'android' ? '.' : ', or pay with Apple Pay.'}</Text>
                 </View>
               )}
             </Animated.View>

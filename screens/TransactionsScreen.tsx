@@ -58,6 +58,8 @@ import {
 } from '../lib/ui/transactionRules';
 import { buildTripExpenseMap, getEffectiveDisplayInfo as effectiveDisplayInfo } from '../lib/ui/effectiveDisplay';
 import { TransactionDetailScreen } from './TransactionDetailScreen';
+import { useAndroidBack } from '../lib/ui/useAndroidBack';
+import { useAndroidBottomOffset, useAndroidSheetTopInset } from '../lib/ui/androidInsets';
 
 // ============================================================================
 // Types & Props
@@ -156,6 +158,8 @@ function SelectionActionsPill({
 export function TransactionsScreen({ selectedIndex, onSelectIndex }: TransactionsScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const bottomOverlayOffset = useAndroidBottomOffset(40);
+  const sheetTopInset = useAndroidSheetTopInset();
 
   const { data: transactions, refresh } = useTransactions();
   const { data: categories } = useCategories();
@@ -455,6 +459,14 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
     });
     Haptics.selectionAsync();
   }, []);
+
+  // Android back leaves selection mode instead of closing the app.
+  const handleAndroidBack = useCallback(() => {
+    setIsSelecting(false);
+    setSelectedIds(new Set());
+    return true;
+  }, []);
+  useAndroidBack(handleAndroidBack, isSelecting);
 
   const toggleItemSelection = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -868,7 +880,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
 
       {/* Bottom Controls */}
       {isSelecting ? (
-        <View style={[styles.bottomOverlay, { paddingBottom: 18 }]}>
+        <View style={[styles.bottomOverlay, { bottom: bottomOverlayOffset, paddingBottom: 18 }]}>
           <SelectionActionsPill
             selectedCount={selectedIds.size}
             onDelete={handleDelete}
@@ -952,7 +964,7 @@ export function TransactionsScreen({ selectedIndex, onSelectIndex }: Transaction
         presentationStyle="pageSheet"
         onRequestClose={() => setShowCategoryPicker(false)}
       >
-        <View style={{ flex: 1, backgroundColor: '#1C1C1E', paddingTop: 20 }}>
+        <View style={{ flex: 1, backgroundColor: '#1C1C1E', paddingTop: 20 + sheetTopInset }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 16 }}>
             <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
               <Text style={{ color: Colors.accent, fontSize: 18, fontFamily: 'AvenirNextCondensed-Medium' }}>Cancel</Text>

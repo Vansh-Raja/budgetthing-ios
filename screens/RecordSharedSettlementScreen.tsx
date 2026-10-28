@@ -12,6 +12,7 @@ import { SharedTripSettlementRepository } from '../lib/db/sharedTripWriteReposit
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import type { Trip, TripParticipant } from '../lib/logic/types';
 import { reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
+import { useAndroidSheetTopInset } from '../lib/ui/androidInsets';
 
 interface RecordSharedSettlementScreenProps {
   trip: Trip;
@@ -32,6 +33,7 @@ export function RecordSharedSettlementScreen({
   onDismiss,
   onRecorded,
 }: RecordSharedSettlementScreenProps) {
+  const sheetTopInset = useAndroidSheetTopInset();
   const { userId } = useAuth();
   const toast = useToast();
   const { showActionSheet, showPopup } = useCustomPopup();
@@ -121,7 +123,7 @@ export function RecordSharedSettlementScreen({
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: 20 + sheetTopInset }]}>
         <TouchableOpacity onPress={onDismiss}>
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>

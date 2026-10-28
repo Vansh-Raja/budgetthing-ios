@@ -1,4 +1,4 @@
-import { AppleSignInButton } from '@/components/auth';
+import { SignInButton } from '@/components/auth';
 import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { Colors, Fonts, BorderRadius, Spacing } from '@/constants/theme';
@@ -121,7 +121,7 @@ export default function ApiImportSettingsScreen() {
           <Text style={styles.emptyTitle}>Sign in required</Text>
           <Text style={styles.emptySubtitle}>API keys are tied to your synced BudgetThing account.</Text>
           <View style={styles.signInWrap}>
-            <AppleSignInButton />
+            <SignInButton />
           </View>
         </View>
       </SafeAreaView>

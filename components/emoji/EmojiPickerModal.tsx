@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   InteractionManager,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -114,6 +115,8 @@ export function EmojiPickerModal({
           enableSearchBar={true}
           enableRecentlyUsed={true}
           categoryPosition="bottom"
+          // rn-emoji-keyboard's SafeAreaView is iOS-only; keep the category bar above Android's nav bar.
+          styles={Platform.OS === 'android' ? { container: { marginBottom: insets.bottom } } : undefined}
           onEmojiSelected={(emojiObject: EmojiType) => {
             selectFromKeyboardAndClose(emojiObject.emoji);
           }}

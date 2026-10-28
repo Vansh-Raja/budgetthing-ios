@@ -16,6 +16,7 @@ import 'react-native-get-random-values'; // Polyfill for uuid
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { tokenCache } from '../auth/tokenCache';
+import { androidFontAliases } from '../ui/fonts';
 import { SyncProvider } from '../sync/SyncProvider';
 import { ImportInboxRepository } from '../db/repositories';
 import { Events, GlobalEvents } from '../events';
@@ -56,6 +57,7 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
+    ...androidFontAliases,
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.

@@ -1,3 +1,28 @@
+## Android port (2026-10-28)
+
+First real Android build: a local release APK for the maintainer's phone, on production Convex and Clerk, plus an Android parity pass. Build steps: `docs/android-build.md`.
+
+App identity + build
+- [x] `com.vansh.budgetthing` package, versionCode, real adaptive + monochrome icon (was the Expo placeholder), dark system UI (`expo-system-ui`).
+- [x] Local release signing via `plugins/withAndroidLocalBuild.js` (keystore outside the repo) and `scripts/android-build.sh` (prod env, arm64).
+- [x] arm64 Linux toolchain: community aarch64 NDK r27b, aarch64 build-tools, and system CMake behind the SDK `cmake/3.22.1` path.
+
+Parity fixes
+- [x] Fonts: Barlow Condensed (OFL) registered under the Avenir Next Condensed names on Android only (`lib/ui/fonts.ts`).
+- [x] Sign-in: Android email + password sheet with email-code verification and password reset (`components/auth/SignInButton.android.tsx`). Google appears once it's enabled on the Clerk instance. Apple (browser OAuth) is kept as a secondary option for accounts created with Apple.
+- [x] Back button: tabs return to the calculator, Transactions leaves multi-select, onboarding steps back (`lib/ui/useAndroidBack.ts`); `onRequestClose` on the TransactionDetail pickers.
+- [x] Insets: page-sheet modals open full-screen on Android, so their headers get the status-bar inset; the floating tab pill and selection pill clear 3-button navigation (`lib/ui/androidInsets.ts`); emoji keyboard sits above the nav bar.
+- [x] Keyboard: form ScrollViews wrapped in `AndroidKeyboardAvoider` (edge-to-edge stops the window resizing); the import edit sheet uses `padding` on both platforms.
+- [x] Date/time: Android system dialogs (date, then time) for transaction detail and import review (`openAndroidDateTimePicker`).
+- [x] TextInputs: no Material underline or extra padding, orange cursor and selection (`LockedText`).
+- [x] Onboarding: Apple Pay / Shortcuts page, card and copy hidden on Android.
+
+Open
+- [ ] Real-device pass by the maintainer (checklist in the PR / thread).
+- [ ] Enable Google on the production Clerk instance if wanted, and add the Android redirect if Clerk asks for it.
+- [ ] Play Store: EAS credentials, store listing, `eas.json` Android profile (maintainer).
+- [ ] Haptics tuning on Android (`selectionAsync` is a vibration there).
+
 ## Onboarding: "Stop logging expenses" (2026-10-10)
 
 First-run story that leads with automatic imports (AI agents + Apple Pay Shortcut → inbox → swipe to approve), then manual entry, setup, and an optional "connect your helpers" step. Shared code for web and native.

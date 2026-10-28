@@ -1,7 +1,7 @@
 import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@/components/ui/DateTimePicker';
+import DateTimePicker, { openAndroidDateTimePicker } from '@/components/ui/DateTimePicker';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -16,6 +16,7 @@ import {
 import { BorderRadius, Colors, Fonts, Spacing } from '../../constants/theme';
 import { formatCents, parseToCents } from '../../lib/logic/currencyUtils';
 import { Account, Category, ImportInboxItem, TransactionType } from '../../lib/logic/types';
+import { useAndroidSheetTopInset } from '../../lib/ui/androidInsets';
 
 interface Props {
   item: ImportInboxItem | null;
@@ -66,6 +67,7 @@ export function ImportInboxEditSheet({ item, accounts, categories, onClose, onCo
   const [type, setType] = useState<TransactionType>('expense');
   const [saving, setSaving] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const sheetTopInset = useAndroidSheetTopInset();
   const [picker, setPicker] = useState<'account' | 'category' | null>(null);
 
   useEffect(() => {
@@ -166,9 +168,9 @@ export function ImportInboxEditSheet({ item, accounts, categories, onClose, onCo
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
-        <View style={styles.header}>
+        <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 12 + sheetTopInset }]}>
           <TouchableOpacity onPress={onClose} style={styles.headerButton} activeOpacity={0.75}>
             <Text style={styles.headerButtonText}>Cancel</Text>
           </TouchableOpacity>
@@ -224,7 +226,7 @@ export function ImportInboxEditSheet({ item, accounts, categories, onClose, onCo
             />
           </View>
 
-          <TouchableOpacity style={styles.row} onPress={() => setShowDatePicker((v) => !v)} activeOpacity={0.75}>
+          <TouchableOpacity style={styles.row} onPress={() => (Platform.OS === 'android' ? openAndroidDateTimePicker(date, 'datetime', setDate) : setShowDatePicker((v) => !v))} activeOpacity={0.75}>
             <Text style={styles.rowLabel}>Date</Text>
             <Text style={styles.rowValue}>{date.toLocaleString()}</Text>
             <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />

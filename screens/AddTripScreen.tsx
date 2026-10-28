@@ -26,6 +26,7 @@ import { Colors } from '../constants/theme';
 import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
 import { Actions } from '../lib/logic/actions';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
+import { AndroidKeyboardAvoider } from '@/components/ui/AndroidKeyboardAvoider';
 
 interface AddTripScreenProps {
   onDismiss: () => void;
@@ -153,170 +154,172 @@ export function AddTripScreen({ onDismiss, onSave }: AddTripScreenProps) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.formContainer}>
+      <AndroidKeyboardAvoider>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.formContainer}>
 
-          {/* Emoji & Name */}
-          <View style={styles.row}>
-            <TouchableOpacity style={styles.emojiButton} onPress={() => setShowEmojiPicker(true)}>
-              <Text style={styles.emoji}>{emoji}</Text>
-            </TouchableOpacity>
-
-            <View style={styles.nameContainer}>
-              <Text style={styles.label}>Trip Name</Text>
-              <TextInput
-                style={styles.nameInput}
-                value={name}
-                onChangeText={setName}
-                placeholder="e.g., Goa 2026"
-                placeholderTextColor="rgba(255, 255, 255, 0.3)"
-              />
-            </View>
-          </View>
-
-          {/* Trip Type */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Trip Type</Text>
-            <View style={styles.typeRow}>
-              <TouchableOpacity
-                style={[styles.typeButton, !isGroup && styles.typeButtonActive]}
-                onPress={() => toggleTripType(false)}
-              >
-                <Ionicons name="person" size={14} color={!isGroup ? '#FFFFFF' : 'rgba(255, 255, 255, 0.5)'} />
-                <Text style={[styles.typeText, !isGroup && styles.typeTextActive]}>Solo</Text>
+            {/* Emoji & Name */}
+            <View style={styles.row}>
+              <TouchableOpacity style={styles.emojiButton} onPress={() => setShowEmojiPicker(true)}>
+                <Text style={styles.emoji}>{emoji}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.typeButton, isGroup && styles.typeButtonActive]}
-                onPress={() => toggleTripType(true)}
-              >
-                <Ionicons name="people" size={14} color={isGroup ? '#FFFFFF' : 'rgba(255, 255, 255, 0.5)'} />
-                <Text style={[styles.typeText, isGroup && styles.typeTextActive]}>Group</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Participants (Group only) */}
-          {isGroup && (
-            <View style={styles.section}>
-              <Text style={styles.label}>Participants</Text>
-              <View style={styles.participantsContainer}>
-                {participants.map(p => (
-                  <View key={p.id} style={styles.participantRow}>
-                    <View style={styles.participantAvatar}>
-                      <Text style={styles.avatarText}>{p.name.charAt(0)}</Text>
-                    </View>
-                    <Text style={styles.participantName}>{p.name}</Text>
-                    {p.isCurrentUser && <Text style={styles.meLabel}>(me)</Text>}
-                    <View style={{ flex: 1 }} />
-                    {!p.isCurrentUser && (
-                      <TouchableOpacity onPress={() => removeParticipant(p.id)}>
-                        <Ionicons name="close-circle" size={20} color="rgba(255, 255, 255, 0.4)" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-
-                {/* Add Participant */}
-                <View style={styles.addParticipantRow}>
-                  <TextInput
-                    style={styles.addParticipantInput}
-                    value={newParticipantName}
-                    onChangeText={setNewParticipantName}
-                    placeholder="Add participant..."
-                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
-                    onSubmitEditing={addParticipant}
-                  />
-                  <TouchableOpacity onPress={addParticipant} disabled={!newParticipantName.trim()} accessibilityRole="button" accessibilityLabel="Add participant">
-                    <Ionicons
-                      name="add-circle"
-                      size={24}
-                      color={newParticipantName.trim() ? Colors.accent : 'rgba(255, 255, 255, 0.3)'}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Dates */}
-          <View style={styles.section}>
-            <View style={styles.row}>
-              <Ionicons name="calendar" size={16} color="rgba(255, 255, 255, 0.7)" />
-              <Text style={styles.sectionTitle}>Trip Dates</Text>
-            </View>
-
-            <View style={styles.datesRow}>
-              <View>
-                <Text style={styles.label}>Start</Text>
-                {Platform.OS !== 'android' ? (
-                  <DateTimePicker
-                    value={startDate}
-                    mode="date"
-                    display="compact"
-                    onChange={(e: any, d?: Date) => d && setStartDate(d)}
-                    themeVariant="dark"
-                    accentColor={Colors.accent}
-                    style={{ marginLeft: -10 }}
-                  />
-                ) : (
-                  <TouchableOpacity onPress={() => setShowStartPicker(true)}>
-                    <Text style={styles.dateText}>{format(startDate, 'MMM d, yyyy')}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <View>
-                <Text style={styles.label}>End</Text>
-                {Platform.OS !== 'android' ? (
-                  <DateTimePicker
-                    value={endDate}
-                    mode="date"
-                    display="compact"
-                    onChange={(e: any, d?: Date) => d && setEndDate(d)}
-                    minimumDate={startDate}
-                    themeVariant="dark"
-                    accentColor={Colors.accent}
-                    style={{ marginLeft: -10 }}
-                  />
-                ) : (
-                  <TouchableOpacity onPress={() => setShowEndPicker(true)}>
-                    <Text style={styles.dateText}>{format(endDate, 'MMM d, yyyy')}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          </View>
-
-          {/* Budget */}
-          <View style={styles.section}>
-            <View style={styles.row}>
-              <Text style={styles.sectionTitle}>Set Budget</Text>
-              <Switch
-                value={hasBudget}
-                onValueChange={setHasBudget}
-                trackColor={{ false: '#3a3a3c', true: Colors.accent }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            {hasBudget && (
-              <View style={[styles.row, { marginTop: 12 }]}>
-                <Text style={styles.currencySymbol}>{getCurrencySymbol(currencyCode)}</Text>
+              <View style={styles.nameContainer}>
+                <Text style={styles.label}>Trip Name</Text>
                 <TextInput
-                  style={styles.budgetInput}
-                  value={budgetString}
-                  onChangeText={setBudgetString}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
+                  style={styles.nameInput}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g., Goa 2026"
                   placeholderTextColor="rgba(255, 255, 255, 0.3)"
                 />
               </View>
-            )}
-          </View>
+            </View>
 
-        </View>
-      </ScrollView>
+            {/* Trip Type */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Trip Type</Text>
+              <View style={styles.typeRow}>
+                <TouchableOpacity
+                  style={[styles.typeButton, !isGroup && styles.typeButtonActive]}
+                  onPress={() => toggleTripType(false)}
+                >
+                  <Ionicons name="person" size={14} color={!isGroup ? '#FFFFFF' : 'rgba(255, 255, 255, 0.5)'} />
+                  <Text style={[styles.typeText, !isGroup && styles.typeTextActive]}>Solo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.typeButton, isGroup && styles.typeButtonActive]}
+                  onPress={() => toggleTripType(true)}
+                >
+                  <Ionicons name="people" size={14} color={isGroup ? '#FFFFFF' : 'rgba(255, 255, 255, 0.5)'} />
+                  <Text style={[styles.typeText, isGroup && styles.typeTextActive]}>Group</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Participants (Group only) */}
+            {isGroup && (
+              <View style={styles.section}>
+                <Text style={styles.label}>Participants</Text>
+                <View style={styles.participantsContainer}>
+                  {participants.map(p => (
+                    <View key={p.id} style={styles.participantRow}>
+                      <View style={styles.participantAvatar}>
+                        <Text style={styles.avatarText}>{p.name.charAt(0)}</Text>
+                      </View>
+                      <Text style={styles.participantName}>{p.name}</Text>
+                      {p.isCurrentUser && <Text style={styles.meLabel}>(me)</Text>}
+                      <View style={{ flex: 1 }} />
+                      {!p.isCurrentUser && (
+                        <TouchableOpacity onPress={() => removeParticipant(p.id)}>
+                          <Ionicons name="close-circle" size={20} color="rgba(255, 255, 255, 0.4)" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+
+                  {/* Add Participant */}
+                  <View style={styles.addParticipantRow}>
+                    <TextInput
+                      style={styles.addParticipantInput}
+                      value={newParticipantName}
+                      onChangeText={setNewParticipantName}
+                      placeholder="Add participant..."
+                      placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                      onSubmitEditing={addParticipant}
+                    />
+                    <TouchableOpacity onPress={addParticipant} disabled={!newParticipantName.trim()} accessibilityRole="button" accessibilityLabel="Add participant">
+                      <Ionicons
+                        name="add-circle"
+                        size={24}
+                        color={newParticipantName.trim() ? Colors.accent : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Dates */}
+            <View style={styles.section}>
+              <View style={styles.row}>
+                <Ionicons name="calendar" size={16} color="rgba(255, 255, 255, 0.7)" />
+                <Text style={styles.sectionTitle}>Trip Dates</Text>
+              </View>
+
+              <View style={styles.datesRow}>
+                <View>
+                  <Text style={styles.label}>Start</Text>
+                  {Platform.OS !== 'android' ? (
+                    <DateTimePicker
+                      value={startDate}
+                      mode="date"
+                      display="compact"
+                      onChange={(e: any, d?: Date) => d && setStartDate(d)}
+                      themeVariant="dark"
+                      accentColor={Colors.accent}
+                      style={{ marginLeft: -10 }}
+                    />
+                  ) : (
+                    <TouchableOpacity onPress={() => setShowStartPicker(true)}>
+                      <Text style={styles.dateText}>{format(startDate, 'MMM d, yyyy')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <View>
+                  <Text style={styles.label}>End</Text>
+                  {Platform.OS !== 'android' ? (
+                    <DateTimePicker
+                      value={endDate}
+                      mode="date"
+                      display="compact"
+                      onChange={(e: any, d?: Date) => d && setEndDate(d)}
+                      minimumDate={startDate}
+                      themeVariant="dark"
+                      accentColor={Colors.accent}
+                      style={{ marginLeft: -10 }}
+                    />
+                  ) : (
+                    <TouchableOpacity onPress={() => setShowEndPicker(true)}>
+                      <Text style={styles.dateText}>{format(endDate, 'MMM d, yyyy')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            {/* Budget */}
+            <View style={styles.section}>
+              <View style={styles.row}>
+                <Text style={styles.sectionTitle}>Set Budget</Text>
+                <Switch
+                  value={hasBudget}
+                  onValueChange={setHasBudget}
+                  trackColor={{ false: '#3a3a3c', true: Colors.accent }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+
+              {hasBudget && (
+                <View style={[styles.row, { marginTop: 12 }]}>
+                  <Text style={styles.currencySymbol}>{getCurrencySymbol(currencyCode)}</Text>
+                  <TextInput
+                    style={styles.budgetInput}
+                    value={budgetString}
+                    onChangeText={setBudgetString}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                  />
+                </View>
+              )}
+            </View>
+
+          </View>
+        </ScrollView>
+      </AndroidKeyboardAvoider>
 
       {/* Android Date Pickers */}
       {showStartPicker && (

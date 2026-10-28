@@ -18,6 +18,7 @@ import {
   DEFAULT_TRANSACTIONS_FILTERS,
   normalizeTransactionsFilters,
 } from '@/lib/ui/transactionFilters';
+import { useAndroidSheetTopInset } from '../../lib/ui/androidInsets';
 
 type TripChoice = {
   id: string;
@@ -90,6 +91,7 @@ export function TransactionsFilterSheet(props: {
   onCancel: () => void;
   onApply: (filters: TransactionsFilterState) => void;
 }) {
+  const sheetTopInset = useAndroidSheetTopInset();
   const [draft, setDraft] = useState<TransactionsFilterState>(
     normalizeTransactionsFilters(props.initialFilters)
   );
@@ -190,7 +192,7 @@ export function TransactionsFilterSheet(props: {
       onRequestClose={props.onCancel}
     >
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: 14 + sheetTopInset }]}>
           <TouchableOpacity onPress={props.onCancel} activeOpacity={0.7}>
             <Text style={styles.headerAction}>Cancel</Text>
           </TouchableOpacity>
