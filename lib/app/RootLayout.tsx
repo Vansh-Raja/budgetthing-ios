@@ -17,6 +17,7 @@ import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { tokenCache } from '../auth/tokenCache';
 import { androidFontAliases } from '../ui/fonts';
+import { AndroidUpdateBanner } from '@/components/ui/AndroidUpdateBanner';
 import { SyncProvider } from '../sync/SyncProvider';
 import { ImportInboxRepository } from '../db/repositories';
 import { Events, GlobalEvents } from '../events';
@@ -250,18 +251,22 @@ function InitialLayout() {
   }, [isReady, loading, isBootstrapping, settings?.hasSeenOnboarding, segments, router]);
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: '#000000' },
-        headerTintColor: '#FFFFFF',
-        headerTitleStyle: { fontFamily: 'AvenirNextCondensed-DemiBold', fontSize: 18 },
-      }}
-    >
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="settings" options={{ headerShown: false }} />
-      <Stack.Screen name="import-inbox" options={{ headerShown: false, presentation: 'modal' }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false, animation: 'fade' }} />
-    </Stack>
+    <>
+      <Stack
+        screenOptions={{
+          headerShown: true,
+          headerStyle: { backgroundColor: '#000000' },
+          headerTintColor: '#FFFFFF',
+          headerTitleStyle: { fontFamily: 'AvenirNextCondensed-DemiBold', fontSize: 18 },
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
+        <Stack.Screen name="import-inbox" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false, animation: 'fade' }} />
+      </Stack>
+      {/* Android: self-update notice for the sideloaded APK (renders nothing elsewhere). */}
+      <AndroidUpdateBanner />
+    </>
   );
 }

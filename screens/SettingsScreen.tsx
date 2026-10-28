@@ -32,6 +32,8 @@ import {
   UserProfileCard,
 } from '../components/auth';
 import { FloatingTabSwitcher } from '../components/ui/FloatingTabSwitcher';
+import { AndroidUpdateSettingsRow } from '../components/ui/AndroidUpdateBanner';
+import { isUpdaterAvailable } from '../lib/updates/androidUpdater';
 import { WebRuntimeStatusSlot } from '../components/web/WebRuntimeStatusSlot';
 import { api } from '../convex/_generated/api';
 import { useAuthState } from '../lib/auth/useAuthHooks';
@@ -528,7 +530,7 @@ export function SettingsScreen({ selectedIndex, onSelectIndex }: SettingsScreenP
           <Text style={styles.aboutText}>
             BudgetThing helps you log expenses quickly with a simple, clean UI.
           </Text>
-          <Text style={styles.versionText}>Version 1.0 (1)</Text>
+          {isUpdaterAvailable ? <AndroidUpdateSettingsRow /> : <Text style={styles.versionText}>Version 1.0 (1)</Text>}
         </View>
 
         {/* Delete Account Section - Only shown when signed in */}
