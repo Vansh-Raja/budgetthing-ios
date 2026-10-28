@@ -149,9 +149,10 @@ function SignInSheet({
       const attempt = await signIn.create({ identifier: email.trim(), password });
       if (attempt.status === 'complete') return activate(attempt.createdSessionId);
 
-      // New-device check or email-code second factor.
+      // New-device check (Device Trust: 'needs_client_trust' on newer Clerk APIs) or email-code second factor.
       const emailFactor = attempt.supportedSecondFactors?.find((f) => f.strategy === 'email_code');
-      if (attempt.status === 'needs_second_factor' && emailFactor) {
+      const status = attempt.status as string;
+      if ((status === 'needs_second_factor' || status === 'needs_client_trust') && emailFactor) {
         await signIn.prepareSecondFactor({ strategy: 'email_code' });
         return goTo('verifySignIn');
       }

@@ -22,13 +22,15 @@ How to produce an installable BudgetThing APK on a Linux box, including an arm64
 
 Google ships the SDK build tools and the NDK as x86-64 only. On aarch64:
 
-- **aapt2 / build-tools:** use the static aarch64 build-tools from `android-sdk-tools-static-aarch64` (installed as `build-tools/35.0.0`). `~/.gradle/gradle.properties` sets `android.aapt2FromMavenOverride=~/Android/sdk/build-tools/35.0.0/aapt2`. `build-tools/36.0.0` is a hard-link copy of the same folder, with `36.0.0` in `source.properties` and `package.xml`, so AGP doesn't try to download the x86 one.
+- **aapt2 / build-tools:** use the static aarch64 build-tools from `android-sdk-tools-static-aarch64` (installed as `build-tools/35.0.0`). `~/.gradle/gradle.properties` sets `android.aapt2FromMavenOverride=/home/<you>/Android/sdk/build-tools/35.0.0/aapt2`. Use an absolute path: Gradle doesn't expand `~`. `build-tools/36.0.0` is a hard-link copy of the same folder, with `36.0.0` in `source.properties` and `package.xml`, so AGP doesn't try to download the x86 one.
 - **NDK:** the community aarch64-linux-gnu NDK build `android-ndk-r27b-aarch64-linux-gnu.tar.xz` from `github.com/HomuHomu833/android-ndk-custom` (release `r27`), extracted to `~/Android/sdk/ndk/27.1.12297006`.
 - **hermesc:** React Native only ships x86-64 `hermesc`. Build it from the Hermes commit that RN pins (`node_modules/react-native/sdks/.hermesversion`; RN 0.81.5 pins `e0fc67142ec0763c6b6153ca2bf96df815539782`), so the bytecode matches the runtime:
   ```bash
   sudo apt install libicu-dev
-  curl -sSL https://github.com/facebook/hermes/archive/<commit>.tar.gz | tar -xz -C ~/Android/dl/hermes-src
-  cmake -S ~/Android/dl/hermes-src/hermes-<commit> -B ~/Android/hermesc/build -G Ninja \
+  HERMES_COMMIT=e0fc67142ec0763c6b6153ca2bf96df815539782   # from .hermesversion's tag
+  mkdir -p ~/Android/dl/hermes-src
+  curl -sSL "https://github.com/facebook/hermes/archive/$HERMES_COMMIT.tar.gz" | tar -xz -C ~/Android/dl/hermes-src
+  cmake -S ~/Android/dl/hermes-src/hermes-$HERMES_COMMIT -B ~/Android/hermesc/build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DHERMES_ENABLE_INTL=OFF -DHERMES_ENABLE_TEST_SUITE=OFF
   ninja -C ~/Android/hermesc/build hermesc
   ```

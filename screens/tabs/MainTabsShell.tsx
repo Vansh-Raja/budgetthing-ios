@@ -73,13 +73,11 @@ export default function MainTabsScreen() {
   }, [handleSelectIndex]);
 
   // Android back on any tab other than the calculator returns to it instead of exiting.
-  const selectedIndexRef = useRef(selectedIndex);
-  selectedIndexRef.current = selectedIndex;
   const handleAndroidBack = useCallback(() => {
-    if (selectedIndexRef.current === 0) return false;
+    if (selectedIndex === 0) return false;
     handleSelectIndex(0);
     return true;
-  }, [handleSelectIndex]);
+  }, [selectedIndex, handleSelectIndex]);
   useAndroidBack(handleAndroidBack);
 
   // Render screen based on tab key (not index, since order is weird)

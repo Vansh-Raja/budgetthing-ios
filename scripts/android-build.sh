@@ -28,4 +28,8 @@ if [ "$(uname -m)" = "aarch64" ]; then
 fi
 
 cd android
-./gradlew "$TASK" -PreactNativeArchitectures="${ANDROID_ABIS:-arm64-v8a}" --no-daemon
+# The JS bundle task doesn't track EXPO_PUBLIC_* env vars as inputs, so force it to
+# rerun; otherwise a changed backend URL could ship with a stale bundle.
+RERUN=()
+[ "$TASK" = "assembleRelease" ] && RERUN=(:app:createBundleReleaseJsAndAssets --rerun)
+./gradlew "${RERUN[@]}" "$TASK" -PreactNativeArchitectures="${ANDROID_ABIS:-arm64-v8a}" --no-daemon
