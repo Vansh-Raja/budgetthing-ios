@@ -90,7 +90,9 @@ export function AndroidUpdateBanner() {
   }, []);
 
   if (!isUpdaterAvailable) return null;
-  if (phase.kind === 'available' && phase.release.versionCode <= dismissedCode) return null;
+  // "Later" hides offers for that version; an install the user started keeps showing.
+  const offer = phase.kind === 'available' || phase.kind === 'failed' || phase.kind === 'needsPermission';
+  if (offer && phase.release && phase.release.versionCode <= dismissedCode) return null;
   const content = describe(phase);
   if (!content) return null;
 
