@@ -36,7 +36,7 @@ Additional:
 
 - **Production app**: Expo (React Native) + Convex (Cross-platform)
 - **Migration Status**: **Complete** ✅
-- **Target platforms**: iOS (v1 released), Android (tech preview)
+- **Target platforms**: iOS (v1 released), Android (local release APK; see `docs/android-build.md`), web PWA
 
 ---
 
@@ -69,6 +69,16 @@ The same Expo app also runs as an **online-only** mobile web app (plan: `plan.md
 - **PWA:** `public/manifest.webmanifest`, `public/sw.js` (static shell only; never caches Convex/Clerk/API), stamped by `scripts/stamp-sw.mjs`.
 - **Tests:** `npm run test:convex` (convex-test contracts), `npm run test:web` (Playwright; needs `.env.local` and the two Clerk dev test users), and production-build checks with `E2E_PROD=1` (see `e2e/pwa-install.spec.ts`).
 - Edit files with CRLF line endings carefully: many files are still CRLF, and rewriting them as LF bloats diffs.
+
+---
+
+## Android
+
+Same native (local-first) runtime as iOS. Android-only code lives in `*.android.tsx` files or behind `Platform.OS === 'android'`, so iOS renders unchanged:
+- **Build:** `docs/android-build.md`, `scripts/android-build.sh`, `plugins/withAndroidLocalBuild.js`. `android/` is generated and git-ignored; change `app.json` or a plugin instead.
+- **Fonts:** `lib/ui/fonts.ts` maps the Avenir Next Condensed names to bundled Barlow Condensed.
+- **Sign-in:** `components/auth/SignInButton.android.tsx` (email/password + SSO). iOS uses `SignInButton.tsx` → Apple.
+- **Platform helpers:** `useAndroidBack` (hardware back), `androidInsets` (sheet top inset, floating bottom offset), `AndroidKeyboardAvoider`, `openAndroidDateTimePicker`.
 
 ---
 
