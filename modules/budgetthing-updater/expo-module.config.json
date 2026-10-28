@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["me.vanshraja.budgetthing.updater.UpdaterModule"]
+  }
+}

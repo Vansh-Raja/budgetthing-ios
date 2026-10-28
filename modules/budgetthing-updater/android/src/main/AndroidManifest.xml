@@ -1,0 +1,28 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Self-update of the sideloaded APK (UpdaterModule). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Lets later self-updates skip the confirmation once BudgetThing is the installer of record
+         (PackageInstaller.SessionParams.setRequireUserAction(USER_ACTION_NOT_REQUIRED), Android 12+). -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- "BudgetThing updated, tap to open" after an update replaces the app. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <receiver android:name="me.vanshraja.budgetthing.updater.UpdateStatusReceiver" android:exported="false" />
+        <receiver android:name="me.vanshraja.budgetthing.updater.UpdatedReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <!-- The downloaded update APK as a content:// URI for Android's installer (fallback path). -->
+        <provider
+            android:name="me.vanshraja.budgetthing.updater.UpdateFileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/budgetthing_update_files" />
+        </provider>
+    </application>
+</manifest>
