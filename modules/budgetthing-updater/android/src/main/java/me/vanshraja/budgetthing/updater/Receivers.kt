@@ -17,6 +17,7 @@ class UpdateStatusReceiver : BroadcastReceiver() {
     val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
     val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
     val versionCode = intent.getIntExtra(Updater.EXTRA_VERSION_CODE, 0)
+    val versionName = intent.getStringExtra(Updater.EXTRA_VERSION) ?: ""
     Updater.recordAttempt(context, status, message, versionCode)
 
     if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
@@ -28,15 +29,14 @@ class UpdateStatusReceiver : BroadcastReceiver() {
       }
       Updater.pendingConfirm = confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       Updater.confirmShown = false
+      // The module shows the prompt if the app is in front, else posts the notice itself.
       val listener = Updater.listener
-      if (listener == null) {
-        Updater.postConfirmNotification(context, intent.getStringExtra(Updater.EXTRA_VERSION) ?: "")
-      }
-      listener?.invoke(status, message, versionCode)
+      if (listener == null) Updater.postConfirmNotification(context, versionName)
+      listener?.invoke(status, message, versionCode, versionName)
       return
     }
     Updater.pendingConfirm = null
-    Updater.listener?.invoke(status, message, versionCode)
+    Updater.listener?.invoke(status, message, versionCode, versionName)
   }
 }
 

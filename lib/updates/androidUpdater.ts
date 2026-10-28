@@ -99,20 +99,30 @@ async function fetchLatest(): Promise<Release> {
 
 let checking = false;
 
+/** An install is underway; checks must not overwrite its phase. */
+function isBusy() {
+  return ['downloading', 'installing', 'pendingConfirm', 'inSystemInstaller'].includes(state.phase.kind);
+}
+
 export async function checkForUpdate(manual = true) {
-  if (!Updater || checking) return;
-  const busy = ['downloading', 'installing', 'pendingConfirm', 'inSystemInstaller'];
-  if (busy.includes(state.phase.kind)) return;
+  if (!Updater || checking || isBusy()) return;
   checking = true;
   if (manual) setPhase({ kind: 'checking' });
   try {
     const release = await fetchLatest();
+    if (isBusy()) return; // an install started while the feed was loading
     Updater.setNumber('lastCheck', Date.now());
-    if (release.versionCode > Updater.versionCode && release.apk) {
+    // No checksum, no install: the APK is only trusted after its SHA-256 matches the feed.
+    if (release.versionCode > Updater.versionCode && release.apk && release.sha256) {
       inFlight = release;
       // A failed attempt for this version (even before a restart) goes straight to Android's installer next time.
       const last = Updater.lastAttempt();
-      const failedBefore = !!last && last.status !== INSTALL_STATUS.SUCCESS && last.versionCode === release.versionCode;
+      // (A recorded "waiting for confirmation" isn't a failure: the prompt was just left open.)
+      const failedBefore =
+        !!last &&
+        last.status !== INSTALL_STATUS.SUCCESS &&
+        last.status !== INSTALL_STATUS.PENDING_USER_ACTION &&
+        last.versionCode === release.versionCode;
       setPhase(
         failedBefore
           ? {
@@ -127,6 +137,7 @@ export async function checkForUpdate(manual = true) {
       setPhase(manual ? { kind: 'upToDate' } : { kind: 'idle' });
     }
   } catch (e: any) {
+    if (isBusy()) return;
     setPhase(
       manual
         ? { kind: 'failed', message: `Couldn't check for updates: ${e?.message ?? 'network error'}`, release: null, viaSystemInstaller: false }
@@ -154,7 +165,9 @@ export async function installUpdate(release: Release) {
     setPhase({ kind: 'needsPermission', release });
     return;
   }
-  const viaSystemInstaller = state.phase.kind === 'failed' && state.phase.viaSystemInstaller;
+  // After a failed session (or "Open again" from Android's installer), use Android's installer screen.
+  const viaSystemInstaller =
+    state.phase.kind === 'inSystemInstaller' || (state.phase.kind === 'failed' && state.phase.viaSystemInstaller);
   Updater.requestNotificationPermission();
   inFlight = release;
   setPhase({ kind: 'downloading', release, fraction: 0 });

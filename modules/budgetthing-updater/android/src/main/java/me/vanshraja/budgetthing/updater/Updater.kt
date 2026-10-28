@@ -33,7 +33,7 @@ object Updater {
   data class Release(val versionCode: Int, val versionName: String, val sha256: String)
 
   /** Status reports for the JS module (set while the module is alive). */
-  @Volatile var listener: ((status: Int, message: String?, versionCode: Int) -> Unit)? = null
+  @Volatile var listener: ((status: Int, message: String?, versionCode: Int, versionName: String) -> Unit)? = null
 
   /** Android wants the user to confirm the install; shown when the app is in front. */
   @Volatile var pendingConfirm: Intent? = null

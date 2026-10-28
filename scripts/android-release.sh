@@ -49,10 +49,23 @@ CI=1 npx expo prebuild --platform android --no-install >/dev/null
 scripts/android-build.sh assembleRelease
 
 apk=android/app/build/outputs/apk/release/app-release.apk
-"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk" >/dev/null 2>&1 || jarsigner -verify "$apk" >/dev/null
+
+# Only publish APKs signed with the release key: phones reject an update signed with any other
+# key (android-build.sh falls back to the debug key when the signing properties are missing).
+SIGNING_PROPS="${BUDGETTHING_SIGNING_PROPS:-$HOME/Android/keystores/budgetthing-release.properties}"
+[ -f "$SIGNING_PROPS" ] || { echo "error: $SIGNING_PROPS not found; refusing to publish a debug-signed APK" >&2; exit 1; }
+prop() { grep "^$1=" "$SIGNING_PROPS" | cut -d= -f2-; }
+expected=$(keytool -exportcert -keystore "$(prop BUDGETTHING_UPLOAD_STORE_FILE)" -alias "$(prop BUDGETTHING_UPLOAD_KEY_ALIAS)" \
+  -storepass "$(prop BUDGETTHING_UPLOAD_STORE_PASSWORD)" 2>/dev/null | sha256sum | cut -d' ' -f1)
+actual=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+  echo "error: APK is not signed with the release key (expected ${expected:-?}, got ${actual:-?})" >&2
+  exit 1
+fi
 
 mkdir -p "$FEED/apk"
-out="apk/BudgetThing-$name-$code.apk"
+# Unique per build: a --keep republish must not change the bytes behind a URL a phone may already have.
+out="apk/BudgetThing-$name-$code-$(date -u +%Y%m%d%H%M%S).apk"
 cp "$apk" "$FEED/$out"
 sha=$(sha256sum "$FEED/$out" | cut -d' ' -f1)
 size=$(stat -c %s "$FEED/$out")
@@ -70,4 +83,6 @@ ls -1t "$FEED"/apk/BudgetThing-*.apk | tail -n +6 | xargs -r rm -f
 
 echo "Published BudgetThing $name (versionCode $code)"
 echo "  $FEED_URL/$out"
-[ "$BUMP" = 1 ] && echo "  Commit the app.json versionCode bump."
+if [ "$BUMP" = 1 ]; then
+  echo "  Commit the app.json versionCode bump."
+fi

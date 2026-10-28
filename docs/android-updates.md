@@ -22,7 +22,7 @@ scripts/android-release.sh --keep "Notes"             # republish the current ve
 The script:
 1. bumps `expo.android.versionCode` in `app.json`;
 2. runs prebuild and `scripts/android-build.sh`;
-3. copies the APK to `www/apk/BudgetThing-<version>-<code>.apk`;
+3. copies the APK to `www/apk/BudgetThing-<version>-<code>-<timestamp>.apk` (a new name for every build, so a URL never changes bytes);
 4. writes `latest.json` (`versionCode`, `versionName`, `apk`, `sha256`, `sizeBytes`, `notes`);
 5. keeps the five newest APKs.
 

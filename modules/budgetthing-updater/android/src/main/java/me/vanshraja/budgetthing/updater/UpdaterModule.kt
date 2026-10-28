@@ -28,6 +28,8 @@ class InstallRequest : Record {
   @Field val viaSystemInstaller: Boolean = false
 }
 
+private const val NOTIFICATIONS_REQUESTED = "notifications.requested"
+
 /** JS bridge for [Updater]. Android only; the JS wrapper is null on iOS and web. */
 class UpdaterModule : Module() {
   private val context get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -46,8 +48,13 @@ class UpdaterModule : Module() {
     }
 
     OnCreate {
-      Updater.listener = { status, message, versionCode ->
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) Updater.showPendingConfirm(appContext.currentActivity)
+      Updater.listener = { status, message, versionCode, versionName ->
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION &&
+          !Updater.showPendingConfirm(appContext.currentActivity)
+        ) {
+          // In the background (or no activity): leave a notice; it opens the app, which shows the prompt.
+          appContext.reactContext?.let { Updater.postConfirmNotification(it, versionName) }
+        }
         sendEvent(
           "onStatus",
           mapOf(
@@ -84,9 +91,12 @@ class UpdaterModule : Module() {
     /** Ask once for notifications (Android 13+) so the "updated, tap to open" notice can show. */
     Function("requestNotificationPermission") {
       val activity = appContext.currentActivity
+      val prefs = Updater.prefs(context)
       if (Build.VERSION.SDK_INT >= 33 && activity != null &&
-        ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+        !prefs.getBoolean(NOTIFICATIONS_REQUESTED, false)
       ) {
+        prefs.edit().putBoolean(NOTIFICATIONS_REQUESTED, true).apply()
         ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7_403)
       }
     }
