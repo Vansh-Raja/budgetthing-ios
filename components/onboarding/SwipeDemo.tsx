@@ -7,7 +7,7 @@ import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, LinearTransition, ZoomIn, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming, Extrapolation } from 'react-native-reanimated';
 import { Colors, Fonts } from '@/constants/theme';
@@ -20,7 +20,7 @@ const FLY = 520;
 
 const DEMO: DemoItem[] = [
   { id: 'd1', emoji: '🍔', merchant: 'Swiggy', amountCents: 48600, via: 'your AI agent' },
-  { id: 'd2', emoji: '☕', merchant: 'Blue Tokai', amountCents: 24000, via: 'Apple Pay' },
+  { id: 'd2', emoji: '☕', merchant: 'Blue Tokai', amountCents: 24000, via: Platform.OS === 'android' ? 'your AI agent' : 'Apple Pay' },
   { id: 'd3', emoji: '🛍️', merchant: 'Amazon', amountCents: 129900, via: 'your AI agent' },
 ];
 

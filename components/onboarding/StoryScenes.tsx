@@ -5,7 +5,8 @@
 import { Text } from '@/components/ui/LockedText';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { AndroidKeyboardAvoider } from '@/components/ui/AndroidKeyboardAvoider';
 import { Extrapolation, interpolate, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { Colors, Fonts } from '@/constants/theme';
 import { formatCents } from '@/lib/logic/currencyUtils';
@@ -18,9 +19,11 @@ const LOGO = require('../../assets/images/onboarding-logo.png');
 /** Scrolls only if the device is too short; otherwise centred. */
 export function SceneScroll({ children }: { children: React.ReactNode }) {
   return (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
-      {children}
-    </ScrollView>
+    <AndroidKeyboardAvoider>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
+        {children}
+      </ScrollView>
+    </AndroidKeyboardAvoider>
   );
 }
 
@@ -37,7 +40,7 @@ function pop(t: number, a: number, b: number) {
 const HOOK_ITEMS: DemoItem[] = [
   { id: 'h1', emoji: '🍔', merchant: 'Swiggy', amountCents: 48600, via: 'your AI agent' },
   { id: 'h2', emoji: '🚕', merchant: 'Uber', amountCents: 21200, via: 'your AI agent' },
-  { id: 'h3', emoji: '☕', merchant: 'Blue Tokai', amountCents: 24000, via: 'Apple Pay' },
+  { id: 'h3', emoji: '☕', merchant: 'Blue Tokai', amountCents: 24000, via: Platform.OS === 'android' ? 'your AI agent' : 'Apple Pay' },
 ];
 
 function HookCard({ t, index, item, currencyCode }: { t: SharedValue<number>; index: number; item: DemoItem; currencyCode: string }) {
