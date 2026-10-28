@@ -18,6 +18,7 @@ import { getDefaultTripNickname } from '../lib/auth/displayName';
 import { useAuthState } from '../lib/auth/useAuthHooks';
 import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
+import { useAndroidSheetTopInset } from '../lib/ui/androidInsets';
 
 interface AddSharedTripScreenProps {
   onDismiss: () => void;
@@ -25,6 +26,7 @@ interface AddSharedTripScreenProps {
 }
 
 export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScreenProps) {
+  const sheetTopInset = useAndroidSheetTopInset();
   const { syncNow } = useSyncStatus();
   const { user } = useAuthState();
   const toast = useToast();
@@ -115,7 +117,7 @@ export function AddSharedTripScreen({ onDismiss, onCreated }: AddSharedTripScree
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: 14 + sheetTopInset }]}>
         <TouchableOpacity onPress={onDismiss} style={styles.headerButton}>
           <Ionicons name="close" size={24} color="#FFFFFF" />
         </TouchableOpacity>

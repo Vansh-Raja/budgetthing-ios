@@ -11,6 +11,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Colors, Sizes, Tabs } from '../../constants/theme';
 import { useIsDesktop } from '../../lib/web/useIsDesktop';
+import { useAndroidBottomOffset } from '../../lib/ui/androidInsets';
 
 interface FloatingTabSwitcherProps {
   selectedIndex: number;
@@ -32,6 +33,7 @@ const getIconName = (key: number): keyof typeof Ionicons.glyphMap => {
 export function FloatingTabSwitcher({ selectedIndex, onSelectIndex }: FloatingTabSwitcherProps) {
   // Desktop browsers navigate with the sidebar instead.
   const isDesktop = useIsDesktop();
+  const bottom = useAndroidBottomOffset(40);
   const handlePress = (index: number) => {
     Haptics.selectionAsync();
     onSelectIndex(index);
@@ -40,7 +42,7 @@ export function FloatingTabSwitcher({ selectedIndex, onSelectIndex }: FloatingTa
   if (isDesktop) return null;
 
   return (
-    <View style={styles.container} pointerEvents="box-none">
+    <View style={[styles.container, { bottom }]} pointerEvents="box-none">
       <View style={styles.pill}>
         {/* Background - using BlurView with dark overlay */}
         <BlurView intensity={80} tint="dark" style={styles.blurBackground}>

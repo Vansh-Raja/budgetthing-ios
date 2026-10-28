@@ -9,7 +9,7 @@ import { useCustomPopup } from '@/components/ui/CustomPopupProvider';
 import { Text, TextInput } from '@/components/ui/LockedText';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@/components/ui/DateTimePicker';
+import DateTimePicker, { openAndroidDateTimePicker } from '@/components/ui/DateTimePicker';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -22,6 +22,7 @@ import {
     View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAndroidSheetTopInset } from '../lib/ui/androidInsets';
 
 import { Colors } from '../constants/theme';
 import { withTransaction } from '../lib/db/database';
@@ -40,6 +41,7 @@ import { derivedTripCashflowId } from '../lib/sync/sharedTripDerivedIds';
 import { reconcileSharedTripDerivedTransactionsForExpense, reconcileSharedTripDerivedTransactionsForUser } from '../lib/sync/sharedTripReconcile';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
 import { SplitEditorScreen } from './SplitEditorScreen';
+import { AndroidKeyboardAvoider } from '@/components/ui/AndroidKeyboardAvoider';
 
 interface TransactionDetailScreenProps {
     transactionId?: string;
@@ -63,6 +65,7 @@ export function TransactionDetailScreen({
     onEditInTrip,
 }: TransactionDetailScreenProps) {
     const insets = useSafeAreaInsets();
+    const sheetTopInset = useAndroidSheetTopInset();
     const { userId } = useAuth();
 
     const isMountedRef = useRef(true);
@@ -109,6 +112,10 @@ export function TransactionDetailScreen({
     const [showCategoryPicker, setShowCategoryPicker] = useState(false);
     const [showAccountPicker, setShowAccountPicker] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
+    const openDatePicker = (mode: 'date' | 'time') => {
+        if (Platform.OS === 'android') openAndroidDateTimePicker(editDate, mode, setEditDate);
+        else setShowDatePicker(true);
+    };
     const [showSplitEditor, setShowSplitEditor] = useState(false);
     const [showPayerPicker, setShowPayerPicker] = useState(false);
 
@@ -820,405 +827,253 @@ export function TransactionDetailScreen({
                 )}
             </View>
 
-            <ScrollView contentContainerStyle={styles.content}>
+            <AndroidKeyboardAvoider>
+                <ScrollView contentContainerStyle={styles.content}>
 
-                {/* Hero Section */}
-                <View style={styles.heroSection}>
-                    {/* Emoji */}
-                    <TouchableOpacity
-                        onPress={() => isEditing && setShowCategoryPicker(true)}
-                        style={styles.emojiButton}
-                        disabled={!isEditing}
-                    >
-                        <Text style={styles.heroEmoji}>{
-                            transaction?.systemType === 'transfer' ? "⇅" :
-                                transaction?.systemType === 'adjustment' ? "🛠" :
-                                    displayCategoryEmoji || (isIncome ? "💰" : "💸")
-                        }</Text>
-                        {isEditing && (
-                            <View style={styles.editBadge}>
-                                <Ionicons name="pencil" size={12} color="black" />
+                    {/* Hero Section */}
+                    <View style={styles.heroSection}>
+                        {/* Emoji */}
+                        <TouchableOpacity
+                            onPress={() => isEditing && setShowCategoryPicker(true)}
+                            style={styles.emojiButton}
+                            disabled={!isEditing}
+                        >
+                            <Text style={styles.heroEmoji}>{
+                                transaction?.systemType === 'transfer' ? "⇅" :
+                                    transaction?.systemType === 'adjustment' ? "🛠" :
+                                        displayCategoryEmoji || (isIncome ? "💰" : "💸")
+                            }</Text>
+                            {isEditing && (
+                                <View style={styles.editBadge}>
+                                    <Ionicons name="pencil" size={12} color="black" />
+                                </View>
+                            )}
+                        </TouchableOpacity>
+
+                        {/* Amount */}
+                        {isEditing ? (
+                            <View style={styles.editAmountContainer}>
+                                <Text style={styles.currencySymbol}>{getCurrencySymbol("INR")}</Text>
+                                <TextInput
+                                    // Web inputs default to ~20 characters wide (native auto-sizes), which
+                                    // pushed the centred amount off-screen; size to the content, capped so a long
+                                    // amount scrolls inside the input instead of overflowing the sheet.
+                                    style={[styles.editAmountInput, Platform.OS === 'web' && { width: `${Math.min(12, Math.max(2, editAmountString.length + 1))}ch` as any }]}
+                                    value={editAmountString}
+                                    onChangeText={setEditAmountString}
+                                    keyboardType="decimal-pad"
+                                />
+                            </View>
+                        ) : (
+                            <Text style={styles.heroAmount}>
+                                {formatCents(Math.abs(transaction!.amountCents), "INR")}
+                            </Text>
+                        )}
+
+                        {!isEditing && isTripShare && tripShareTotalCents && (
+                            <View style={styles.tripShareMetaRow}>
+                                <Text style={styles.tripShareMetaText}>
+                                    Total{' '}
+                                    <Text style={styles.tripShareMetaTotal}>
+                                        {formatCents(tripShareTotalCents, "INR")}
+                                    </Text>
+                                </Text>
                             </View>
                         )}
-                    </TouchableOpacity>
 
-                    {/* Amount */}
+                        {!isEditing && isSharedExpense && sharedExpenseMyShareCents && (
+                            <View style={styles.tripShareMetaRow}>
+                                <Text style={styles.tripShareMetaText}>
+                                    Your share{' '}
+                                    <Text style={styles.tripShareMetaTotal}>
+                                        {formatCents(sharedExpenseMyShareCents, "INR")}
+                                    </Text>
+                                </Text>
+                            </View>
+                        )}
+
+                        {/* View Mode Meta */}
+                        {!isEditing && (
+                            <Text style={styles.metaText}>
+                                {new Date(transaction!.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true })}
+
+                                {!!account && !isTripShare && !isSharedExpense && (
+                                    <Text>
+                                        <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
+                                        {account.emoji} {account.name}
+                                    </Text>
+                                )}
+
+                                {(isSharedTripContext || isTripShare || isSharedExpense || isDerivedCashflow || isDerivedSettlement) && !!relatedTrip && (
+                                    <Text>
+                                        <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
+                                        {relatedTrip.emoji} {relatedTrip.name}
+                                    </Text>
+                                )}
+                            </Text>
+                        )}
+
+                        {!isEditing && isSharedExpense && isBackgroundSyncing && (
+                            <View style={styles.syncingRow}>
+                                <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
+                                <Text style={styles.syncingText}>Syncing…</Text>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* EDIT MODE LAYOUT */}
                     {isEditing ? (
-                        <View style={styles.editAmountContainer}>
-                            <Text style={styles.currencySymbol}>{getCurrencySymbol("INR")}</Text>
-                            <TextInput
-                                // Web inputs default to ~20 characters wide (native auto-sizes), which
-                                // pushed the centred amount off-screen; size to the content, capped so a long
-                                // amount scrolls inside the input instead of overflowing the sheet.
-                                style={[styles.editAmountInput, Platform.OS === 'web' && { width: `${Math.min(12, Math.max(2, editAmountString.length + 1))}ch` as any }]}
-                                value={editAmountString}
-                                onChangeText={setEditAmountString}
-                                keyboardType="decimal-pad"
-                            />
-                        </View>
-                    ) : (
-                        <Text style={styles.heroAmount}>
-                            {formatCents(Math.abs(transaction!.amountCents), "INR")}
-                        </Text>
-                    )}
+                        <View style={styles.editForm}>
 
-                    {!isEditing && isTripShare && tripShareTotalCents && (
-                        <View style={styles.tripShareMetaRow}>
-                            <Text style={styles.tripShareMetaText}>
-                                Total{' '}
-                                <Text style={styles.tripShareMetaTotal}>
-                                    {formatCents(tripShareTotalCents, "INR")}
-                                </Text>
-                            </Text>
-                        </View>
-                    )}
+                            {/* Date & Time Row */}
+                            <View style={styles.row}>
+                                <TouchableOpacity onPress={() => openDatePicker('date')} style={styles.pill}>
+                                    <Text style={styles.pillText}>
+                                        {editDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => openDatePicker('time')} style={styles.pill}>
+                                    <Text style={styles.pillText}>
+                                        {editDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
 
-                    {!isEditing && isSharedExpense && sharedExpenseMyShareCents && (
-                        <View style={styles.tripShareMetaRow}>
-                            <Text style={styles.tripShareMetaText}>
-                                Your share{' '}
-                                <Text style={styles.tripShareMetaTotal}>
-                                    {formatCents(sharedExpenseMyShareCents, "INR")}
-                                </Text>
-                            </Text>
-                        </View>
-                    )}
-
-                    {/* View Mode Meta */}
-                    {!isEditing && (
-                        <Text style={styles.metaText}>
-                            {new Date(transaction!.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true })}
-
-                            {!!account && !isTripShare && !isSharedExpense && (
-                                <Text>
-                                    <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
-                                    {account.emoji} {account.name}
-                                </Text>
+                            {!isSharedExpense && (
+                                <>
+                                    {/* Account */}
+                                    <View style={styles.fieldGroup}>
+                                        <Text style={styles.label}>Account</Text>
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                setDerivedAccountTargetTxId(null);
+                                                setShowAccountPicker(true);
+                                            }}
+                                            style={[styles.pill, { alignSelf: 'flex-start' }]}
+                                        >
+                                            <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || "🏦"}</Text>
+                                            <Text style={styles.pillText}>{account?.name || "Select Account"}</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
                             )}
 
-                            {(isSharedTripContext || isTripShare || isSharedExpense || isDerivedCashflow || isDerivedSettlement) && !!relatedTrip && (
-                                <Text>
-                                    <Text style={{ color: 'rgba(255,255,255,0.3)' }}> • </Text>
-                                    {relatedTrip.emoji} {relatedTrip.name}
-                                </Text>
-                            )}
-                        </Text>
-                    )}
-
-                    {!isEditing && isSharedExpense && isBackgroundSyncing && (
-                        <View style={styles.syncingRow}>
-                            <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
-                            <Text style={styles.syncingText}>Syncing…</Text>
-                        </View>
-                    )}
-                </View>
-
-                {/* EDIT MODE LAYOUT */}
-                {isEditing ? (
-                    <View style={styles.editForm}>
-
-                        {/* Date & Time Row */}
-                        <View style={styles.row}>
-                            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.pill}>
-                                <Text style={styles.pillText}>
-                                    {editDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.pill}>
-                                <Text style={styles.pillText}>
-                                    {editDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        {!isSharedExpense && (
-                            <>
-                                {/* Account */}
+                            {/* Shared expense payer-only: allow changing where the payment was made from */}
+                            {isSharedExpense && !!tripShareCashflowTx && (
                                 <View style={styles.fieldGroup}>
-                                    <Text style={styles.label}>Account</Text>
+                                    <Text style={styles.label}>Paid from</Text>
                                     <TouchableOpacity
                                         onPress={() => {
-                                            setDerivedAccountTargetTxId(null);
+                                            Haptics.selectionAsync();
+                                            setDerivedAccountTargetTxId(tripShareCashflowTx.id);
                                             setShowAccountPicker(true);
                                         }}
                                         style={[styles.pill, { alignSelf: 'flex-start' }]}
+                                        activeOpacity={0.75}
                                     >
-                                        <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || "🏦"}</Text>
-                                        <Text style={styles.pillText}>{account?.name || "Select Account"}</Text>
+                                        <Text style={{ fontSize: 16, marginRight: 6 }}>{tripShareCashflowAccount?.emoji ?? '🏦'}</Text>
+                                        <Text style={styles.pillText}>{tripShareCashflowAccount?.name ?? 'Select Account'}</Text>
                                     </TouchableOpacity>
                                 </View>
-                            </>
-                        )}
-
-                        {/* Shared expense payer-only: allow changing where the payment was made from */}
-                        {isSharedExpense && !!tripShareCashflowTx && (
-                            <View style={styles.fieldGroup}>
-                                <Text style={styles.label}>Paid from</Text>
-                                <TouchableOpacity
-                                    onPress={() => {
-                                        Haptics.selectionAsync();
-                                        setDerivedAccountTargetTxId(tripShareCashflowTx.id);
-                                        setShowAccountPicker(true);
-                                    }}
-                                    style={[styles.pill, { alignSelf: 'flex-start' }]}
-                                    activeOpacity={0.75}
-                                >
-                                    <Text style={{ fontSize: 16, marginRight: 6 }}>{tripShareCashflowAccount?.emoji ?? '🏦'}</Text>
-                                    <Text style={styles.pillText}>{tripShareCashflowAccount?.name ?? 'Select Account'}</Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
-
-                        {/* Category Quick Picker */}
-                        <View style={styles.fieldGroup}>
-                            <Text style={styles.label}>Category</Text>
-                            <View style={{ flexDirection: 'row', gap: 12 }}>
-                                {quickCategories.map(c => (
-                                    <TouchableOpacity
-                                        key={c.id}
-                                        style={[styles.categoryCircle, editCategoryId === c.id && styles.categoryCircleSelected]}
-                                        onPress={() => setEditCategoryId(c.id)}
-                                    >
-                                        <Text style={{ fontSize: 24 }}>{c.emoji}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                                <TouchableOpacity
-                                    style={styles.categoryCircle}
-                                    onPress={() => setShowCategoryPicker(true)}
-                                >
-                                    <Ionicons name="grid-outline" size={20} color="white" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-
-                        {/* Notes */}
-                        <View style={styles.fieldGroup}>
-                            <Text style={styles.label}>Notes</Text>
-                            <View style={styles.notesContainer}>
-                                <TextInput
-                                    style={styles.noteInputEdit}
-                                    value={editNote}
-                                    onChangeText={setEditNote}
-                                    placeholder="Add a note..."
-                                    placeholderTextColor="rgba(255,255,255,0.3)"
-                                    multiline
-                                    textAlignVertical="top"
-                                />
-                            </View>
-                        </View>
-
-                        {/* Trip */}
-                        <View style={styles.fieldGroup}>
-                            <Text style={styles.label}>Trip</Text>
-                            {relatedTrip ? (
-                                <View style={styles.tripPill}>
-                                    <Text>{relatedTrip.emoji}</Text>
-                                    <Text style={{ color: 'white', fontWeight: '600' }}>{relatedTrip.name}</Text>
-                                    {!isSharedTripContext && (
-                                        <TouchableOpacity onPress={handleRemoveFromTrip}>
-                                            <Ionicons name="close-circle" size={18} color={Colors.error} style={{ marginLeft: 4 }} />
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-                            ) : (
-                                <TouchableOpacity style={styles.addToTripButton}>
-                                    <Ionicons name="airplane" size={16} color="rgba(255,255,255,0.6)" />
-                                    <Text style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Add to Trip</Text>
-                                </TouchableOpacity>
                             )}
-                        </View>
 
-                        {/* Split Details - editable for group trips */}
-                        {relatedTrip && relatedTrip.isGroup && tripExpense && (
-                            <View style={styles.splitDetailsSection}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Text style={styles.splitDetailsLabel}>Split Details</Text>
-                                    <View style={{ flex: 1 }} />
+                            {/* Category Quick Picker */}
+                            <View style={styles.fieldGroup}>
+                                <Text style={styles.label}>Category</Text>
+                                <View style={{ flexDirection: 'row', gap: 12 }}>
+                                    {quickCategories.map(c => (
+                                        <TouchableOpacity
+                                            key={c.id}
+                                            style={[styles.categoryCircle, editCategoryId === c.id && styles.categoryCircleSelected]}
+                                            onPress={() => setEditCategoryId(c.id)}
+                                        >
+                                            <Text style={{ fontSize: 24 }}>{c.emoji}</Text>
+                                        </TouchableOpacity>
+                                    ))}
                                     <TouchableOpacity
-                                        onPress={() => {
-                                            Haptics.selectionAsync();
-                                            ensurePayerSelected();
-                                            setShowSplitEditor(true);
-                                        }}
-                                        activeOpacity={0.7}
-                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                        style={styles.categoryCircle}
+                                        onPress={() => setShowCategoryPicker(true)}
                                     >
-                                        <Text style={{ color: Colors.accent, fontSize: 12, fontWeight: '600' }}>Edit</Text>
-                                        <Ionicons name="chevron-forward" size={12} color={Colors.accent} />
+                                        <Ionicons name="grid-outline" size={20} color="white" />
                                     </TouchableOpacity>
                                 </View>
+                            </View>
 
-                                <View style={styles.splitCard}>
-                                    <TouchableOpacity
-                                        style={styles.paidByRow}
-                                        onPress={() => {
-                                            Haptics.selectionAsync();
-                                            setShowPayerPicker(true);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        {(() => {
-                                            const payer = relatedTrip.participants?.find(p => p.id === editPaidByParticipantId);
-                                            const parsed = parseFloat(editAmountString);
-                                            const amountCents = Math.round((Number.isFinite(parsed) ? parsed : 0) * 100);
-                                            const displayAmountCents = amountCents > 0 ? amountCents : Math.abs(transaction.amountCents);
+                            {/* Notes */}
+                            <View style={styles.fieldGroup}>
+                                <Text style={styles.label}>Notes</Text>
+                                <View style={styles.notesContainer}>
+                                    <TextInput
+                                        style={styles.noteInputEdit}
+                                        value={editNote}
+                                        onChangeText={setEditNote}
+                                        placeholder="Add a note..."
+                                        placeholderTextColor="rgba(255,255,255,0.3)"
+                                        multiline
+                                        textAlignVertical="top"
+                                    />
+                                </View>
+                            </View>
 
-                                            if (payer) {
-                                                return (
-                                                    <>
-                                                        <View style={[styles.avatar, { backgroundColor: '#' + (payer.colorHex || 'FF9500') }]}>
-                                                            <Text style={styles.avatarLetter}>{payer.name?.[0]?.toUpperCase() || '?'}</Text>
-                                                        </View>
-                                                        <Text style={styles.paidByText}>
-                                                            {payer.isCurrentUser ? 'You paid' : `${payer.name} paid`}
-                                                        </Text>
-                                                        <View style={{ flex: 1 }} />
-                                                        <Text style={styles.paidByAmount}>{formatCents(displayAmountCents, "INR")}</Text>
-                                                        <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.35)" />
-                                                    </>
-                                                );
-                                            }
-
-                                            return (
-                                                <>
-                                                    <View style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
-                                                        <Ionicons name="person-outline" size={14} color="rgba(255,255,255,0.75)" />
-                                                    </View>
-                                                    <Text style={styles.paidByText}>Select who paid</Text>
-                                                    <View style={{ flex: 1 }} />
-                                                    <Text style={styles.paidByAmount}>{formatCents(displayAmountCents, "INR")}</Text>
-                                                    <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.35)" />
-                                                </>
-                                            );
-                                        })()}
+                            {/* Trip */}
+                            <View style={styles.fieldGroup}>
+                                <Text style={styles.label}>Trip</Text>
+                                {relatedTrip ? (
+                                    <View style={styles.tripPill}>
+                                        <Text>{relatedTrip.emoji}</Text>
+                                        <Text style={{ color: 'white', fontWeight: '600' }}>{relatedTrip.name}</Text>
+                                        {!isSharedTripContext && (
+                                            <TouchableOpacity onPress={handleRemoveFromTrip}>
+                                                <Ionicons name="close-circle" size={18} color={Colors.error} style={{ marginLeft: 4 }} />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                ) : (
+                                    <TouchableOpacity style={styles.addToTripButton}>
+                                        <Ionicons name="airplane" size={16} color="rgba(255,255,255,0.6)" />
+                                        <Text style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Add to Trip</Text>
                                     </TouchableOpacity>
+                                )}
+                            </View>
 
-                                    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
-
-                                    <View style={styles.splitTypeRow}>
-                                        <Ionicons
-                                            name={
-                                                editSplitType === 'equal' ? 'people-outline' :
-                                                    editSplitType === 'percentage' ? 'pie-chart-outline' :
-                                                        editSplitType === 'shares' ? 'layers-outline' :
-                                                            editSplitType === 'exact' ? 'cash-outline' : 'checkmark-circle-outline'
-                                            }
-                                            size={14}
-                                            color={Colors.accent}
-                                        />
-                                        <Text style={styles.splitTypeText}>
-                                            By {editSplitType === 'equal' ? 'Equal' :
-                                                editSplitType === 'equalSelected' ? 'Selected' :
-                                                    editSplitType === 'percentage' ? 'Percentage' :
-                                                        editSplitType === 'shares' ? 'Shares' :
-                                                            editSplitType === 'exact' ? 'Exact' : editSplitType}
-                                        </Text>
+                            {/* Split Details - editable for group trips */}
+                            {relatedTrip && relatedTrip.isGroup && tripExpense && (
+                                <View style={styles.splitDetailsSection}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Text style={styles.splitDetailsLabel}>Split Details</Text>
+                                        <View style={{ flex: 1 }} />
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                Haptics.selectionAsync();
+                                                ensurePayerSelected();
+                                                setShowSplitEditor(true);
+                                            }}
+                                            activeOpacity={0.7}
+                                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                        >
+                                            <Text style={{ color: Colors.accent, fontSize: 12, fontWeight: '600' }}>Edit</Text>
+                                            <Ionicons name="chevron-forward" size={12} color={Colors.accent} />
+                                        </TouchableOpacity>
                                     </View>
 
-                                    {relatedTrip.participants?.map(participant => {
-                                        const owedAmount = editComputedSplits?.[participant.id];
-                                        if (!owedAmount || owedAmount <= 0) return null;
-
-                                        return (
-                                            <View key={participant.id} style={styles.participantRow}>
-                                                <View style={[styles.avatarSmall, { backgroundColor: '#' + (participant.colorHex || 'FF9500') }]}>
-                                                    <Text style={styles.avatarLetterSmall}>{participant.name?.[0]?.toUpperCase() || '?'}</Text>
-                                                </View>
-                                                <Text style={styles.participantName}>
-                                                    {participant.isCurrentUser ? 'You' : participant.name}
-                                                </Text>
-                                                <View style={{ flex: 1 }} />
-                                                <Text style={styles.participantAmount}>
-                                                    {formatCents(owedAmount, "INR")}
-                                                </Text>
-                                            </View>
-                                        );
-                                    })}
-                                </View>
-                            </View>
-                        )}
-
-                    </View>
-                ) : (
-                    /* VIEW MODE LAYOUT */
-                    <View style={styles.dataSection}>
-                        {/* Settlement-derived rows: allow changing account only */}
-                        {canChangeDerivedAccount && (
-                            <View style={styles.fieldGroup}>
-                                <Text style={styles.sectionLabel}>Account</Text>
-                                <TouchableOpacity
-                                    onPress={() => {
-                                        Haptics.selectionAsync();
-                                        setDerivedAccountTargetTxId(transaction?.id ?? null);
-                                        setShowAccountPicker(true);
-                                    }}
-                                    style={[styles.pill, { alignSelf: 'flex-start' }]}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || '🏦'}</Text>
-                                    <Text style={styles.pillText}>{account?.name || 'Select Account'}</Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
-
-                        {/* Note (Only if exists) */}
-                        {!!displayNote && (
-                            <View style={styles.viewNoteContainer}>
-                                <Text style={styles.viewNoteText}>{displayNote}</Text>
-                            </View>
-                        )}
-
-                        {/* Trip-share payer-only: allow changing where the payment was made from */}
-                        {(isTripShare || isSharedExpense) && !!tripShareCashflowTx && (
-                            <View style={styles.fieldGroup}>
-                                <Text style={styles.sectionLabel}>Paid from</Text>
-                                <TouchableOpacity
-                                    style={[styles.pill, { alignSelf: 'flex-start' }]}
-                                    activeOpacity={0.75}
-                                    onPress={() => {
-                                        Haptics.selectionAsync();
-                                        setDerivedAccountTargetTxId(tripShareCashflowTx.id);
-                                        setShowAccountPicker(true);
-                                    }}
-                                >
-                                    <Text style={{ fontSize: 16, marginRight: 6 }}>{tripShareCashflowAccount?.emoji ?? '🏦'}</Text>
-                                    <Text style={styles.pillText}>{tripShareCashflowAccount?.name ?? 'Select Account'}</Text>
-                                    <View style={{ width: 6 }} />
-                                    <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.35)" />
-                                </TouchableOpacity>
-                            </View>
-                        )}
-
-                        {/* Trip Card */}
-                        {relatedTrip && (
-                            <View style={styles.tripSection}>
-                                {/* Trip Label */}
-                                <Text style={styles.sectionLabel}>Trip</Text>
-
-                                {/* Trip Badge Row */}
-                                <View style={styles.tripBadge}>
-                                    <Text style={{ fontSize: 22, marginRight: 10 }}>{relatedTrip.emoji}</Text>
-                                    <Text style={styles.tripName}>{relatedTrip.name}</Text>
-                                    <View style={{ flex: 1 }} />
-                                    {!isSharedTripContext && (
-                                        <TouchableOpacity onPress={handleRemoveFromTrip}>
-                                            <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.5)" />
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-
-                                {/* Split Details Section - for group trips */}
-                                {tripExpense && relatedTrip.isGroup && (
-                                    <View style={styles.splitDetailsSection}>
-                                        <Text style={styles.splitDetailsLabel}>Split Details</Text>
-
-                                        <View style={styles.splitCard}>
-                                            {/* Paid By Row */}
+                                    <View style={styles.splitCard}>
+                                        <TouchableOpacity
+                                            style={styles.paidByRow}
+                                            onPress={() => {
+                                                Haptics.selectionAsync();
+                                                setShowPayerPicker(true);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
                                             {(() => {
-                                                const payer = relatedTrip.participants?.find(p => p.id === tripExpense.paidByParticipantId);
+                                                const payer = relatedTrip.participants?.find(p => p.id === editPaidByParticipantId);
+                                                const parsed = parseFloat(editAmountString);
+                                                const amountCents = Math.round((Number.isFinite(parsed) ? parsed : 0) * 100);
+                                                const displayAmountCents = amountCents > 0 ? amountCents : Math.abs(transaction.amountCents);
+
                                                 if (payer) {
                                                     return (
-                                                        <View style={styles.paidByRow}>
+                                                        <>
                                                             <View style={[styles.avatar, { backgroundColor: '#' + (payer.colorHex || 'FF9500') }]}>
                                                                 <Text style={styles.avatarLetter}>{payer.name?.[0]?.toUpperCase() || '?'}</Text>
                                                             </View>
@@ -1226,90 +1081,244 @@ export function TransactionDetailScreen({
                                                                 {payer.isCurrentUser ? 'You paid' : `${payer.name} paid`}
                                                             </Text>
                                                             <View style={{ flex: 1 }} />
-                                                            <Text style={styles.paidByAmount}>
-                                                                {formatCents(splitTotalAmountCents, "INR")}
+                                                            <Text style={styles.paidByAmount}>{formatCents(displayAmountCents, "INR")}</Text>
+                                                            <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.35)" />
+                                                        </>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <>
+                                                        <View style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
+                                                            <Ionicons name="person-outline" size={14} color="rgba(255,255,255,0.75)" />
+                                                        </View>
+                                                        <Text style={styles.paidByText}>Select who paid</Text>
+                                                        <View style={{ flex: 1 }} />
+                                                        <Text style={styles.paidByAmount}>{formatCents(displayAmountCents, "INR")}</Text>
+                                                        <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.35)" />
+                                                    </>
+                                                );
+                                            })()}
+                                        </TouchableOpacity>
+
+                                        <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
+
+                                        <View style={styles.splitTypeRow}>
+                                            <Ionicons
+                                                name={
+                                                    editSplitType === 'equal' ? 'people-outline' :
+                                                        editSplitType === 'percentage' ? 'pie-chart-outline' :
+                                                            editSplitType === 'shares' ? 'layers-outline' :
+                                                                editSplitType === 'exact' ? 'cash-outline' : 'checkmark-circle-outline'
+                                                }
+                                                size={14}
+                                                color={Colors.accent}
+                                            />
+                                            <Text style={styles.splitTypeText}>
+                                                By {editSplitType === 'equal' ? 'Equal' :
+                                                    editSplitType === 'equalSelected' ? 'Selected' :
+                                                        editSplitType === 'percentage' ? 'Percentage' :
+                                                            editSplitType === 'shares' ? 'Shares' :
+                                                                editSplitType === 'exact' ? 'Exact' : editSplitType}
+                                            </Text>
+                                        </View>
+
+                                        {relatedTrip.participants?.map(participant => {
+                                            const owedAmount = editComputedSplits?.[participant.id];
+                                            if (!owedAmount || owedAmount <= 0) return null;
+
+                                            return (
+                                                <View key={participant.id} style={styles.participantRow}>
+                                                    <View style={[styles.avatarSmall, { backgroundColor: '#' + (participant.colorHex || 'FF9500') }]}>
+                                                        <Text style={styles.avatarLetterSmall}>{participant.name?.[0]?.toUpperCase() || '?'}</Text>
+                                                    </View>
+                                                    <Text style={styles.participantName}>
+                                                        {participant.isCurrentUser ? 'You' : participant.name}
+                                                    </Text>
+                                                    <View style={{ flex: 1 }} />
+                                                    <Text style={styles.participantAmount}>
+                                                        {formatCents(owedAmount, "INR")}
+                                                    </Text>
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                </View>
+                            )}
+
+                        </View>
+                    ) : (
+                        /* VIEW MODE LAYOUT */
+                        <View style={styles.dataSection}>
+                            {/* Settlement-derived rows: allow changing account only */}
+                            {canChangeDerivedAccount && (
+                                <View style={styles.fieldGroup}>
+                                    <Text style={styles.sectionLabel}>Account</Text>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            Haptics.selectionAsync();
+                                            setDerivedAccountTargetTxId(transaction?.id ?? null);
+                                            setShowAccountPicker(true);
+                                        }}
+                                        style={[styles.pill, { alignSelf: 'flex-start' }]}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={{ fontSize: 16, marginRight: 6 }}>{account?.emoji || '🏦'}</Text>
+                                        <Text style={styles.pillText}>{account?.name || 'Select Account'}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {/* Note (Only if exists) */}
+                            {!!displayNote && (
+                                <View style={styles.viewNoteContainer}>
+                                    <Text style={styles.viewNoteText}>{displayNote}</Text>
+                                </View>
+                            )}
+
+                            {/* Trip-share payer-only: allow changing where the payment was made from */}
+                            {(isTripShare || isSharedExpense) && !!tripShareCashflowTx && (
+                                <View style={styles.fieldGroup}>
+                                    <Text style={styles.sectionLabel}>Paid from</Text>
+                                    <TouchableOpacity
+                                        style={[styles.pill, { alignSelf: 'flex-start' }]}
+                                        activeOpacity={0.75}
+                                        onPress={() => {
+                                            Haptics.selectionAsync();
+                                            setDerivedAccountTargetTxId(tripShareCashflowTx.id);
+                                            setShowAccountPicker(true);
+                                        }}
+                                    >
+                                        <Text style={{ fontSize: 16, marginRight: 6 }}>{tripShareCashflowAccount?.emoji ?? '🏦'}</Text>
+                                        <Text style={styles.pillText}>{tripShareCashflowAccount?.name ?? 'Select Account'}</Text>
+                                        <View style={{ width: 6 }} />
+                                        <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.35)" />
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {/* Trip Card */}
+                            {relatedTrip && (
+                                <View style={styles.tripSection}>
+                                    {/* Trip Label */}
+                                    <Text style={styles.sectionLabel}>Trip</Text>
+
+                                    {/* Trip Badge Row */}
+                                    <View style={styles.tripBadge}>
+                                        <Text style={{ fontSize: 22, marginRight: 10 }}>{relatedTrip.emoji}</Text>
+                                        <Text style={styles.tripName}>{relatedTrip.name}</Text>
+                                        <View style={{ flex: 1 }} />
+                                        {!isSharedTripContext && (
+                                            <TouchableOpacity onPress={handleRemoveFromTrip}>
+                                                <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.5)" />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+
+                                    {/* Split Details Section - for group trips */}
+                                    {tripExpense && relatedTrip.isGroup && (
+                                        <View style={styles.splitDetailsSection}>
+                                            <Text style={styles.splitDetailsLabel}>Split Details</Text>
+
+                                            <View style={styles.splitCard}>
+                                                {/* Paid By Row */}
+                                                {(() => {
+                                                    const payer = relatedTrip.participants?.find(p => p.id === tripExpense.paidByParticipantId);
+                                                    if (payer) {
+                                                        return (
+                                                            <View style={styles.paidByRow}>
+                                                                <View style={[styles.avatar, { backgroundColor: '#' + (payer.colorHex || 'FF9500') }]}>
+                                                                    <Text style={styles.avatarLetter}>{payer.name?.[0]?.toUpperCase() || '?'}</Text>
+                                                                </View>
+                                                                <Text style={styles.paidByText}>
+                                                                    {payer.isCurrentUser ? 'You paid' : `${payer.name} paid`}
+                                                                </Text>
+                                                                <View style={{ flex: 1 }} />
+                                                                <Text style={styles.paidByAmount}>
+                                                                    {formatCents(splitTotalAmountCents, "INR")}
+                                                                </Text>
+                                                            </View>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+
+                                                {/* Split Type Row */}
+                                                <View style={styles.splitTypeRow}>
+                                                    <Ionicons
+                                                        name={
+                                                            tripExpense.splitType === 'equal' ? 'people-outline' :
+                                                                tripExpense.splitType === 'percentage' ? 'pie-chart-outline' :
+                                                                    tripExpense.splitType === 'shares' ? 'layers-outline' :
+                                                                        tripExpense.splitType === 'exact' ? 'cash-outline' : 'checkmark-circle-outline'
+                                                        }
+                                                        size={14}
+                                                        color={Colors.accent}
+                                                    />
+                                                    <Text style={styles.splitTypeText}>
+                                                        By {tripExpense.splitType === 'equal' ? 'Equal' :
+                                                            tripExpense.splitType === 'equalSelected' ? 'Selected' :
+                                                                tripExpense.splitType === 'percentage' ? 'Percentage' :
+                                                                    tripExpense.splitType === 'shares' ? 'Shares' :
+                                                                        tripExpense.splitType === 'exact' ? 'Exact' : tripExpense.splitType}
+                                                    </Text>
+                                                </View>
+
+                                                {/* Participant Splits */}
+                                                {relatedTrip.participants?.map(participant => {
+                                                    const owedAmount = tripExpense.computedSplits?.[participant.id];
+                                                    if (!owedAmount || owedAmount <= 0) return null;
+
+                                                    return (
+                                                        <View key={participant.id} style={styles.participantRow}>
+                                                            <View style={[styles.avatarSmall, { backgroundColor: '#' + (participant.colorHex || 'FF9500') }]}>
+                                                                <Text style={styles.avatarLetterSmall}>{participant.name?.[0]?.toUpperCase() || '?'}</Text>
+                                                            </View>
+                                                            <Text style={styles.participantName}>
+                                                                {participant.isCurrentUser ? 'You' : participant.name}
+                                                            </Text>
+                                                            <View style={{ flex: 1 }} />
+                                                            <Text style={styles.participantAmount}>
+                                                                {formatCents(owedAmount, "INR")}
                                                             </Text>
                                                         </View>
                                                     );
-                                                }
-                                                return null;
-                                            })()}
-
-                                            {/* Split Type Row */}
-                                            <View style={styles.splitTypeRow}>
-                                                <Ionicons
-                                                    name={
-                                                        tripExpense.splitType === 'equal' ? 'people-outline' :
-                                                            tripExpense.splitType === 'percentage' ? 'pie-chart-outline' :
-                                                                tripExpense.splitType === 'shares' ? 'layers-outline' :
-                                                                    tripExpense.splitType === 'exact' ? 'cash-outline' : 'checkmark-circle-outline'
-                                                    }
-                                                    size={14}
-                                                    color={Colors.accent}
-                                                />
-                                                <Text style={styles.splitTypeText}>
-                                                    By {tripExpense.splitType === 'equal' ? 'Equal' :
-                                                        tripExpense.splitType === 'equalSelected' ? 'Selected' :
-                                                            tripExpense.splitType === 'percentage' ? 'Percentage' :
-                                                                tripExpense.splitType === 'shares' ? 'Shares' :
-                                                                    tripExpense.splitType === 'exact' ? 'Exact' : tripExpense.splitType}
-                                                </Text>
+                                                })}
                                             </View>
-
-                                            {/* Participant Splits */}
-                                            {relatedTrip.participants?.map(participant => {
-                                                const owedAmount = tripExpense.computedSplits?.[participant.id];
-                                                if (!owedAmount || owedAmount <= 0) return null;
-
-                                                return (
-                                                    <View key={participant.id} style={styles.participantRow}>
-                                                        <View style={[styles.avatarSmall, { backgroundColor: '#' + (participant.colorHex || 'FF9500') }]}>
-                                                            <Text style={styles.avatarLetterSmall}>{participant.name?.[0]?.toUpperCase() || '?'}</Text>
-                                                        </View>
-                                                        <Text style={styles.participantName}>
-                                                            {participant.isCurrentUser ? 'You' : participant.name}
-                                                        </Text>
-                                                        <View style={{ flex: 1 }} />
-                                                        <Text style={styles.participantAmount}>
-                                                            {formatCents(owedAmount, "INR")}
-                                                        </Text>
-                                                    </View>
-                                                );
-                                            })}
                                         </View>
-                                    </View>
-                                )}
-                            </View>
-                        )}
-                    </View>
-                )}
+                                    )}
+                                </View>
+                            )}
+                        </View>
+                    )}
 
-                {canDelete && (
-                    <>
-                        {/* Delete Button */}
-                        <TouchableOpacity
-                            style={styles.deleteButton}
-                            onPress={handleDelete}
-                        >
-                            <Text style={styles.deleteText}>
-                                {isSharedExpense
-                                    ? 'Delete Expense'
-                                    : isDerivedSettlement
-                                        ? 'Delete Settlement'
-                                        : 'Delete Transaction'}
-                            </Text>
-                        </TouchableOpacity>
-                    </>
-                )}
+                    {canDelete && (
+                        <>
+                            {/* Delete Button */}
+                            <TouchableOpacity
+                                style={styles.deleteButton}
+                                onPress={handleDelete}
+                            >
+                                <Text style={styles.deleteText}>
+                                    {isSharedExpense
+                                        ? 'Delete Expense'
+                                        : isDerivedSettlement
+                                            ? 'Delete Settlement'
+                                            : 'Delete Transaction'}
+                                </Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
 
-                <View style={{ height: 100 }} />
-            </ScrollView>
+                    <View style={{ height: 100 }} />
+                </ScrollView>
+            </AndroidKeyboardAvoider>
 
             {/* Modals for Editing */}
 
             {/* Date Picker (Platform specific) */}
             {showDatePicker && Platform.OS !== 'android' && (
-                <Modal transparent animationType="fade">
+                <Modal transparent animationType="fade" onRequestClose={() => setShowDatePicker(false)}>
                     <View style={styles.dateModalBg}>
                         <View style={styles.datePickerContainer}>
                             <View style={{ alignItems: 'flex-end', padding: 8 }}>
@@ -1343,9 +1352,9 @@ export function TransactionDetailScreen({
             ) : null}
 
             {/* Simple Category Picker Modal */}
-            <Modal visible={showCategoryPicker} animationType="slide" presentationStyle="pageSheet">
+            <Modal visible={showCategoryPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCategoryPicker(false)}>
                 <View style={styles.modalContainer}>
-                    <View style={styles.modalHeader}>
+                    <View style={[styles.modalHeader, { paddingTop: 20 + sheetTopInset }]}>
                         <Text style={styles.modalTitle}>Select Category</Text>
                         <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
                             <Text style={{ color: Colors.accent, fontSize: 16 }}>Close</Text>
@@ -1372,9 +1381,9 @@ export function TransactionDetailScreen({
             </Modal>
 
             {/* Simple Account Picker Modal */}
-            <Modal visible={showAccountPicker} animationType="slide" presentationStyle="pageSheet">
+            <Modal visible={showAccountPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setShowAccountPicker(false); setDerivedAccountTargetTxId(null); }}>
                 <View style={styles.modalContainer}>
-                    <View style={styles.modalHeader}>
+                    <View style={[styles.modalHeader, { paddingTop: 20 + sheetTopInset }]}>
                         <Text style={styles.modalTitle}>Select Account</Text>
                         <TouchableOpacity onPress={() => setShowAccountPicker(false)}>
                             <Text style={{ color: Colors.accent, fontSize: 16 }}>Close</Text>
@@ -1444,7 +1453,7 @@ export function TransactionDetailScreen({
                 onRequestClose={() => setShowPayerPicker(false)}
             >
                 <View style={styles.modalContainer}>
-                    <View style={styles.modalHeader}>
+                    <View style={[styles.modalHeader, { paddingTop: 20 + sheetTopInset }]}>
                         <Text style={styles.modalTitle}>Who paid?</Text>
                         <TouchableOpacity onPress={() => setShowPayerPicker(false)}>
                             <Text style={{ color: Colors.accent, fontSize: 16 }}>Close</Text>

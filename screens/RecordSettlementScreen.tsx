@@ -10,6 +10,7 @@ import { TripRepository, TripSettlementRepository } from '../lib/db/repositories
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import { Trip, TripParticipant } from '../lib/logic/types';
 import { reconcileLocalTripDerivedTransactionsForTrip } from '../lib/sync/localTripReconcile';
+import { useAndroidSheetTopInset } from '../lib/ui/androidInsets';
 
 interface RecordSettlementScreenProps {
     trip: Trip;
@@ -30,6 +31,7 @@ export function RecordSettlementScreen({
     onDismiss,
     onRecorded
 }: RecordSettlementScreenProps) {
+    const sheetTopInset = useAndroidSheetTopInset();
 
     const toast = useToast();
     const { showPopup } = useCustomPopup();
@@ -98,7 +100,7 @@ export function RecordSettlementScreen({
     return (
         <View style={styles.container}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: 20 + sheetTopInset }]}>
                 <TouchableOpacity onPress={onDismiss}>
                     <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>

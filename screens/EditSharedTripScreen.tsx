@@ -22,6 +22,7 @@ import { RECOMMENDED_TRIP_EMOJIS } from '../lib/emoji/recommendedEmojis';
 import { getCurrencySymbol } from '../lib/logic/currencyUtils';
 import type { Trip } from '../lib/logic/types';
 import { useSyncStatus } from '../lib/sync/SyncProvider';
+import { AndroidKeyboardAvoider } from '@/components/ui/AndroidKeyboardAvoider';
 
 interface EditSharedTripScreenProps {
   trip: Trip;
@@ -121,108 +122,110 @@ export function EditSharedTripScreen({ trip, onDismiss, onSaved }: EditSharedTri
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.formSection}>
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={styles.emojiButton}
-              activeOpacity={0.7}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setShowEmojiPicker(true);
-              }}
-            >
-              <Text style={styles.emoji}>{emoji}</Text>
-            </TouchableOpacity>
-            <TextInput
-              style={styles.nameInput}
-              value={name}
-              onChangeText={setName}
-              placeholder="Trip Name"
-              placeholderTextColor="rgba(255, 255, 255, 0.3)"
-              autoFocus
-            />
-          </View>
-        </View>
-
-        <View style={styles.formSection}>
-          <View style={styles.row}>
-            <Text style={styles.label}>Start Date</Text>
-            {Platform.OS !== 'android' ? (
-              <DateTimePicker
-                value={startDate}
-                mode="date"
-                display="compact"
-                themeVariant="dark"
-                onChange={(e, d) => onDateChange(e, d, 'start')}
-                style={{ width: 120 }}
-              />
-            ) : (
-              <TouchableOpacity onPress={() => setShowStartPicker(true)}>
-                <Text style={styles.value}>{format(startDate, 'MMM d, yyyy')}</Text>
+      <AndroidKeyboardAvoider>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.formSection}>
+            <View style={styles.row}>
+              <TouchableOpacity
+                style={styles.emojiButton}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setShowEmojiPicker(true);
+                }}
+              >
+                <Text style={styles.emoji}>{emoji}</Text>
               </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.label}>End Date</Text>
-            {Platform.OS !== 'android' ? (
-              <DateTimePicker
-                value={endDate}
-                mode="date"
-                display="compact"
-                themeVariant="dark"
-                onChange={(e, d) => onDateChange(e, d, 'end')}
-                style={{ width: 120 }}
-                minimumDate={startDate}
+              <TextInput
+                style={styles.nameInput}
+                value={name}
+                onChangeText={setName}
+                placeholder="Trip Name"
+                placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                autoFocus
               />
-            ) : (
-              <TouchableOpacity onPress={() => setShowEndPicker(true)}>
-                <Text style={styles.value}>{format(endDate, 'MMM d, yyyy')}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.formSection}>
-          <View style={styles.row}>
-            <Text style={styles.label}>Total Budget</Text>
-            <Switch
-              value={hasBudget}
-              onValueChange={(v) => {
-                Haptics.selectionAsync();
-                setHasBudget(v);
-                if (!v) setBudgetString('');
-              }}
-              trackColor={{ false: '#3a3a3c', true: Colors.accent }}
-              thumbColor="#FFFFFF"
-              ios_backgroundColor="#3a3a3c"
-            />
+            </View>
           </View>
 
-          {hasBudget && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.inputRow}>
-                <Text style={[styles.label, { flex: 1 }]}>Amount</Text>
-                <Text style={styles.currencySymbol}>{getCurrencySymbol(currencyCode)}</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  value={budgetString}
-                  onChangeText={setBudgetString}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  placeholderTextColor="rgba(255, 255, 255, 0.3)"
+          <View style={styles.formSection}>
+            <View style={styles.row}>
+              <Text style={styles.label}>Start Date</Text>
+              {Platform.OS !== 'android' ? (
+                <DateTimePicker
+                  value={startDate}
+                  mode="date"
+                  display="compact"
+                  themeVariant="dark"
+                  onChange={(e, d) => onDateChange(e, d, 'start')}
+                  style={{ width: 120 }}
                 />
-              </View>
-            </>
-          )}
-        </View>
+              ) : (
+                <TouchableOpacity onPress={() => setShowStartPicker(true)}>
+                  <Text style={styles.value}>{format(startDate, 'MMM d, yyyy')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.row}>
+              <Text style={styles.label}>End Date</Text>
+              {Platform.OS !== 'android' ? (
+                <DateTimePicker
+                  value={endDate}
+                  mode="date"
+                  display="compact"
+                  themeVariant="dark"
+                  onChange={(e, d) => onDateChange(e, d, 'end')}
+                  style={{ width: 120 }}
+                  minimumDate={startDate}
+                />
+              ) : (
+                <TouchableOpacity onPress={() => setShowEndPicker(true)}>
+                  <Text style={styles.value}>{format(endDate, 'MMM d, yyyy')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
-        <View style={styles.formSection}>
-          <Text style={styles.metaText}>Currency is locked to INR for v1.</Text>
-        </View>
-      </ScrollView>
+          <View style={styles.formSection}>
+            <View style={styles.row}>
+              <Text style={styles.label}>Total Budget</Text>
+              <Switch
+                value={hasBudget}
+                onValueChange={(v) => {
+                  Haptics.selectionAsync();
+                  setHasBudget(v);
+                  if (!v) setBudgetString('');
+                }}
+                trackColor={{ false: '#3a3a3c', true: Colors.accent }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#3a3a3c"
+              />
+            </View>
+
+            {hasBudget && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.inputRow}>
+                  <Text style={[styles.label, { flex: 1 }]}>Amount</Text>
+                  <Text style={styles.currencySymbol}>{getCurrencySymbol(currencyCode)}</Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    value={budgetString}
+                    onChangeText={setBudgetString}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                  />
+                </View>
+              </>
+            )}
+          </View>
+
+          <View style={styles.formSection}>
+            <Text style={styles.metaText}>Currency is locked to INR for v1.</Text>
+          </View>
+        </ScrollView>
+      </AndroidKeyboardAvoider>
 
       {Platform.OS === 'android' && showStartPicker && (
         <DateTimePicker

@@ -85,3 +85,10 @@ export default function DateTimePicker({ value, mode = 'date', onChange, minimum
 }
 
 const styles = StyleSheet.create({ wrap: { alignSelf: 'stretch' } });
+
+/** Android-only system dialogs; the web input handles date and time inline. */
+export function openAndroidDateTimePicker(
+  _value: Date,
+  _mode: 'date' | 'time' | 'datetime',
+  _onPick: (date: Date) => void
+) {}
